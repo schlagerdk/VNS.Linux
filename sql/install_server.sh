@@ -16,18 +16,22 @@ if [[ ${ID} != ubuntu ]]; then
 	exit 1
 fi
 
+_repoUbuntu=${SQL_UBUNTU_VERSION:-${VERSION_ID}}
+
 _sqlVersion=""
 for _v in "${_sqlVersions[@]}"; do
-	if curl -fsSI "${_baseUrl}/config/ubuntu/${VERSION_ID}/mssql-server-${_v}.list" >/dev/null 2>&1; then
+	if curl -fsSI "${_baseUrl}/config/ubuntu/${_repoUbuntu}/mssql-server-${_v}.list" >/dev/null 2>&1; then
 		_sqlVersion=${_v}
 		break
 	fi
 done
 if [[ -z ${_sqlVersion} ]]; then
-	echo "No SQL Server repository found for Ubuntu ${VERSION_ID}" >&2
+	echo "Microsoft has no SQL Server repository for Ubuntu ${_repoUbuntu}." >&2
+	echo "Use a supported Ubuntu LTS (22.04 or 24.04), or - unsupported by Microsoft - try the" >&2
+	echo "repository of an older release, e.g.: SQL_UBUNTU_VERSION=24.04 ./install_server.sh" >&2
 	exit 1
 fi
-echo "Installing SQL Server ${_sqlVersion} on Ubuntu ${VERSION_ID}"
+echo "Installing SQL Server ${_sqlVersion} using the Ubuntu ${_repoUbuntu} repository (server runs Ubuntu ${VERSION_ID})"
 
 if dpkg -s mssql-server >/dev/null 2>&1; then
 	echo "mssql-server is already installed - use update_server.sh to update it" >&2
@@ -49,7 +53,7 @@ fi
 
 echo "Add Microsoft repository"
 curl -fsSL "${_baseUrl}/keys/microsoft.asc" | ${_sudo} gpg --dearmor --yes -o /usr/share/keyrings/microsoft-prod.gpg
-curl -fsSL "${_baseUrl}/config/ubuntu/${VERSION_ID}/mssql-server-${_sqlVersion}.list" | ${_sudo} tee "/etc/apt/sources.list.d/mssql-server-${_sqlVersion}.list" >/dev/null
+curl -fsSL "${_baseUrl}/config/ubuntu/${_repoUbuntu}/mssql-server-${_sqlVersion}.list" | ${_sudo} tee "/etc/apt/sources.list.d/mssql-server-${_sqlVersion}.list" >/dev/null
 
 echo "Install mssql-server"
 ${_sudo} apt-get update
