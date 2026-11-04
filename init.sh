@@ -23,6 +23,7 @@ sudo apt-get install -y curl git net-tools nano unzip ca-certificates rsync
 echo Deploy to /vns
 SRC="$(pwd)"
 bash ./update.sh "$SRC"
+rm -f /vns/.gitignore
 
 # Fjern den klonede mappe igen, men kun hvis det er selve VNS.Linux-klonen og ikke /vns
 if [ "$(basename "$SRC")" = "VNS.Linux" ] && [ "$SRC" != "/vns" ]; then

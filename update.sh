@@ -28,6 +28,7 @@ main() {
     rsync -a \
         --exclude '.git' \
         --exclude '.DS_Store' \
+        --exclude '.gitignore' \
         --exclude '_portnumber.txt' \
         "$src"/ "$TARGET"/
 
