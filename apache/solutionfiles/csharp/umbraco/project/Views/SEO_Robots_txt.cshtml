@@ -1,0 +1,13 @@
+﻿@using Umbraco.Cms.Web.Common.PublishedModels
+@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage
+@using VNS.Umbraco
+@{
+	Layout = null;
+	
+	Util.SetContentType("text/plain");
+}
+Sitemap: @Util.GetCurrentUrl(false)/sitemap.xml
+User-agent: *
+Crawl-delay: 10
+Disallow: /umbraco
+Disallow: /Umbraco

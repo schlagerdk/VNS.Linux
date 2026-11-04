@@ -1,0 +1,16 @@
+﻿@using Umbraco.Cms.Web.Common.PublishedModels;
+@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage
+@using VNS.Umbraco;
+@{
+	Layout = "ROOT.cshtml";
+}
+<div class="document">
+    <div class="container">
+        <div class="row">
+            <div class="col">
+                <h1>@Model.Value("headline")</h1>
+                @if(Model.HasValue("text")) { <div class="text">@Model.Value("text")</div> }
+            </div>
+        </div>
+    </div>
+</div>

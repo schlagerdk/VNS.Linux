@@ -1,0 +1,278 @@
+//@import url('https://cdn.materialdesignicons.com/5.4.55/css/materialdesignicons.min.css'); // Material Design icons
+@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"); // Bootstrap icons
+@import url('https://fonts.googleapis.com/css?family=Open+Sans:300i,400,400i,600,600i,700,700i&display=swap');
+
+/* ---------------------------------- System Colors ----------------------------------  */
+$Error-Color: #D14646;
+$ErrorText-Color: #fff;
+$Placeholder-Color: #B0C4CF;
+
+$Primary-Color: #00727e;
+$Secondary-Color: #61a8b1;
+$Extra-Color: #82b5b9;
+$Default-Font: 'Open Sans';
+
+/* Material Icons */
+.mdi {
+	/* Required */
+	font-family: 'Material Design Icons';
+	vertical-align: middle;
+
+	/* Rules for sizing the icon. */
+	&-18 { font-size: 18px; }
+	&-20 { font-size: 20px; }
+	&-24 { font-size: 24px; }
+	&-30 { font-size: 30px; }
+	&-36 { font-size: 36px; }
+	&-48 { font-size: 48px; }
+
+	/* Rules for using icons as black on a light background. */
+	&.md-dark { color: rgba(0, 0, 0, 0.54); }
+	&.md-dark.md-inactive { color: rgba(0, 0, 0, 0.26); }
+
+	/* Rules for using icons as white on a dark background. */
+	&.md-light { color: rgba(255, 255, 255, 1); }
+	&.md-light.md-inactive { color: rgba(255, 255, 255, 0.3); }
+}
+
+/* ---------------------------------- HTML5 Tags ----------------------------------  */
+article, aside, details, figcaption, figure, footer, header, hgroup, main, nav, section, summary { display: block; }
+audio, canvas, video { display: inline-block; }
+audio:not([controls]) { display: none; height: 0; }
+
+/* ---------------------------------- Form Error ---------------------------------- */
+select.error, input[type=text].error, input[type=password].error, input[type=email].error, input[type=tel].error, textarea.error, button.error { border: solid 1px $Error-Color; border-radius: 6px 6px 6px 0; }
+.errormsg { font-weight: normal; color: $ErrorText-Color; background-color: $Error-Color; padding: 5px 15px; line-height: 20px; white-space: nowrap;
+	.arrow { display: none; z-index: 1; position: absolute; top: -8px; left: 15px; width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 10px solid $Error-Color; }
+}
+
+/* ---------------------------------- Responsive items ---------------------------------- */
+table, img, iframe { max-width: 100%; height: auto; }
+ul, ol { margin: 1em 0; padding: 0 0 0 40px; }
+.img-responsive, .vdo-responsive { width: 100%; display: block; }
+.img-hidden { visibility: hidden; }
+
+/* ---------------------------------- Fluid Youtube Video ---------------------------------- */
+.vdowrap {  position: relative; padding-bottom: 56.25%; /* 16:9 */ padding-top: 25px; height: 0;
+    iframe{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+}
+
+/* ---------------------------------- Main ---------------------------------- */
+html { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; border: 0; margin: 0; padding: 0; }
+body { font-family: $Default-Font; border: 0; margin: 0; padding: 0; font-size: 16px;
+    &:after { content: 'desktop'; display: none; }
+}
+@media (max-width:992px) { body:after { content: 'tablet'; } }
+@media (max-width:768px) { body:after { content: 'tablet'; } }
+@media (max-width:576px) { body:after { content: 'mobile'; } }
+@media (max-width:320px) { body:after { content: 'mobile'; } }
+.left { float: left; }
+.right { float: right; }
+.clr { clear: both; }
+.point { cursor: pointer; }
+.anchor { padding-top: 40px; margin-top: -40px; }
+.border { border: solid 1px $Error-Color; }
+*:focus { outline: none !important; }
+.container { max-width: 1200px; }
+
+@media (max-width:992px) { } 
+@media (max-width:768px) { }
+@media (max-width:576px) { }
+@media (max-width:320px) { }
+
+/* ---------------------------------- Breadcrumb ---------------------------------- */
+.breadcrumb { padding: 0; background-color: transparent; 
+    a { color: #000; }
+    .divider {
+         img { margin-top: -4px; }
+    }
+    .active { color: #000; text-decoration: underline; }
+}
+
+/* ---------------------------------- Helper ---------------------------------- */
+.helper { color: #b7b7b7; font-size: 12px; }
+
+/* ---------------------------------- Helpbox ---------------------------------- */
+.helpbox { cursor: pointer; color: $Primary-Color; position: absolute; margin-top: -2px; margin-left: 5px; font-size: 20px; }
+
+/* ---------------------------------- Input ---------------------------------- */
+::placeholder { color: $Placeholder-Color !important; opacity: 1 !important; }
+::-webkit-input-placeholder { color: $Placeholder-Color !important; opacity: 1 !important; }
+:-moz-placeholder { color: $Placeholder-Color !important; opacity: 1 !important; }
+::-moz-placeholder { color: $Placeholder-Color !important; opacity: 1 !important; }
+:-ms-input-placeholder { color: $Placeholder-Color !important; opacity: 1 !important; }
+input[type=button], input[type=submit]  { 
+    //-webkit-appearance: none; -moz-appearance: none;
+     -webkit-border-radius: 0; border-radius: 0; }
+input[type=tel], input[type=email], input[type=number], input[type=text], input[type=password], input[type=search] { border-radius: 2px; border-color: $Primary-Color; }
+input, textarea, .btn {
+    &.focus, &:focus, &.active.focus, &.active:focus, &.form-control:focus { border-color: $Primary-Color; outline-width: 0 !important; outline: none!important; box-shadow: none !important; -moz-box-shadow: none !important; -webkit-box-shadow: none !important; }
+}
+.input-group{
+    .form-control { border-radius: 0px 0px 0px 0px !important;  }
+    .input-group-text { border-radius: 2px 0px 0px 2px !important; background-color: #fff; border-color: $Primary-Color; font-size: 11px; 
+        .material-icons { font-size: 15px; }
+    }
+}
+
+/* ---------------------------------- Checkbox ---------------------------------- */
+input[type='checkbox'] { width: 13px; height: 13px; margin: 7px 0 0 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeSpeed; display: block; float: left; position: relative; cursor: pointer;
+    &:after { border: solid 1px $Primary-Color; margin: -1px 0 0 -2px; height: 15px; width: 15px; font-size: 13px; line-height: 13px; background: #fff; content: ''; text-align: center; position: absolute; cursor: pointer; }
+    &:checked:after { background: $Primary-Color; content: '\2713'; color: #fff; }
+    &:disabled:after{ background: lightgray !important; border-color: lightgray !important; }
+}
+.checkbox { 
+    label { font-size: 16px; padding: 0px; margin: 0px; cursor: pointer;
+        input[type=checkbox] { margin-right: 8px; cursor: pointer; }
+    }
+}
+
+/* ---------------------------------- Radio ---------------------------------- */
+input[type='radio'] {
+    &:after { border: 1px solid $Secondary-Color; width: 17px; height: 17px; border-radius: 17px; top: -5px; left: -4px; background-color: #fff; position: relative; content: ''; display: inline-block; visibility: visible; }
+    &:checked:after { background-color: $Primary-Color; width: 17px; height: 17px; border-radius: 17px; top: -5px; left: -4px; border: 0px solid white; position: relative; content: ''; display: inline-block; visibility: visible; }
+}
+.radio { 
+    label { font-size: 16px; padding: 0px; margin: 0px; cursor: pointer; 
+        input[type=radio] { margin-right: 8px; cursor: pointer; }
+    }
+}
+@media (max-width:992px) { } 
+@media (max-width:768px) { }
+@media (max-width:576px) { 
+    input[type='radio'] {
+        &:after { top: -2px; left: -1px; }
+        &:checked:after { top: -2px; left: -1px; }
+    }
+}
+@media (max-width:320px) {}
+
+/* ---------------------------------- Select ---------------------------------- */
+select {
+    &.focus, &:focus, &.active.focus, &.active:focus, &:active.focus, &:active:focus, &.form-control:focus { border-color: $Primary-Color; outline-width: 0 !important; outline: none!important; box-shadow: none !important; -moz-box-shadow: none !important; -webkit-box-shadow: none !important; }
+}
+.select2-selection { min-height: 40px !important; }
+.select2-selection--multiple {
+    .select2-search__field { width: auto !important; height: 22px !important; margin-top: 8px !important; }
+}
+.select2-selection__arrow { height: 40px !important; }
+.select2-selection--single { border-radius: 2px !important;
+    .select2-selection__rendered { line-height: 38px !important; }
+}
+.select2-selection--single, .select2-selection--multiple { border-color: #ced4da !important; }
+.select2-container--default .select2-results__option--highlighted[aria-selected] { background-image: linear-gradient($Extra-Color, $Extra-Color); color: #fff; }
+
+/* ---------------------------------- Datepicker ---------------------------------- */
+.daterangepicker { left: 0; top: 0; margin: 0;
+    .in-range { background-color: $Extra-Color !important;  color: #000 !important; }
+    .today { background-color: $Primary-Color !important;  color: #fff !important; }
+    .start-date, .end-date { background-color: $Primary-Color !important;  color: #fff !important; }
+    .btn { font-size: 12px !important; 
+        &-primary { background-color: $Primary-Color; color: #fff; border-color: $Primary-Color; 
+            &:hover, &:active, &:focus { opacity: 0.7; background-color: #fff; color: $Primary-Color; border-color: $Primary-Color; }
+        }
+    }
+}
+.datepicker, .datepicker-notbeforetoday, .daterangepicker {
+    &:hover { cursor: pointer; }
+}
+.ui {
+    &-widget{
+        &-header{ background-color: transparent !important; border: none !important; }
+    }
+    &-datepicker { z-index: 999; font-size: 16px; 
+        &-calendar { font-size: 12px !important; }
+        &-month { font-size: 12px !important; }
+        &-year { font-size: 12px !important; }
+        &-title { background-color: transparent !important; }
+        &-next, &-prev { border: none;
+            &-hover { cursor: pointer; border: none !important; top: 2px !important; }
+        }
+        &-prev-hover { left: 2px !important; }
+        &-next-hover { right: 2px !important; }
+    }
+	&-state { 
+        &-default {  padding: 5px !important; border-radius: 5px !important; background-color: transparent !important; border: none !important; text-align: center !important; }
+		&-highlight { background-color: $Primary-Color !important; border-color: $Primary-Color !important; color: #fff !important}
+		&-active { background-color: $Primary-Color !important; border-color: $Primary-Color !important; color: #fff !important}
+	}
+}
+
+/* ---------------------------------- Buttons ---------------------------------- */
+%hover_button { cursor: pointer; color: $Primary-Color !important; border-color: $Primary-Color !important; background-color: #fff !important; }
+.btn { padding: 5px 50px; font-size: 14px; border-radius: 2px; border-width: 2px; position: relative; transition: all 0.3s ease 0s;
+    &-custom { margin-right: 15px; padding: 5px 40px; }
+	&-small { padding: 2px 30px !important; }
+    &-medium { padding: 4px 20px !important; }
+	&-selected { @extend %hover_button; }
+    &-primary{ background-color: $Primary-Color; border-color: $Primary-Color; color: #fff; 
+		&:hover, &:active, &:focus { @extend %hover_button; border-color: $Primary-Color !important; color: $Primary-Color !important; }
+	}
+    &-secondary{ background-color: $Secondary-Color; border-color: $Secondary-Color; color: #fff; 
+		&:hover, &:active, &:focus { @extend %hover_button; border-color: $Secondary-Color !important; color: $Secondary-Color !important; }
+	}
+	&-link { color: $Secondary-Color; padding: 0px !important; margin: 0px !important;
+		&:hover, &:active, &:focus { text-decoration: none; color: $Primary-Color; }
+    }
+    &:hover { opacity: 0.7; transition:all 0.3s ease; }
+    &.focus, &:focus, &.active.focus &.active:focus, &:active.focus, &:active:focus { outline: none!important; box-shadow: none; }
+}
+@media (max-width:768px) { 
+	.btn { font-size: 14px; }
+}
+
+/* ---------------------------------- Alert ---------------------------------- */
+.alert { border-radius: 0; border: 0; margin: 0; margin-bottom: 30px; 
+	.mdi { font-size: 40px; }
+	.headline { font-weight: 600; font-size: 20px; padding-top: 10px; }
+	// &-info { }
+	// &-warning { }
+	&-danger { color: #D14646; }
+}
+@media (max-width:576px) {
+    .alert{
+		 .mdi { font-size: 30px; }
+	}
+}
+
+/* ---------------------------------- Spinner ---------------------------------- */
+.spinner-border { color: $Primary-Color; }
+
+/* ---------------------------------- For Animation on Scroll ---------------------------------- */
+$slideTimer: 1s;
+$fadeTimer: 2s;
+.slideanim { visibility: hidden; visibility: visible\9; /*For old IE browsers IE6-8 */
+    &.slide, &.fadein.slide { visibility: visible; animation: fadeIn $fadeTimer; }
+    &.slide-up.slide { animation: slideYUp $slideTimer; }
+    &.slide-down.slide { animation: slideYDown $slideTimer; }
+    &.slide-left.slide { animation: slideXLeft $slideTimer; }
+    &.slide-right.slide { animation: slideXRight $slideTimer; }
+    &::after { content: ""; display: table; clear: both; }
+}
+@keyframes fadeIn {
+    0% { opacity: 0; transform: translateZ(-50%); }
+    100% { opacity: 1; transform: translateZ(0); } 
+}
+@keyframes slideYUp {
+    0% { opacity: 0; transform: translateY(50%); }
+    100% { opacity: 1; transform: translateY(0); } 
+}
+@keyframes slideYDown {
+    0% { opacity: 0; transform: translateY(-50%); }
+    100% { opacity: 1; transform: translateY(0); } 
+}
+@keyframes slideXLeft {
+    0% { opacity: 0; transform: translateX(50%); }
+    100% { opacity: 1; transform: translateX(0); } 
+}
+@keyframes slideXRight {
+    0% { opacity: 0; transform: translateX(-50%); }
+    100% { opacity: 1; transform: translateX(0); } 
+}
+
+/* ---------------------------------- Slanted ---------------------------------- */
+$slantedSize: 50px; .slanted { &-top { &-left { -webkit-clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); } &-right { -webkit-clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); } } &-bottom { &-left { -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); } &-right { -webkit-clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); } } }
+@media (max-width:992px) { $slantedSize: 40px; .slanted { &-top { &-left { -webkit-clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); } &-right { -webkit-clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); } } &-bottom { &-left { -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); } &-right { -webkit-clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); } } } }
+@media (max-width:768px) { $slantedSize: 30px; .slanted { &-top { &-left { -webkit-clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); } &-right { -webkit-clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); } } &-bottom { &-left { -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); } &-right { -webkit-clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); } } } }
+@media (max-width:576px) { $slantedSize: 20px; .slanted { &-top { &-left { -webkit-clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); } &-right { -webkit-clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); } } &-bottom { &-left { -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); } &-right { -webkit-clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); } } } }
+@media (max-width:320px) { $slantedSize: 10px; .slanted { &-top { &-left { -webkit-clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); clip-path: polygon(0% $slantedSize, 100% 0%, 100% 100%, 0% 100%); } &-right { -webkit-clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); clip-path: polygon(0 0, 100% $slantedSize, 100% 100%, 0 100%); } } &-bottom { &-left { -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - $slantedSize)); } &-right { -webkit-clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); clip-path: polygon(0% 0%, 100% 0, 100% calc(100% - $slantedSize), 0% 100%); } } } }

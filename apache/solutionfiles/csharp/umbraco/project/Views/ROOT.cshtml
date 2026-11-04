@@ -1,0 +1,85 @@
+﻿@using Umbraco.Cms.Web.Common.PublishedModels;
+@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage
+@using VNS.Umbraco;
+@{
+    Layout = null;
+    
+    // Check if test
+    var IsTest = Model.Root().Url(null, UrlMode.Absolute).Replace("http://", "").Replace("https://", "").StartsWith("test");
+    
+    // Check if ajax callback - This stops everything after callback result from loading!
+    if(Util.Req("ajax") == "true"){ IgnoreBody(); return; }
+    
+	var cookiebot = new Cookiebot();
+	
+	var cacheDate = "202210131350";
+}
+<!DOCTYPE html>
+<html lang="da">
+	<head>
+		<meta charset="utf-8">
+		@if(IsTest) { <meta name="robots" content="noindex, nofollow"> }
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		@await Html.PartialAsync("MetaTags")
+		@RenderSection("MetaTags", required: false)
+
+		<!-- Main CSS -->
+		<link rel="dns-prefetch" href="//cdn.vns.dk">
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+        <link rel="manifest" href="/site.webmanifest">
+        <link rel="preload" href="//cdn.vns.dk/css/jquery-ui.1.14.1.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/jquery-ui.1.14.1.min.css" media="all"></noscript>
+        
+        <link rel="preload" href="//cdn.vns.dk/css/daterangepicker.3.1.0.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/daterangepicker.3.1.0.min.css" media="all"></noscript>
+        
+        <link rel="preload" href="//cdn.vns.dk/css/bootstrap.5.3.5.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/bootstrap.5.3.5.min.css" media="all"></noscript>
+        
+        <link rel="preload" href="//cdn.vns.dk/css/select2.4.1.0-rc.0.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/select2.4.1.0-rc.0.min.css" media="all"></noscript>
+        
+        <link rel="preload" href="//cdn.vns.dk/css/yearpicker.1.1.0.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/yearpicker.1.1.0.min.css" media="all"></noscript>
+
+		<link rel="stylesheet" href="/css/main.css?d=@cacheDate" media="all">
+		@RenderSection("Styles", required: false)
+
+		<!-- Main JS -->
+		<script src="//cdn.vns.dk/js/jquery.3.7.1.min.js"></script>
+		<script src="//cdn.vns.dk/js/jquery-ui.1.14.1.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/moment.2.29.1.min.js" defer></script>
+        <script src="//cdn.vns.dk/js/daterangepicker.3.1.0.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/touch-punch.0.2.3.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/validate.1.19.5.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/matchHeight.0.7.2.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/flexmenu.1.6.2.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/popper.2.11.8.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/bootstrap.5.3.5.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/select2.4.1.0-rc.0.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/yearpicker.1.1.0.min.js" defer></script>
+		<script src="//cdn.vns.dk/js/float-panel.2016.10.28.js" defer></script>
+		<script src="/scripts/main.js?d=@cacheDate" defer></script>
+		@RenderSection("Scripts", required: false)
+		@Html.Raw(Model.Value("scripts", fallback: Fallback.ToAncestors))
+		
+    	@if(cookiebot.Necessary){ @Html.Raw(Model.Value("scriptsNecessary", fallback: Fallback.ToAncestors)) }
+		@if(cookiebot.Preferences){ @Html.Raw(Model.Value("scriptsPreferences", fallback: Fallback.ToAncestors)) }
+    	@if(cookiebot.Statistics){ @Html.Raw(Model.Value("scriptsStatistics", fallback: Fallback.ToAncestors)) }
+    	@if(cookiebot.Marketing){ @Html.Raw(Model.Value("scriptsMarketing", fallback: Fallback.ToAncestors)) }
+	</head>
+	<body>
+	    @if(IsTest){ <div style="width: 100%; z-index: 99; background-color: red; line-height: 30px; color: yellow; text-align: center; font-size: 20px; font-weight: bold;">TEST TEST TEST</div> }
+		<header>
+			<nav></nav>
+		</header>
+		<main>
+			@RenderBody()
+		</main>
+		<footer></footer>
+		@if(IsTest){ <div style="width: 100%; z-index: 99; background-color: red; line-height: 30px; color: yellow; text-align: center; font-size: 20px; font-weight: bold;">TEST TEST TEST</div> }
+	</body>
+</html>

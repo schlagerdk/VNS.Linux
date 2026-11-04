@@ -1,0 +1,19 @@
+﻿@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage
+@{
+	var title = $"{(Model.HasValue("metaTitle") ? Model.Value("metaTitle") : Model.Name)}";
+}
+<title>@title</title>
+<meta property="og:site_name" content="@Model.Root().Name">
+<meta property="og:type" content="website">
+<meta property="og:url" content="@Model.Root().Url(null, UrlMode.Absolute)">
+<meta property="og:title" content="@title">
+@if(Model.HasValue("metaDescription")){
+    <meta name="description" content="@Model.Value("metaDescription")">
+    <meta property="og:description" content="@Model.Value("metaDescription")"> 
+}
+@if(Model.HasValue("image") || Model.HasValue("listImage")){
+	if(Model.HasValue("image")){ <meta property="og:image" content="@($"{Model.Root().Url(null, UrlMode.Absolute)}{Model.GetCropUrl("image", "Image")}")"> }
+	if(Model.HasValue("listImage")){ <meta property="og:image" content="@($"{Model.Root().Url(null, UrlMode.Absolute)}{Model.GetCropUrl("listImage", "Image")}")"> }
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+}
