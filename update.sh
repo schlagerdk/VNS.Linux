@@ -13,7 +13,7 @@ main() {
 
     if [ -z "$src" ]; then
         tmp="$(mktemp -d)"
-        trap '[ -n "$tmp" ] && rm -rf "$tmp"' EXIT
+        trap "rm -rf '$tmp'" EXIT
         git clone --depth 1 "$REPO_URL" "$tmp/VNS.Linux"
         src="$tmp/VNS.Linux"
     fi
