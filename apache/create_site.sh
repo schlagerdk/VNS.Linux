@@ -47,7 +47,7 @@ create_html() {
 create_python() {
 	_docRoot="${_siteRoot}/wwwroot"
 	allocate_ports
-	sudo mkdir -p "${_siteRoot}/app" "${_docRoot}" /var/lib/vns-empty-root
+	sudo mkdir -p "${_siteRoot}/app" "${_docRoot}" /var/lib/vns-roots/${_site}
 	issue_certificate
 
 	echo "Create python app and virtual environment"
@@ -79,7 +79,7 @@ create_csharp() {
 	allocate_ports
 	sudo mkdir -p "${_siteRoot}" "${_docRoot}"
 	issue_certificate
-	sudo mkdir -p /var/lib/vns-empty-root
+	sudo mkdir -p /var/lib/vns-roots/${_site}
 
 	install_scripts "${_solutionFolder}/common/scripts"
 	install_scripts "${_solutionFolder}/common/service-scripts"
