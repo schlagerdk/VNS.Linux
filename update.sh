@@ -26,8 +26,8 @@ main() {
 
     # Save the sa password from the installed copy so it can be restored after synchronization
     local sa_quoted=""
-    if [ -f "$TARGET/sql/list_dbs.sh" ]; then
-        sa_quoted="$(sed -n 's/.* -U sa -P \(.*\) -Q "sp_databases"$/\1/p' "$TARGET/sql/list_dbs.sh")"
+    if [ -f "$TARGET/sql/drop_db.sh" ]; then
+        sa_quoted="$(sed -n 's/.* -U sa -P \(.*\) -i scripts\/drop_db.sql$/\1/p' "$TARGET/sql/drop_db.sh")"
         [ "$sa_quoted" = "'@SA_PASSWORD@'" ] && sa_quoted=""
     fi
 

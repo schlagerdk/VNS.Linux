@@ -14,6 +14,9 @@ sudo apt-get install -y curl tar git ca-certificates uuid-runtime python3 python
 echo Install apache2
 sudo apt-get install -y apache2
 
+echo Create empty root directory used to isolate the site services
+sudo mkdir -p /var/lib/vns-empty-root
+
 echo Enable apache modules
 sudo a2enmod ssl rewrite headers proxy proxy_http proxy_wstunnel
 

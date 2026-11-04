@@ -47,7 +47,7 @@ create_html() {
 create_python() {
 	_docRoot="${_siteRoot}/wwwroot"
 	allocate_ports
-	sudo mkdir -p "${_siteRoot}/app" "${_docRoot}"
+	sudo mkdir -p "${_siteRoot}/app" "${_docRoot}" /var/lib/vns-empty-root
 	issue_certificate
 
 	echo "Create python app and virtual environment"
@@ -79,6 +79,7 @@ create_csharp() {
 	allocate_ports
 	sudo mkdir -p "${_siteRoot}" "${_docRoot}"
 	issue_certificate
+	sudo mkdir -p /var/lib/vns-empty-root
 
 	install_scripts "${_solutionFolder}/common/scripts"
 	install_scripts "${_solutionFolder}/common/service-scripts"
@@ -95,6 +96,9 @@ create_csharp() {
 		sudo rm -rf bin obj
 	fi
 	cd "${_apacheDir}"
+
+	# The service runs as www-data and needs to write inside the publish folder only
+	sudo chown -R www-data:www-data "${_siteRoot}/${_publishFolder}"
 
 	local _conf="${_kindFolder}/apache.conf.tpl" _service="${_kindFolder}/service.tpl"
 	[[ -f ${_conf} ]] || _conf="${_solutionFolder}/csharp/apache.conf.tpl"

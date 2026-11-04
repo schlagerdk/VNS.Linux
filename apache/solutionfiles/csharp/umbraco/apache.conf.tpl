@@ -24,22 +24,18 @@
 
   ProxyPreserveHost On
   ProxyRequests Off
+  RequestHeader set X-Forwarded-Proto "https"
 
-  ProxyPass /robots.txt https://127.0.0.1:@PORT_HTTPS@/seo_robots_txt
-  ProxyPassReverse /robots.txt https://127.0.0.1:@PORT_HTTPS@/seo_robots_txt
+  ProxyPass /robots.txt http://127.0.0.1:@PORT_HTTP@/seo_robots_txt
+  ProxyPassReverse /robots.txt http://127.0.0.1:@PORT_HTTP@/seo_robots_txt
 
-  ProxyPass /sitemap.xml https://127.0.0.1:@PORT_HTTPS@/seo_sitemap_xml
-  ProxyPassReverse /sitemap.xml https://127.0.0.1:@PORT_HTTPS@/seo_sitemap_xml
+  ProxyPass /sitemap.xml http://127.0.0.1:@PORT_HTTP@/seo_sitemap_xml
+  ProxyPassReverse /sitemap.xml http://127.0.0.1:@PORT_HTTP@/seo_sitemap_xml
 
-  ProxyPass / https://127.0.0.1:@PORT_HTTPS@/ nocanon
-  ProxyPassReverse / https://127.0.0.1:@PORT_HTTPS@/
+  ProxyPass / http://127.0.0.1:@PORT_HTTP@/ nocanon
+  ProxyPassReverse / http://127.0.0.1:@PORT_HTTP@/
 
   SSLEngine On
-  SSLProxyEngine On
-  SSLProxyVerify none
-  SSLProxyCheckPeerCN off
-  SSLProxyCheckPeerName off
-  SSLProxyCheckPeerExpire off
 
   SSLCertificateFile @CERT_FILE@
   SSLCertificateKeyFile @KEY_FILE@

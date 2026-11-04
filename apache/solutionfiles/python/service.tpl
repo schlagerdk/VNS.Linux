@@ -16,11 +16,21 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=@SITE@
 
-# Protect
+# Protect: chroot - the site only sees system libraries and its own folder, not /root, /home, /vns or other sites
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=true
 NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RootDirectory=/var/lib/vns-empty-root
+BindReadOnlyPaths=/usr -/bin -/sbin -/lib -/lib64 /etc/ssl -/etc/ca-certificates /etc/ld.so.cache /etc/resolv.conf /etc/hosts /etc/nsswitch.conf /etc/passwd /etc/group /etc/localtime -/etc/os-release -/etc/host.conf
+BindPaths=@SITE_ROOT@
+MountAPIVFS=yes
 
 [Install]
 WantedBy=multi-user.target

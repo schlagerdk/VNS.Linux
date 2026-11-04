@@ -15,5 +15,6 @@ rm -f appsettings-schema.Umbraco.Cms.json
 rm -f umbraco-package-schema.json
 rm -rf App_Plugins
 rm -rf bin
+chown -R www-data:www-data "${_publishFolder}"
 systemctl start "${_site}"
 systemctl status "${_site}" --no-pager

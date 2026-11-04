@@ -24,16 +24,12 @@
 
   ProxyPreserveHost On
   ProxyRequests Off
+  RequestHeader set X-Forwarded-Proto "https"
 
-  ProxyPass / https://127.0.0.1:@PORT_HTTPS@/ nocanon
-  ProxyPassReverse / https://127.0.0.1:@PORT_HTTPS@/
+  ProxyPass / http://127.0.0.1:@PORT_HTTP@/ nocanon
+  ProxyPassReverse / http://127.0.0.1:@PORT_HTTP@/
 
   SSLEngine On
-  SSLProxyEngine On
-  SSLProxyVerify none
-  SSLProxyCheckPeerCN off
-  SSLProxyCheckPeerName off
-  SSLProxyCheckPeerExpire off
 
   SSLCertificateFile @CERT_FILE@
   SSLCertificateKeyFile @KEY_FILE@
