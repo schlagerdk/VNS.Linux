@@ -12,6 +12,12 @@ main() {
     local tmp=""
 
     if [ -z "$src" ]; then
+        if ! command -v gh >/dev/null 2>&1 || ! gh auth status --hostname github.com >/dev/null 2>&1; then
+            echo "GitHub-login mangler. Kør først scriptet i START.txt." >&2
+            exit 1
+        fi
+        gh auth setup-git
+
         tmp="$(mktemp -d)"
         trap "rm -rf '$tmp'" EXIT
         git clone --depth 1 "$REPO_URL" "$tmp/VNS.Linux"
