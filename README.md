@@ -56,10 +56,10 @@ Henter seneste version fra GitHub og synkroniserer den til `/vns`. Lokale filer 
 
 ### SQL Server (`sql/`)
 
-- `install_server.sh` installerer den nyeste SQL Server, der findes til serverens Ubuntu-version (i dag 2025 på Ubuntu 22.04/24.04), og `install_tools.sh` installerer `sqlcmd`.
+- `install_server.sh` installerer den nyeste SQL Server, der findes til serverens Ubuntu-version (i dag 2025 på Ubuntu 22.04/24.04), samt `sqlcmd`-værktøjerne. Allerede installerede dele springes over, så scriptet også kan bruges til kun at tilføje det, der mangler.
 - Install-scripts spørger efter `sa`-adgangskoden og indsætter den i de øvrige scripts i `sql/` (pladsholderen `@SA_PASSWORD@`). Brug samme adgangskode i `mssql-conf setup`. Adgangskoden ligger kun lokalt på serveren, og `update.sh` bevarer den ved opdateringer.
 - `update_server.sh` opdaterer SQL Server (og `sqlcmd`) til nyeste version i den installerede repository og genstarter servicen. Tag backup først. Skift af hovedversion (fx 2022 → 2025) kræver en ny installation med install_server.sh.
-- `uninstall_server.sh` fjerner SQL Server og dens apt-repository. Databaser i `/var/opt/mssql` bevares, medmindre du eksplicit skriver `DELETE` når scriptet spørger.
+- `uninstall_server.sh` fjerner SQL Server, `sqlcmd`-værktøjerne og Microsofts apt-repositories. Databaser i `/var/opt/mssql` bevares, medmindre du eksplicit skriver `DELETE` når scriptet spørger.
 - `create_db.sh`, `drop_db.sh`, `copy_db.sh`, `restore_db.sh`, `list_dbs.sh` og `list_backups.sh` til daglig administration.
 - `cron/` indeholder planlagte jobs (backup, log-shrink m.fl.), som aktiveres med `sql/cron/add_to_crontab.sh`.
 
