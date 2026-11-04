@@ -45,7 +45,6 @@ Fetches the latest version from GitHub and synchronizes it to `/vns`. Local file
 | `install_nodejs.sh` | Installs Node.js 22 via nvm |
 | `apache/` | Apache setup and site creation/deletion |
 | `sql/` | SQL Server installation, database, and backup scripts |
-| `misc/` | Notes on networking, SSH, Proxmox, MailCow, and more |
 
 ### Apache (`apache/`)
 
