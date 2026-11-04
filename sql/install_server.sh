@@ -4,6 +4,7 @@ set -euo pipefail
 clear
 
 _sqlDir="$(cd "$(dirname "$0")" && pwd)"
+source "${_sqlDir}/lib/microsoft_repo.sh"
 _baseUrl=https://packages.microsoft.com
 # Nyeste først. Den første version med en repository til denne Ubuntu-version bruges.
 _sqlVersions=(2025 2022 2019)
@@ -61,7 +62,7 @@ if [[ ${_sqlVersion} == 2025 ]] && ! apt-cache show libldap-2.5-0 >/dev/null 2>&
 fi
 
 echo "Add Microsoft repository"
-curl -fsSL "${_baseUrl}/keys/microsoft.asc" | ${_sudo} gpg --dearmor --yes -o /usr/share/keyrings/microsoft-prod.gpg
+install_microsoft_keys "${_sudo}"
 curl -fsSL "${_baseUrl}/config/ubuntu/${_repoUbuntu}/mssql-server-${_sqlVersion}.list" | ${_sudo} tee "/etc/apt/sources.list.d/mssql-server-${_sqlVersion}.list" >/dev/null
 
 echo "Install mssql-server"
