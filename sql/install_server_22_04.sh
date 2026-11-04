@@ -1,6 +1,11 @@
 #! /bin/bash
 clear
 
+_sqlDir="$(cd "$(dirname "$0")" && pwd)"
+source "${_sqlDir}/lib/sa_password.sh"
+sa_prompt_and_apply "${_sqlDir}"
+echo "Use the same password in the setup below."
+
 # Install sql server
 curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
 curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc

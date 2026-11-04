@@ -12,12 +12,6 @@ main() {
     local tmp=""
 
     if [ -z "$src" ]; then
-        if ! command -v gh >/dev/null 2>&1 || ! gh auth status --hostname github.com >/dev/null 2>&1; then
-            echo "GitHub-login mangler. Kør først scriptet i START.txt." >&2
-            exit 1
-        fi
-        gh auth setup-git
-
         tmp="$(mktemp -d)"
         trap "rm -rf '$tmp'" EXIT
         git clone --depth 1 "$REPO_URL" "$tmp/VNS.Linux"
@@ -30,6 +24,13 @@ main() {
     sudo mkdir -p "$TARGET"
     sudo chown "$(id -un):$(id -gn)" "$TARGET"
 
+    # Gem sa-adgangskoden fra den installerede kopi, så den kan sættes på igen efter synkronisering
+    local sa_quoted=""
+    if [ -f "$TARGET/sql/list_dbs.sh" ]; then
+        sa_quoted="$(sed -n 's/.* -U sa -P \(.*\) -Q "sp_databases"$/\1/p' "$TARGET/sql/list_dbs.sh")"
+        [ "$sa_quoted" = "'@SA_PASSWORD@'" ] && sa_quoted=""
+    fi
+
     # Ingen --delete, så lokale filer (fx sql-data) bevares. _portnumber.txt overskrives aldrig.
     rsync -a \
         --exclude '.git' \
@@ -37,6 +38,11 @@ main() {
         --exclude '.gitignore' \
         --exclude '_portnumber.txt' \
         "$src"/ "$TARGET"/
+
+    if [ -n "$sa_quoted" ]; then
+        source "$TARGET/sql/lib/sa_password.sh"
+        sa_apply_quoted "$TARGET/sql" "$sa_quoted"
+    fi
 
     # Startværdi kopieres kun hvis filen ikke findes i forvejen, så eksisterende portnumre aldrig overskrives
     if [ -f "$src/apache/_portnumber.txt" ] && [ ! -e "$TARGET/apache/_portnumber.txt" ]; then

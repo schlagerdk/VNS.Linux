@@ -11,6 +11,6 @@ if [[ -z ${_dbname} ]]; then
 	fi
 fi
 sed -i "s|NEW_NAME|${_dbname}|g" scripts/create_db.sql
-/opt/mssql-tools18/bin/sqlcmd -C -S LOCALHOST -U sa -P Serverskrue22 -i scripts/create_db.sql
+/opt/mssql-tools18/bin/sqlcmd -C -S LOCALHOST -U sa -P '@SA_PASSWORD@' -i scripts/create_db.sql
 sed -i "s|${_dbname}|NEW_NAME|g" scripts/create_db.sql
 echo ${_dbname} is now created!

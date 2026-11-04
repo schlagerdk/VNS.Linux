@@ -1,6 +1,11 @@
 #! /bin/bash
 clear
 
+_sqlDir="$(cd "$(dirname "$0")" && pwd)"
+source "${_sqlDir}/lib/sa_password.sh"
+sa_prompt_and_apply "${_sqlDir}"
+echo "Use the same password in the setup below."
+
 # download and install libldap-2.5-0
 curl -O http://debian.mirror.ac.za/debian/pool/main/o/openldap/libldap-2.5-0_2.5.13+dfsg-5_amd64.deb
 dpkg -i libldap-2.5-0_2.5.13+dfsg-5_amd64.deb

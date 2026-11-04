@@ -22,7 +22,7 @@ fi
 
 sed -i "s|OLD_NAME|${_olddbname}|g" scripts/copy_db.sql
 sed -i "s|NEW_NAME|${_newdbname}|g" scripts/copy_db.sql
-/opt/mssql-tools18/bin/sqlcmd -C -S LOCALHOST -U sa -P Serverskrue22 -i scripts/copy_db.sql
+/opt/mssql-tools18/bin/sqlcmd -C -S LOCALHOST -U sa -P '@SA_PASSWORD@' -i scripts/copy_db.sql
 sed -i "s|${_olddbname}|OLD_NAME|g" scripts/copy_db.sql
 sed -i "s|${_newdbname}|NEW_NAME|g" scripts/copy_db.sql
 echo ${_olddbname} is now copyed to ${_newdbname}!
