@@ -16,20 +16,29 @@ if [[ ${ID} != ubuntu ]]; then
 	exit 1
 fi
 
-_repoUbuntu=${SQL_UBUNTU_VERSION:-${VERSION_ID}}
+_fallbackUbuntu=24.04
 
-_sqlVersion=""
-for _v in "${_sqlVersions[@]}"; do
-	if curl -fsSI "${_baseUrl}/config/ubuntu/${_repoUbuntu}/mssql-server-${_v}.list" >/dev/null 2>&1; then
-		_sqlVersion=${_v}
-		break
-	fi
-done
+find_sql_version() {
+	local _ubuntu=$1 _v
+	for _v in "${_sqlVersions[@]}"; do
+		if curl -fsSI "${_baseUrl}/config/ubuntu/${_ubuntu}/mssql-server-${_v}.list" >/dev/null 2>&1; then
+			echo "${_v}"
+			return 0
+		fi
+	done
+	return 1
+}
+
+_repoUbuntu=${SQL_UBUNTU_VERSION:-${VERSION_ID}}
+_sqlVersion=$(find_sql_version "${_repoUbuntu}" || true)
+
 if [[ -z ${_sqlVersion} ]]; then
 	echo "Microsoft has no SQL Server repository for Ubuntu ${_repoUbuntu}." >&2
-	echo "Use a supported Ubuntu LTS (22.04 or 24.04), or - unsupported by Microsoft - try the" >&2
-	echo "repository of an older release, e.g.: SQL_UBUNTU_VERSION=24.04 ./install_server.sh" >&2
-	exit 1
+	echo "Supported: Ubuntu 22.04 and 24.04 LTS." >&2
+	read -r -p "Try the Ubuntu ${_fallbackUbuntu} repository instead (NOT supported by Microsoft, may fail)? [y/N]: " _answer
+	[[ ${_answer,,} == y || ${_answer,,} == yes ]] || exit 1
+	_repoUbuntu=${_fallbackUbuntu}
+	_sqlVersion=$(find_sql_version "${_repoUbuntu}") || { echo "No repository found for Ubuntu ${_repoUbuntu}" >&2; exit 1; }
 fi
 echo "Installing SQL Server ${_sqlVersion} using the Ubuntu ${_repoUbuntu} repository (server runs Ubuntu ${VERSION_ID})"
 
