@@ -1,8 +1,8 @@
 #!/bin/bash
-# Fælles hjælp til Microsofts apt-repositories.
+# Shared helpers for Microsoft's apt repositories.
 
-# Microsoft signerer nyere repositories (fx Ubuntu 26.04) med en anden nøgle end de ældre,
-# så begge nøgler lægges i samme keyring.
+# Microsoft signs newer repositories (e.g. Ubuntu 26.04) with a different key than older ones,
+# so both keys are added to the same keyring.
 install_microsoft_keys() {
 	local _sudo=$1 _tmp _key
 	_tmp=$(mktemp -d)

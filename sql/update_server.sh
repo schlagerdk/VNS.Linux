@@ -1,6 +1,6 @@
 #!/bin/bash
-# Opdaterer SQL Server (og sqlcmd-værktøjer) til nyeste version i den installerede repository.
-# Skifte til en ny hovedversion (fx 2022 -> 2025) kræver en ny installation med install_server.sh.
+# Updates SQL Server (and sqlcmd tools) to the latest version in the configured repository.
+# Switching to a new major version (e.g. 2022 -> 2025) requires a new installation with install_server.sh.
 set -euo pipefail
 clear
 

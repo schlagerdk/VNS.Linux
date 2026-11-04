@@ -3,16 +3,16 @@
 @using VNS.Umbraco;
 @{
     Layout = null;
-    
+
     // Check if test
     var IsTest = Model.Root().Url(null, UrlMode.Absolute).Replace("http://", "").Replace("https://", "").StartsWith("test");
-    
+
     // Check if ajax callback - This stops everything after callback result from loading!
     if(Util.Req("ajax") == "true"){ IgnoreBody(); return; }
-    
+
 	var cookiebot = new Cookiebot();
-	
-	var cacheDate = "202210131350";
+
+	var cacheDate = "202611041800";
 }
 <!DOCTYPE html>
 <html lang="da">
@@ -30,42 +30,33 @@
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
         <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
         <link rel="manifest" href="/site.webmanifest">
-        <link rel="preload" href="//cdn.vns.dk/css/jquery-ui.1.14.1.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/jquery-ui.1.14.1.min.css" media="all"></noscript>
-        
-        <link rel="preload" href="//cdn.vns.dk/css/daterangepicker.3.1.0.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/daterangepicker.3.1.0.min.css" media="all"></noscript>
-        
-        <link rel="preload" href="//cdn.vns.dk/css/bootstrap.5.3.5.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/bootstrap.5.3.5.min.css" media="all"></noscript>
-        
-        <link rel="preload" href="//cdn.vns.dk/css/select2.4.1.0-rc.0.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/select2.4.1.0-rc.0.min.css" media="all"></noscript>
-        
-        <link rel="preload" href="//cdn.vns.dk/css/yearpicker.1.1.0.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-        <noscript><link rel="stylesheet" href="//cdn.vns.dk/css/yearpicker.1.1.0.min.css" media="all"></noscript>
+
+		<link rel="stylesheet" href="https://cdn.vns.dk/libs/jquery-ui/1.14.2/jquery-ui.min.css" integrity="sha384-mDU84rlXzxzTynHzwjkoeTEi/RJFtbijK4qH2zESsdeyQcLDO/ITw1vt7UoIAqVd" crossorigin="anonymous">
+		<link rel="stylesheet" href="https://cdn.vns.dk/libs/daterangepicker/3.1.0/daterangepicker.min.css" integrity="sha384-Cnm1+FdzVLKPBlfxjoBIPAJbv3Re0FXYU7KxUGb3mI88O5bsL21ArZIJvf+G5azJ" crossorigin="anonymous">
+		<link rel="stylesheet" href="https://cdn.vns.dk/libs/bootstrap/5.3.8/bootstrap.min.css" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+        <link rel="stylesheet" href="https://cdn.vns.dk/libs/select2/4.1.0-rc.0/select2.min.css" integrity="sha384-OXVF05DQEe311p6ohU11NwlnX08FzMCsyoXzGOaL+83dKAb3qS17yZJxESl8YrJQ" crossorigin="anonymous">
+        <link rel="stylesheet" href="https://cdn.vns.dk/libs/yearpicker/1.1.0/yearpicker.min.css" integrity="sha384-0l6T6KfoOZHIWdwBIWN8Cg9Xt/HUb03aWrp2uNS3lKwOcGntvylrQAYclDK+0XpW" crossorigin="anonymous">
 
 		<link rel="stylesheet" href="/css/main.css?d=@cacheDate" media="all">
 		@RenderSection("Styles", required: false)
 
 		<!-- Main JS -->
-		<script src="//cdn.vns.dk/js/jquery.3.7.1.min.js"></script>
-		<script src="//cdn.vns.dk/js/jquery-ui.1.14.1.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/moment.2.29.1.min.js" defer></script>
-        <script src="//cdn.vns.dk/js/daterangepicker.3.1.0.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/touch-punch.0.2.3.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/validate.1.19.5.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/matchHeight.0.7.2.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/flexmenu.1.6.2.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/popper.2.11.8.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/bootstrap.5.3.5.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/select2.4.1.0-rc.0.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/yearpicker.1.1.0.min.js" defer></script>
-		<script src="//cdn.vns.dk/js/float-panel.2016.10.28.js" defer></script>
+		<script src="https://cdn.vns.dk/libs/jquery/4.0.0/jquery.min.js" integrity="sha384-XEDeKP8qZpvvBoU1K2GZkq6yszT1LzG5e9XqKK36RRNn/bTAeTteAb2I6+FAatK2" crossorigin="anonymous"></script>
+		<script src="https://cdn.vns.dk/libs/jquery-ui/1.14.2/jquery-ui.min.js" integrity="sha384-b77zS7ISAalTnMWo/DZOdHM1fqbCpIPLThUfNEbJgqyjE/+bOFUtnMQD7LzAIEfL" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/moment/2.29.1/moment.min.js" integrity="sha384-Uz1UHyakAAz121kPY0Nx6ZGzYeUTy9zAtcpdwVmFCEwiTGPA2K6zSGgkKJEQfMhK" crossorigin="anonymous" defer></script>
+        <script src="https://cdn.vns.dk/libs/daterangepicker/3.1.0/daterangepicker.min.js" integrity="sha384-F/T3YIhx7zk5ywRS0cgiq/OzneSB9x95mxbd85sjjRaklkiuzoi99AEvKjHVE2Gx" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/jquery-validation/1.22.1/jquery.validate.min.js" integrity="sha384-DIFfDxcYkhbAXYdxOYFZshXsis24zK4HtbU7qI30u9/eP7JtiRIGuOaLsoYL5QTs" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/matchheight/0.7.2/matchHeight.min.js" integrity="sha384-o51veXvB8vDEXo2JjnAG5IWW4bgTEhK6jEc97rkKZkIsLHkyv4qlUaNLyCyC2/6d" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/flexmenu/1.6.2/flexmenu.min.js" integrity="sha384-rg3XiwVldDd0PldtH6mVTue1YPf/uvTZHn85XSmx/Z5hkdQv3moZ5IelqtYynJ3K" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/popper/2.11.9/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/bootstrap/5.3.8/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/select2/4.1.0-rc.0/select2.min.js" integrity="sha384-d3UHjPdzJkZuk5H3qKYMLRyWLAQBJbby2yr2Q58hXXtAGF8RSNO9jpLDlKKPv5v3" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/yearpicker/1.1.0/yearpicker.min.js" integrity="sha384-o5tuyoXsGrIsgH1rtpWHWqviY+ikkVitsjv0YWLOAclvYK2uDhevAwpoAYJy/wbO" crossorigin="anonymous" defer></script>
+		<script src="https://cdn.vns.dk/libs/float-panel/2016.10.28/float-panel.js" integrity="sha384-ooq+PjoutK6xqzbv7rGmaHMHQYs637KWyqeYvjv/TP9Uc38q5DsipBvAiPGql332" crossorigin="anonymous" defer></script>
 		<script src="/scripts/main.js?d=@cacheDate" defer></script>
 		@RenderSection("Scripts", required: false)
 		@Html.Raw(Model.Value("scripts", fallback: Fallback.ToAncestors))
-		
+
     	@if(cookiebot.Necessary){ @Html.Raw(Model.Value("scriptsNecessary", fallback: Fallback.ToAncestors)) }
 		@if(cookiebot.Preferences){ @Html.Raw(Model.Value("scriptsPreferences", fallback: Fallback.ToAncestors)) }
     	@if(cookiebot.Statistics){ @Html.Raw(Model.Value("scriptsStatistics", fallback: Fallback.ToAncestors)) }

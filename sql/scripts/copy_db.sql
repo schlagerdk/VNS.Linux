@@ -9,7 +9,7 @@ use [NEW_NAME]
 drop user [OLD_NAME]
 GO
 
-create login [NEW_NAME] with password = 'NEW_NAME12qw34', check_policy = off, check_expiration = off, default_database = [NEW_NAME]
+create login [NEW_NAME] with password = @NEW_LOGIN_PASSWORD@, check_policy = off, check_expiration = off, default_database = [NEW_NAME]
 GO
 
 use [NEW_NAME]

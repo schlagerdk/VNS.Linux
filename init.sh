@@ -25,7 +25,7 @@ SRC="$(pwd)"
 bash ./update.sh "$SRC"
 rm -f /vns/.gitignore
 
-# Fjern den klonede mappe igen, men kun hvis det er selve VNS.Linux-klonen og ikke /vns
+# Remove the cloned directory, but only if it is the VNS.Linux clone and not /vns
 if [ "$(basename "$SRC")" = "VNS.Linux" ] && [ "$SRC" != "/vns" ]; then
     cd /
     rm -rf "$SRC"

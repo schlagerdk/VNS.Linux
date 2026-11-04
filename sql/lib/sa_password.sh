@@ -1,19 +1,19 @@
 #!/bin/bash
-# Hjælpefunktioner til SQL Server sa-adgangskoden.
-# Scripts i sql/ bruger en pladsholder for adgangskoden, som erstattes ved installation.
+# Helpers for the SQL Server sa password.
+# Scripts in sql/ use a password placeholder that is replaced during installation.
 
-# Erstatter pladsholderen i alle .sh-filer under <sql-mappe>. $2 er adgangskoden i shell-quoted form.
+# Replaces the placeholder in all .sh files under <sql-directory>. $2 is the password in shell-quoted form.
 sa_apply_quoted() {
 	local _dir=$1
 	SA_QUOTED=$2 find "${_dir}" -name '*.sh' -type f -exec \
 		perl -pi -e 's/\x27\@SA_PASSWORD\@\x27/$ENV{SA_QUOTED}/g' {} +
 }
 
-# Spørger efter sa-adgangskoden, sætter SA_PASSWORD og opdaterer scripts i <sql-mappe>.
+# Prompts for the sa password, sets SA_PASSWORD, and updates scripts in <sql-directory>.
 sa_prompt_and_apply() {
 	local _dir=$1 _confirm
 	while true; do
-		read -r -s -p "Enter SQL Server sa password: " SA_PASSWORD; echo
+		read -r -s -p "Enter the sa password you set during SQL Server setup so the SQL scripts can be updated: " SA_PASSWORD; echo
 		read -r -s -p "Repeat password: " _confirm; echo
 		if [[ -z ${SA_PASSWORD} ]]; then
 			echo "Password cannot be empty" >&2
@@ -25,7 +25,7 @@ sa_prompt_and_apply() {
 			break
 		fi
 	done
-	# Single-quote og escape ' så adgangskoden kan indeholde alle tegn
+	# Single-quote and escape ' so the password can contain any character
 	local _escaped="'\\''"
 	sa_apply_quoted "${_dir}" "'${SA_PASSWORD//\'/${_escaped}}'"
 }

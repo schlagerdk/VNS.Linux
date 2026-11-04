@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fjerner SQL Server og sqlcmd-værktøjerne. Databaser i /var/opt/mssql bevares, medmindre du eksplicit vælger at slette dem.
+# Removes SQL Server and the sqlcmd tools. Databases in /var/opt/mssql are preserved unless you explicitly choose to delete them.
 set -euo pipefail
 clear
 
@@ -35,7 +35,7 @@ fi
 echo "Remove Microsoft apt repositories, PATH entry and keys"
 ${_sudo} rm -f /etc/apt/sources.list.d/mssql-server-*.list /etc/apt/sources.list.d/mssql-release.list
 ${_sudo} rm -f /etc/profile.d/mssql-tools.sh
-# Nøglerne fjernes kun, hvis ingen anden repository bruger dem
+# Remove the keys only if no other repository uses them
 if ! grep -qs 'microsoft-prod.gpg' /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
 	${_sudo} rm -f /usr/share/keyrings/microsoft-prod.gpg
 fi

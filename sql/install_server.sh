@@ -1,12 +1,12 @@
 #!/bin/bash
-# Installerer nyeste tilgængelige SQL Server til den Ubuntu-version, serveren kører.
+# Installs the latest SQL Server available for the server's Ubuntu version.
 set -euo pipefail
 clear
 
 _sqlDir="$(cd "$(dirname "$0")" && pwd)"
 source "${_sqlDir}/lib/microsoft_repo.sh"
 _baseUrl=https://packages.microsoft.com
-# Nyeste først. Den første version med en repository til denne Ubuntu-version bruges.
+# Newest first. The first version with a repository for this Ubuntu version is used.
 _sqlVersions=(2025 2022 2019)
 
 if [[ $(id -u) -eq 0 ]]; then _sudo=""; else _sudo="sudo"; fi
@@ -52,11 +52,7 @@ install_server() {
 	fi
 	echo "Installing SQL Server ${_sqlVersion} using the Ubuntu ${_repoUbuntu} repository (server runs Ubuntu ${VERSION_ID})"
 
-	source "${_sqlDir}/lib/sa_password.sh"
-	sa_prompt_and_apply "${_sqlDir}"
-	echo "Use the same password in the setup below."
-
-	# SQL Server 2025 kræver libldap-2.5-0, som ikke findes i Ubuntu 24.04+
+	# SQL Server 2025 requires libldap-2.5-0, which is not available in Ubuntu 24.04+
 	if [[ ${_sqlVersion} == 2025 ]] && ! apt-cache show libldap-2.5-0 >/dev/null 2>&1 && ! dpkg -s libldap-2.5-0 >/dev/null 2>&1; then
 		echo "Install libldap-2.5-0"
 		_ldapDeb=$(mktemp --suffix=.deb)
@@ -72,7 +68,7 @@ install_server() {
 	${_sudo} apt-get update
 	${_sudo} apt-get install -y mssql-server
 
-	# Kører interaktivt og spørger bl.a. om sa-adgangskode
+	# Runs interactively and prompts for the sa password, among other things
 	${_sudo} /opt/mssql/bin/mssql-conf setup
 
 	echo "Create backup folder"
@@ -83,7 +79,7 @@ install_server() {
 }
 
 install_tools() {
-	# Tools-repository'et følger den faktiske Ubuntu-version (findes også til 26.04)
+	# The tools repository matches the actual Ubuntu version (also available for 26.04)
 	echo "Add Microsoft tools repository"
 	curl -fsSL "${_baseUrl}/config/ubuntu/${VERSION_ID}/prod.list" | ${_sudo} tee /etc/apt/sources.list.d/mssql-release.list >/dev/null
 
@@ -103,14 +99,21 @@ install_tools() {
 	echo "sqlcmd installed - open a new shell to get it on PATH"
 }
 
+_serverInstalled=0
 if dpkg -s mssql-server >/dev/null 2>&1; then
 	echo "mssql-server is already installed (use update_server.sh to update it) - skipping server install"
 else
 	install_server
+	_serverInstalled=1
 fi
 
 if dpkg -s mssql-tools18 >/dev/null 2>&1; then
 	echo "mssql-tools18 is already installed (use update_server.sh to update it) - skipping tools install"
 else
 	install_tools
+fi
+
+if ((_serverInstalled)) || grep -rqF "'@SA_PASSWORD@'" "${_sqlDir}" --include='*.sh'; then
+	source "${_sqlDir}/lib/sa_password.sh"
+	sa_prompt_and_apply "${_sqlDir}"
 fi
