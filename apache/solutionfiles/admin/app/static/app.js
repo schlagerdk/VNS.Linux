@@ -187,6 +187,7 @@ const iconPaths = {
 	pencil: "M21.17 6.81a2.12 2.12 0 0 0-3-3L3.84 17.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5zM15 5l4 4",
 	eraser: "M7 21l-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21M22 21H7M5 11l9 9",
 	manage: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
+	external: "M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6",
 	key: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4",
 };
 
@@ -231,11 +232,16 @@ function renderSites() {
 	decorate(box);
 }
 
+// Opens a URL in a new tab; looks like a small button with an "open" icon
+function openLink(text, url, title) {
+	const a = el("a", { className: "btn-link", href: url, target: "_blank", rel: "noopener noreferrer", title: title || url, onclick: (event) => event.stopPropagation() });
+	a.append(el("span", { textContent: text }), svgIcon("external"));
+	return a;
+}
 const bindingLink = (binding) => binding
-	? el("a", { className: "link", textContent: binding, href: "https://" + binding + "/", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() })
+	? openLink(binding, "https://" + binding + "/")
 	: el("span", { className: "muted", textContent: "no binding" });
-
-const backofficeLink = (binding, text) => el("a", { className: "link", textContent: text || binding + "/umbraco", href: "https://" + binding + "/umbraco", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() });
+const backofficeLink = (binding, text) => openLink(text || binding + "/umbraco", "https://" + binding + "/umbraco", "Umbraco backoffice: https://" + binding + "/umbraco");
 
 const versionColors = 8; // majors 18, 19, 20 … get different colours (see .badge.version[data-major] in style.css)
 
@@ -255,13 +261,12 @@ function siteCard(site) {
 	const state = siteState(site);
 	const rows = el("div", { className: "env-rows" });
 	for (const env of site.environments) {
-		const dot = env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "";
 		const binding = el("span", { className: "env-binding" }, bindingLink(env.binding),
-			...(site.kind === "umbraco" && env.binding ? [el("span", { className: "muted", textContent: "·" }), backofficeLink(env.binding, "Backoffice")] : []));
+			...(site.kind === "umbraco" && env.binding ? [backofficeLink(env.binding, "Backoffice")] : []));
 		const tags = el("span", { className: "env-tags" });
 		if (env.mode === "remote") tags.append(el("span", { className: "muted", textContent: "on " + (env.host || "remote") }));
 		if (env.unit && env.environment) tags.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment }));
-		rows.append(el("div", { className: "env-row" }, el("span", { className: "dot " + dot }), binding, tags));
+		rows.append(el("div", { className: "env-row" }, binding, tags));
 	}
 	const actions = el("div", { className: "actions" });
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: "small " + (className || ""), onclick: (event) => { event.stopPropagation(); run(handler); } }));
@@ -358,7 +363,7 @@ function quickActions(env) {
 function envPanel(site, env) {
 	const dot = env.unit ? env.state || "unknown" : "";
 	const heading = el("div", { className: "env-head" },
-		el("span", { className: "dot " + dot }), el("h3", { textContent: env.label }),
+		el("span", { className: "dot " + dot }), ...(env.environment && env.environment.toLowerCase() === env.label.toLowerCase() ? [] : [el("h3", { textContent: env.label })]),
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
 	if (env.environment) heading.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment }));
 
