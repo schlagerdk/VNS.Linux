@@ -193,7 +193,7 @@ const iconPaths = {
 
 // label (exact, or a prefix ending in "*") -> [icon, tone]
 const buttonStyles = {
-	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
+	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
 	"Publish": ["upload", "green"], "Sync to prod": ["sync", "green"], "Start": ["play", "green"],
 	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
 	"Stop": ["stop", "red"], "Clear logs": ["eraser", "gray"], "Logs": ["file", "gray"],
@@ -671,6 +671,34 @@ async function saveFile() {
 	$("#editor-status").textContent = "Saved " + new Date().toLocaleTimeString();
 }
 
+async function createItem(kind, title) {
+	const name = await ask({ title, placeholder: "Name", ok: "Create" });
+	if (!name) return;
+	await api("/api/fs/" + kind, { json: { path: currentPath, name: name.trim() } });
+	await loadFiles(currentPath);
+}
+
+async function uploadFiles(files) {
+	if (!files.length) return;
+	const form = new FormData();
+	form.append("path", currentPath);
+	for (const file of files) form.append("files", file);
+	const result = await api("/api/fs/upload", { method: "POST", body: form });
+	toast("Uploaded " + result.count + " file(s)");
+	await loadFiles(currentPath);
+}
+
+$("#btn-new-file").onclick = () => run(() => createItem("newfile", "New file"));
+$("#btn-new-folder").onclick = () => run(() => createItem("mkdir", "New folder"));
+$("#btn-upload").onclick = () => $("#upload-input").click();
+$("#upload-input").onchange = (event) => {
+	const files = [...event.target.files];
+	event.target.value = "";
+	run(() => uploadFiles(files));
+};
+
+for (const type of ["dragenter", "dragover"]) drop.addEventListener(type, (event) => { event.preventDefault(); drop.classList.add("dragging"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("dragging"));
 drop.addEventListener("drop", (event) => {
 	event.preventDefault();
 	drop.classList.remove("dragging");
@@ -684,10 +712,8 @@ async function closeEditor() {
 	editorDialog.close();
 }
 $("#editor-close").onclick = closeEditor;
-editorDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeEditor(); });
-editorDialog.addEventListener("keydown", (event) => {
-	if (event.key === "Escape" && !$("#dlg-prompt").open && !(event.target.closest && event.target.closest(".monaco-editor") && document.querySelector(".suggest-widget.visible, .find-widget.visible"))) { event.preventDefault(); closeEditor(); }
-});
+// Esc must not close the editor; use the close button.
+editorDialog.addEventListener("cancel", (event) => event.preventDefault());
 $("#editor-text").oninput = () => setDirty(true);
 $("#editor-text").onkeydown = (event) => {
 	if ((event.ctrlKey || event.metaKey) && event.key === "s") { event.preventDefault(); run(saveFile); }
@@ -858,3 +884,4 @@ $("#settings-apache-test").onclick = () => run(() => openTask({ kind: "apache", 
 
 decorate($("#settings-menu"));
 decorate($("#view-sites .toolbar"));
+decorate($("#view-files .toolbar"));
