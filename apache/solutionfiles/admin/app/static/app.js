@@ -334,7 +334,6 @@ function renderSite(name) {
 	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
 	add("Files", () => go(filesLink(site.name)));
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
-	if (!hasProd(site)) add("Change binding", () => changeBinding(site, "test"));
 	if (site.scripts.includes("create_prod.sh")) {
 		add("Create production site", () => openCreateProdDialog(site));
 	}
@@ -439,12 +438,18 @@ function envPanel(site, env) {
 		add("Restart", () => serviceAction(site, env, "restart"));
 		add("Logs", () => showLogs(site, env));
 	}
-	if (env.mode !== "remote" && env.path && env.exists !== false) {
+	if (env.key === "prod" && env.mode !== "remote" && env.path && env.exists !== false) {
 		add("Shell", () => openTask({ kind: "shell", site: site.name, path: env.path, label: site.name + " · " + env.label }));
 		add("Files", () => go(filesLink(env.path)));
 	}
 
 	const quick = el("div", { className: "actions quick" });
+	const settings = el("div", { className: "actions quick" });
+	settings.setAttribute("role", "group");
+	settings.setAttribute("aria-label", "Environment settings");
+	if (!hasProd(site) || !site.admin) {
+		settings.append(el("button", { textContent: "Change binding", className: "small", onclick: () => run(() => changeBinding(site, env.key === "prod" ? "prod" : "test", env)) }));
+	}
 	let extraTools = null;
 	for (const [files, label, confirm, action] of quickActions(env)) {
 		let file = files && files.find((f) => site.scripts.includes(f));
@@ -452,8 +457,8 @@ function envPanel(site, env) {
 		if (!action && !file) continue;
 		if (action && env.mode === "remote" && !env.host) continue;
 		if (action && env.key !== "prod" && (!env.unit || site.admin) && action === "change_env") continue;
-		quick.append(el("button", { textContent: label, className: "small", title: file || action, onclick: () => run(async () => {
-			if (confirm && !(await ask({ title: `${label}?`, message: `${confirm} (${env.label.toLowerCase()} · ${site.name})`, input: false, ok: label }))) return;
+		(action ? settings : quick).append(el("button", { textContent: label, className: "small", title: file || action, onclick: () => run(async () => {
+			if (confirm && !(await ask({ title: `${label}?`, message: `${confirm} (${site.name})`, input: false, ok: label }))) return;
 			await openTask(action ? { kind: "prod_action", site: site.name, action, scope: env.key === "prod" ? "prod" : "test" } : { kind: "script", site: site.name, script: file });
 		}) }));
 	}
@@ -464,20 +469,20 @@ function envPanel(site, env) {
 		}
 		extraTools = tools;
 	}
-	if (hasProd(site) && !site.admin) add("Change binding", () => changeBinding(site, env.key === "prod" ? "prod" : "test", env));
 	if (hasProd(site) && !site.admin) add(env.key === "prod" ? "Delete production site" : "Delete test site", () => deleteSite(site, env.key === "prod" ? "prod" : "test"), "danger");
 
 	const panel = el("section", { className: "env " + (env.key === "prod" ? "prod" : "") }, heading, meta);
 	if (env.exists === false) panel.append(el("p", { className: "muted", textContent: "Nothing published here yet." }));
 	if (env.mode === "remote") panel.append(el("p", { className: "muted", textContent: "Runs on another server. Use publish_prod.sh and sync_prod.sh from “Run script…” to deploy." }));
 	if (quick.children.length) panel.append(quick);
+	if (settings.children.length) panel.append(settings);
 	if (extraTools) panel.append(extraTools);
 	panel.append(actions);
 	return panel;
 }
 
 async function serviceAction(site, env, action) {
-	if (action !== "start" && !(await ask({ title: `${action === "stop" ? "Stop" : "Restart"} ${env.unit}?`, message: `${env.label} · ${site.name}`, input: false, ok: action === "stop" ? "Stop" : "Restart", danger: action === "stop" }))) return;
+	if (action !== "start" && !(await ask({ title: `${action === "stop" ? "Stop" : "Restart"} ${env.unit}?`, message: site.name, input: false, ok: action === "stop" ? "Stop" : "Restart", danger: action === "stop" }))) return;
 	await api(`/api/sites/${encodeURIComponent(site.name)}/service`, { json: { action, unit: env.unit } });
 	toast(`${env.unit}: ${action} done`, "ok");
 	await loadSites();
