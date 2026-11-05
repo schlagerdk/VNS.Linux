@@ -189,12 +189,14 @@ const iconPaths = {
 	manage: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
 	external: "M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6",
 	key: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4",
+	server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01M12 7h5M12 17h5",
 };
 
 // label (exact, or a prefix ending in "*") -> [icon, tone]
 const buttonStyles = {
 	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
 	"Publish": ["upload", "green"], "Sync to prod": ["sync", "green"], "Start": ["play", "green"],
+	"Create production site": ["server", "purple"],
 	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
 	"Stop": ["stop", "red"], "Clear logs": ["eraser", "gray"], "Logs": ["file", "gray"],
 	"Issue certificate": ["shield", "teal"], "Change environment": ["sliders", "purple"], "Change binding": ["globe", "blue"],
@@ -737,6 +739,7 @@ function updateTerminalState() {
 	const count = Object.keys(terminals).length;
 	$("#term-count").textContent = count;
 	$("#term-count").hidden = !count;
+	$("#btn-dock").hidden = !count;
 	if (!count) $("#dock").hidden = true;
 }
 

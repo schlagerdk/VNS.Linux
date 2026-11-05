@@ -18,6 +18,7 @@
   </a>
   <input id="search" type="search" placeholder="Search sites…  ( / )" autocomplete="off">
   <span class="spacer"></span>
+  <button id="btn-dock" class="ghost" title="Terminals (Ctrl+`)" hidden>⌨ Terminals <span id="term-count" class="count" hidden></span></button>
   <div class="user">
     <button id="btn-settings" class="ghost" title="Settings" aria-haspopup="true">⚙ Settings</button>
     <div id="settings-menu" class="menu" hidden>
@@ -27,7 +28,6 @@
       <button id="settings-admin-site" type="button" hidden>Admin site</button>
     </div>
   </div>
-  <button id="btn-dock" class="ghost" title="Terminals (Ctrl+`)">⌨ Terminals <span id="term-count" class="count" hidden></span></button>
   <div class="user">
     <button id="btn-user" class="avatar" title="Account" aria-haspopup="true">{{ user[:1]|upper }}</button>
     <div id="user-menu" class="menu" hidden>
