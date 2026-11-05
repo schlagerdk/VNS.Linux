@@ -158,7 +158,7 @@ body.login { display: grid; place-items: center; min-height: 100vh; background: 
 .site { cursor: pointer; transition: transform .15s, border-color .15s, box-shadow .15s; }
 .site:hover { transform: translateY(-2px); border-color: var(--blue); box-shadow: 0 8px 22px rgba(0, 0, 0, .45); }
 .env-rows { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
-.env-row { display: grid; grid-template-columns: 10px 104px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.env-row { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
 .env-label { font-weight: 600; }
 .dot.remote { background: var(--purple); }
 
@@ -246,3 +246,8 @@ dialog.newsite select { appearance: none; -webkit-appearance: none; padding-righ
 dialog.newsite select option { background: var(--panel2); color: var(--text); }
 .actions > button.push-right { margin-left: auto; }
 .env-binding { display: flex; gap: 8px; align-items: baseline; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.env-tags { display: flex; gap: 6px; align-items: center; }
+.badge.env-development { background: rgba(88, 166, 255, .2); color: var(--blue); }
+.badge.env-test { background: rgba(210, 153, 34, .2); color: #d29922; }
+.badge.env-staging { background: rgba(163, 113, 247, .2); color: #a371f7; }
+.badge.env-production { background: rgba(248, 81, 73, .2); color: var(--red); }

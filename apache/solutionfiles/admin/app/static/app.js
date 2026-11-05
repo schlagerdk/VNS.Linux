@@ -256,12 +256,12 @@ function siteCard(site) {
 	const rows = el("div", { className: "env-rows" });
 	for (const env of site.environments) {
 		const dot = env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "";
-		rows.append(el("div", { className: "env-row" },
-			el("span", { className: "dot " + dot }),
-			el("span", { className: "env-label", textContent: env.environment || env.label }),
-			el("span", { className: "env-binding" }, el("span", { className: "muted", textContent: "Binding" }), bindingLink(env.binding),
-				...(site.kind === "umbraco" && env.binding ? [el("span", { className: "muted", textContent: "·" }), backofficeLink(env.binding, "Backoffice")] : [])),
-			env.mode === "remote" ? el("span", { className: "muted", textContent: "on " + (env.host || "remote") }) : el("span")));
+		const binding = el("span", { className: "env-binding" }, bindingLink(env.binding),
+			...(site.kind === "umbraco" && env.binding ? [el("span", { className: "muted", textContent: "·" }), backofficeLink(env.binding, "Backoffice")] : []));
+		const tags = el("span", { className: "env-tags" });
+		if (env.mode === "remote") tags.append(el("span", { className: "muted", textContent: "on " + (env.host || "remote") }));
+		if (env.unit && env.environment) tags.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment }));
+		rows.append(el("div", { className: "env-row" }, el("span", { className: "dot " + dot }), binding, tags));
 	}
 	const actions = el("div", { className: "actions" });
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: "small " + (className || ""), onclick: (event) => { event.stopPropagation(); run(handler); } }));
