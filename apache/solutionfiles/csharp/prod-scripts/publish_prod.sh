@@ -24,6 +24,7 @@ PROD_ADMIN_MAIL="@ADMIN_MAIL@"
 # ---------------------------------------------------------------------------
 
 _projectName=@PROJECT_NAME@
+_localPublish=@PUBLISH_FOLDER@   # The site's local publish folder: source of appsettings*.json and web.config on the first publish
 _publishFolder=$(mktemp -d)
 _cleanup=("${_publishFolder}")
 trap 'rm -rf "${_cleanup[@]}"' EXIT
@@ -96,7 +97,7 @@ if [[ ! -f ${_publishFolder}/${_projectName}.dll ]]; then
 fi
 
 _umbraco=0
-[[ -f ${_publishFolder}/Umbraco.Cms.Core.dll ]] && _umbraco=1
+grep -qs "Umbraco.Cms" ./*.csproj && _umbraco=1
 
 _vars="SITE='${PROD_FOLDER}' BINDING='${PROD_BINDING}' PORT='${PROD_PORT_HTTP}' ENVIRONMENT='${PROD_ENVIRONMENT}' MAIL='${PROD_ADMIN_MAIL}' PROJECT='${_projectName}' UMBRACO='${_umbraco}' ROOT='${_root}'"
 
@@ -183,8 +184,18 @@ EOF
 	[[ -e /etc/apache2/sites-enabled/${SITE}.conf ]] || a2ensite "${SITE}.conf" >/dev/null
 	apache2ctl configtest
 	systemctl reload apache2
+	# Leftover acme data for this domain (e.g. from a deleted site) makes --issue fail with "Domain key exists"
+	used=0
+	for c in /etc/apache2/sites-enabled/*.conf; do
+		[[ -e ${c} && ${c} != "/etc/apache2/sites-enabled/${SITE}.conf" ]] || continue
+		awk -v d="${BINDING}" '($1 == "ServerName" || $1 == "ServerAlias") { for (i = 2; i <= NF; i++) if (tolower($i) == tolower(d)) f = 1 } END { exit !f }' "${c}" && used=1
+	done
+	if [[ ${used} == 0 ]]; then
+		"${acme}" --remove -d "${BINDING}" >/dev/null 2>&1 || true
+		rm -rf "/etc/ssl/certs/${BINDING}" "/etc/ssl/certs/${BINDING}_ecc"
+	fi
 	rc=0
-	"${acme}" --issue --apache --server letsencrypt -d "${BINDING}" || rc=$?
+	"${acme}" --issue --apache --force --server letsencrypt -d "${BINDING}" || rc=$?
 	if [[ ${rc} -ne 0 && ${rc} -ne 2 ]]; then
 		echo "Certificate issue failed. Check that DNS for ${BINDING} points to this server." >&2
 		exit 1
@@ -246,9 +257,13 @@ ${extra}
   ErrorLog /var/log/apache2/${SITE}-443-error.log
 </VirtualHost>
 EOF
-	apache2ctl configtest
-	systemctl reload apache2
 fi
+
+# The site must be enabled whenever the config exists, also if the certificate or config was created earlier
+a2enmod ssl proxy proxy_http proxy_wstunnel rewrite headers >/dev/null
+[[ -e /etc/apache2/sites-enabled/${SITE}.conf ]] || a2ensite "${SITE}.conf" >/dev/null
+apache2ctl configtest
+systemctl reload apache2
 REMOTE
 
 if ((_local)); then
@@ -272,9 +287,13 @@ else
 	echo "First publish: copy appsettings*.json (without ConnectionStrings) and web.config"
 	_first=$(mktemp -d)
 	_cleanup+=("${_first}")
-	cp "${_publishFolder}"/appsettings*.json "${_first}/" 2>/dev/null || true
+	# Prefer the files from the local publish folder (created by create_site.sh); fall back to the fresh build
+	for _src in "${_localPublish}" "${_publishFolder}"; do
+		cp "${_src}"/appsettings*.json "${_first}/" 2>/dev/null || true
+		[[ -f ${_src}/web.config && ! -f ${_first}/web.config ]] && cp "${_src}/web.config" "${_first}/"
+		[[ -f ${_first}/appsettings.json ]] && break
+	done
 	rm -f "${_first}"/appsettings-schema*.json
-	[[ -f ${_publishFolder}/web.config ]] && cp "${_publishFolder}/web.config" "${_first}/"
 	for _file in "${_first}"/appsettings*.json; do
 		[[ -f ${_file} ]] || continue
 		if command -v python3 >/dev/null; then
