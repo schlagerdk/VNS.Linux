@@ -193,7 +193,7 @@ const iconPaths = {
 
 // label (exact, or a prefix ending in "*") -> [icon, tone]
 const buttonStyles = {
-	"Shell": ["terminal", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
+	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
 	"Publish": ["upload", "green"], "Sync to prod": ["sync", "green"], "Start": ["play", "green"],
 	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
 	"Stop": ["stop", "red"], "Clear logs": ["eraser", "gray"], "Logs": ["file", "gray"],
@@ -232,16 +232,17 @@ function renderSites() {
 	decorate(box);
 }
 
-// Opens a URL in a new tab; looks like a small button with an "open" icon
-function openLink(text, url, title) {
-	const a = el("a", { className: "btn-link", href: url, target: "_blank", rel: "noopener noreferrer", title: title || url, onclick: (event) => event.stopPropagation() });
+// Opens a URL in a new tab: a plain link, or (asButton) a small button with an "open" icon
+function openLink(text, url, title, asButton) {
+	const a = el("a", { className: asButton ? "btn-link" : "link", href: url, target: "_blank", rel: "noopener noreferrer", title: title || url, onclick: (event) => event.stopPropagation() });
+	if (!asButton) { a.textContent = text; return a; }
 	a.append(el("span", { textContent: text }), svgIcon("external"));
 	return a;
 }
-const bindingLink = (binding) => binding
-	? openLink(binding, "https://" + binding + "/")
+const bindingLink = (binding, asButton) => binding
+	? openLink(binding, "https://" + binding + "/", "", asButton)
 	: el("span", { className: "muted", textContent: "no binding" });
-const backofficeLink = (binding, text) => openLink(text || binding + "/umbraco", "https://" + binding + "/umbraco", "Umbraco backoffice: https://" + binding + "/umbraco");
+const backofficeLink = (binding, asButton) => openLink(binding + "/umbraco", "https://" + binding + "/umbraco", "Umbraco backoffice", asButton);
 
 const versionColors = 8; // majors 18, 19, 20 … get different colours (see .badge.version[data-major] in style.css)
 
@@ -261,12 +262,10 @@ function siteCard(site) {
 	const state = siteState(site);
 	const rows = el("div", { className: "env-rows" });
 	for (const env of site.environments) {
-		const binding = el("span", { className: "env-binding" }, bindingLink(env.binding),
-			...(site.kind === "umbraco" && env.binding ? [backofficeLink(env.binding, "Backoffice")] : []));
 		const tags = el("span", { className: "env-tags" });
 		if (env.mode === "remote") tags.append(el("span", { className: "muted", textContent: "on " + (env.host || "remote") }));
-		if (env.unit && env.environment) tags.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment }));
-		rows.append(el("div", { className: "env-row" }, binding, tags));
+		if (site.kind === "umbraco" && env.binding) tags.append(backofficeLink(env.binding, true));
+		rows.append(el("div", { className: "env-row" }, bindingLink(env.binding, true), tags));
 	}
 	const actions = el("div", { className: "actions" });
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: "small " + (className || ""), onclick: (event) => { event.stopPropagation(); run(handler); } }));
@@ -274,9 +273,13 @@ function siteCard(site) {
 	add("Shell", () => openTask({ kind: "shell", site: site.name }), "push-right");
 	add("Files", () => go(filesLink(site.name)));
 
+	const badges = kindBadges(site);
+	for (const env of site.environments) {
+		if (env.unit && env.environment) badges.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment, title: env.label }));
+	}
 	return el("article", { className: "site " + state + (site.admin ? " is-admin" : ""), onclick: () => go(siteLink(site.name)) },
 		el("div", { className: "site-head" }, el("span", { className: "dot " + state }), el("h3", { className: "site-title", textContent: site.name })),
-		kindBadges(site), rows, actions);
+		badges, rows, actions);
 }
 
 const scriptNames = {
@@ -482,7 +485,6 @@ $("#search").oninput = (event) => {
 	if (currentView !== "sites") go("sites");
 	renderSites();
 };
-$("#btn-refresh").onclick = () => run(loadSites);
 $("#btn-server-shell").onclick = () => run(() => openTask({ kind: "shell" }));
 $("#btn-browse").onclick = () => go("files/");
 document.addEventListener("keydown", (event) => {
@@ -855,3 +857,4 @@ $("#settings-admin-site").onclick = () => { const admin = allSites.find((s) => s
 $("#settings-apache-test").onclick = () => run(() => openTask({ kind: "apache", tool: "configtest" }));
 
 decorate($("#settings-menu"));
+decorate($("#view-sites .toolbar"));
