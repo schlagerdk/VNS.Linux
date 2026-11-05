@@ -43,7 +43,6 @@ sync_folder() {
 	"${_ssh[@]}" "${_target}" "${_sudo} mkdir -p '${_destination}/${_path}'"
 	rsync -az --delete -e "${_ssh[*]}" --rsync-path="${_sudo:+${_sudo} }rsync" "${_path}/" "${_target}:${_destination}/${_path}/"
 	echo "${_label}: OK"
-	echo
 }
 
 sync_folder uSync uSync

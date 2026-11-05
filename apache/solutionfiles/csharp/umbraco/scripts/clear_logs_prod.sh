@@ -27,7 +27,12 @@ _sudo=""
 "${_ssh[@]}" "${PROD_USER}@${PROD_IP}" "${_sudo} bash -s" <<REMOTE
 set -e
 systemctl stop '${PROD_FOLDER}'
-rm -rf '/var/www/${PROD_FOLDER}/umbraco/Logs'
+for _dir in '/var/www/${PROD_FOLDER}/umbraco/Logs' '/var/www/${PROD_FOLDER}/_Publish/umbraco/Logs'; do
+	if [[ -d \${_dir} ]]; then
+		rm -rf "\${_dir}"
+		echo "Deleted \${_dir}"
+	fi
+done
 systemctl start '${PROD_FOLDER}'
 systemctl status '${PROD_FOLDER}' --no-pager
 REMOTE

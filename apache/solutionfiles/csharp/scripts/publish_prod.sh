@@ -199,11 +199,41 @@ fi
 REMOTE
 
 echo "Upload to ${_target}:${_root}"
-# Keep prod-specific settings and content that only exists on prod
-_keep=(--exclude 'appsettings-schema*.json' --exclude 'umbraco-package-schema.json' --exclude 'appsettings*.json' --exclude 'wwwroot/media/' --exclude 'umbraco/Data/' --exclude 'umbraco/Logs/' --exclude 'App_Data/')
+# appsettings*.json and web.config are prod-specific: only copied the first time, never overwritten later
+_keep=(--exclude 'appsettings-schema*.json' --exclude 'umbraco-package-schema.json' --exclude 'appsettings*.json' --exclude 'web.config' --exclude 'wwwroot/media/' --exclude 'umbraco/Data/' --exclude 'umbraco/Logs/' --exclude 'App_Data/')
 rsync -az --delete "${_keep[@]}" -e "${_rsyncShell}" --rsync-path="${_rsyncPath}" "${_publishFolder}/" "${_target}:${_root}/"
-# appsettings are only copied the first time
-rsync -az --ignore-existing --include 'appsettings*.json' --exclude '*' -e "${_rsyncShell}" --rsync-path="${_rsyncPath}" "${_publishFolder}/" "${_target}:${_root}/"
+
+if remote "${_sudo} test -f '${_root}/appsettings.json'"; then
+	echo "appsettings.json and web.config already exist on prod - not touched"
+else
+	echo "First publish: copy appsettings*.json (without ConnectionStrings) and web.config"
+	_first=$(mktemp -d)
+	trap 'rm -rf "${_first}"' EXIT
+	cp "${_publishFolder}"/appsettings*.json "${_first}/" 2>/dev/null || true
+	rm -f "${_first}"/appsettings-schema*.json
+	[[ -f ${_publishFolder}/web.config ]] && cp "${_publishFolder}/web.config" "${_first}/"
+	for _file in "${_first}"/appsettings*.json; do
+		[[ -f ${_file} ]] || continue
+		if command -v python3 >/dev/null; then
+			python3 - "${_file}" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8-sig") as f:
+    data = json.load(f)
+data.pop("ConnectionStrings", None)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+		elif command -v jq >/dev/null; then
+			jq 'del(.ConnectionStrings)' "${_file}" >"${_file}.new" && mv "${_file}.new" "${_file}"
+		else
+			echo "python3 or jq is required to remove ConnectionStrings" >&2
+			exit 1
+		fi
+	done
+	rsync -az -e "${_rsyncShell}" --rsync-path="${_rsyncPath}" "${_first}/" "${_target}:${_root}/"
+fi
 
 echo "Start service"
 remote "${_sudo} env ${_vars} bash -s" <<'REMOTE'
