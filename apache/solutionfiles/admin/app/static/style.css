@@ -50,7 +50,7 @@ main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
 .chip b { font-size: 16px; }
 .chip span { color: var(--muted); font-size: 12px; }
 
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 16px; }
 .site { background: linear-gradient(135deg, rgba(88, 166, 255, .05), transparent 60%), var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; box-shadow: 0 4px 16px rgba(0, 0, 0, .2); display: flex; flex-direction: column; gap: 14px; position: relative; cursor: pointer; transition: border-color .2s, box-shadow .2s; }
 .site:hover { border-color: rgba(88, 166, 255, .5); box-shadow: 0 10px 28px rgba(0, 0, 0, .3), 0 0 20px rgba(88, 166, 255, .07); }
 .site::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; border-radius: 12px 12px 0 0; background: var(--line); }
@@ -278,6 +278,15 @@ a.btn-link { display: inline-flex; align-items: center; gap: 6px; max-width: 100
 a.btn-link:hover { background: rgba(88, 166, 255, .2); border-color: var(--blue); }
 a.btn-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 a.btn-link .ico { width: 13px; height: 13px; flex: none; }
+.site-links { gap: 10px 20px; }
+.site-link-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.site-link-group.production { margin-left: auto; }
+.site-link-group .frontend { --link-tone: var(--blue); }
+.site-link-group .backend { --link-tone: var(--purple); }
+.site-link-group.production .frontend { --link-tone: var(--green); }
+.site-link-group.production .backend { --link-tone: #39c5cf; }
+.site-link-group a.btn-link { color: var(--link-tone); background: color-mix(in srgb, var(--link-tone) 10%, transparent); border-color: color-mix(in srgb, var(--link-tone) 35%, transparent); }
+.site-link-group a.btn-link:hover { background: color-mix(in srgb, var(--link-tone) 20%, transparent); border-color: var(--link-tone); }
 .env-binding { flex-wrap: wrap; gap: 6px; }
 .env-row { justify-content: space-between; }
 .env-row > a.btn-link { justify-self: start; }

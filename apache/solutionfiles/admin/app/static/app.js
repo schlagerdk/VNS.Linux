@@ -266,14 +266,21 @@ function kindBadges(site) {
 
 function siteCard(site) {
 	const state = siteState(site);
-	const actions = el("div", { className: "actions" });
+	const actions = el("div", { className: "actions site-links" });
 	for (const env of site.environments) {
 		if (!env.binding) continue;
-		const prefix = env.key === "prod" ? "Prod " : "";
-		actions.append(openLink(prefix + "Frontend", "https://" + env.binding + "/", "", true));
+		const production = env.key === "prod";
+		const prefix = production ? "Prod " : "";
+		const group = el("div", { className: "site-link-group" + (production ? " production" : ""), role: "group", ariaLabel: production ? "Production links" : "Site links" });
+		const frontend = openLink(prefix + "Frontend", "https://" + env.binding + "/", "", true);
+		frontend.classList.add("frontend");
+		group.append(frontend);
 		if (site.kind === "umbraco") {
-			actions.append(openLink(prefix + "Backend", "https://" + env.binding + "/umbraco", "Umbraco backoffice: " + env.binding, true));
+			const backend = openLink(prefix + "Backend", "https://" + env.binding + "/umbraco", "Umbraco backoffice: " + env.binding, true);
+			backend.classList.add("backend");
+			group.append(backend);
 		}
+		actions.append(group);
 	}
 
 	const badges = kindBadges(site);
