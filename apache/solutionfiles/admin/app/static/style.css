@@ -220,3 +220,24 @@ button.primary[data-tone] { background: #238636; border-color: #2ea043; color: #
 /* Delete buttons stand alone at the far right of their row */
 .actions > button.danger, #site-head .actions > button.danger { margin-left: auto; }
 dialog.editor #editor-box { flex: 1; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+
+/* New site dialog */
+dialog.newsite { width: min(640px, 94vw); padding: 0; overflow: hidden; }
+dialog.newsite form { padding: 0 24px 20px; }
+.ns-head { display: flex; align-items: center; gap: 14px; margin: 0 -24px 18px; padding: 20px 24px; background: linear-gradient(135deg, rgba(88,101,242,.35), rgba(139,92,246,.22)); border-bottom: 1px solid var(--line); }
+.ns-head h2 { margin: 0; font-size: 20px; }
+.ns-head p { margin: 2px 0 0; font-size: 13px; }
+.ns-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 22px; color: #fff; background: linear-gradient(135deg, #6c7bff, #8b5cf6); box-shadow: 0 4px 14px rgba(108,123,255,.4); }
+.ns-section { margin: 4px 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.type-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+dialog .type-card { position: relative; display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: rgba(255,255,255,.02); transition: border-color .15s, background .15s, transform .15s; }
+.type-card:hover { border-color: var(--blue); transform: translateY(-1px); }
+.type-card input { position: absolute; opacity: 0; pointer-events: none; width: auto; }
+.type-card .tc-title { color: var(--text); font-size: 14px; font-weight: 600; }
+.type-card .tc-sub { font-size: 12px; color: var(--muted); }
+.type-card:has(input:checked) { border-color: var(--blue); background: rgba(88,166,255,.12); box-shadow: 0 0 0 1px var(--blue) inset; }
+.type-card:has(input:focus-visible) { outline: 2px solid var(--blue); }
+.ns-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+dialog.newsite .hint { margin: 2px 0 0; font-size: 12px; }
+dialog.newsite menu { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+@media (max-width: 560px) { .type-cards, .ns-grid { grid-template-columns: 1fr; } }

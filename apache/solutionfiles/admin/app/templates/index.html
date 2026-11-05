@@ -98,24 +98,35 @@
   </form>
 </dialog>
 
-<dialog id="dlg-site">
+<dialog id="dlg-site" class="newsite">
   <form method="dialog" id="form-site">
-    <h2>New site</h2>
-    <label>Folder name <input name="site" required placeholder="www.example.com"></label>
-    <label>Binding (domain) <input name="binding" required placeholder="www.example.com"></label>
-    <label>Type
-      <select name="type"><option value="html">HTML</option><option value="python">Python</option><option value="csharp" selected>C# / .NET</option></select>
-    </label>
-    <fieldset id="csharp-options">
-      <legend>C# options</legend>
-      <label>Kind <select name="csharp"><option>umbraco</option><option>empty</option></select></label>
-      <label>Umbraco version <input name="version" placeholder="default"></label>
-      <label>C# project name <input name="project" placeholder="folder name"></label>
-      <label>Local publish folder <input name="publish" value="_publish"></label>
-      <label>Build <select name="build"><option>Debug</option><option>Release</option></select></label>
-    </fieldset>
+    <header class="ns-head">
+      <span class="ns-icon">＋</span>
+      <div><h2>New site</h2><p>Creates the folder, Apache config, certificate and service.</p></div>
+    </header>
+    <div class="ns-section">What kind of site?</div>
+    <div class="type-cards">
+      <label class="type-card"><input type="radio" name="type" value="csharp" checked><span class="tc-title">C# / .NET</span><span class="tc-sub">Umbraco or empty project</span></label>
+      <label class="type-card"><input type="radio" name="type" value="python"><span class="tc-title">Python</span><span class="tc-sub">Flask / gunicorn</span></label>
+      <label class="type-card"><input type="radio" name="type" value="html"><span class="tc-title">HTML</span><span class="tc-sub">Static files</span></label>
+    </div>
+    <div class="ns-section">Name and address</div>
+    <div class="ns-grid">
+      <label>Folder name <input name="site" required placeholder="www.example.com" autocomplete="off" spellcheck="false"></label>
+      <label>Binding (domain) <input name="binding" required placeholder="www.example.com" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <div id="csharp-options">
+      <div class="ns-section">C# options</div>
+      <div class="ns-grid">
+        <label>Kind <select name="csharp"><option>umbraco</option><option>empty</option></select></label>
+        <label>Umbraco version <input name="version" placeholder="default (latest)"></label>
+        <label>C# project name <input name="project" placeholder="same as folder name"></label>
+        <label>Build <select name="build"><option>Debug</option><option>Release</option></select></label>
+        <label>Local publish folder <input name="publish" value="_publish"></label>
+      </div>
+    </div>
     <p class="hint">The script runs in a terminal, so you can answer any extra prompt there.</p>
-    <menu><button type="button" id="site-cancel">Cancel</button><button type="submit" value="ok" class="primary">Create</button></menu>
+    <menu><button type="button" id="site-cancel">Cancel</button><button type="submit" value="ok" class="primary">Create site</button></menu>
   </form>
 </dialog>
 

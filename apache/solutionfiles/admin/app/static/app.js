@@ -510,7 +510,7 @@ const siteForm = $("#form-site");
 function syncSiteForm() {
 	$("#csharp-options").hidden = siteForm.type.value !== "csharp";
 }
-siteForm.type.onchange = syncSiteForm;
+siteForm.addEventListener("change", (event) => { if (event.target.name === "type") syncSiteForm(); });
 siteForm.site.oninput = () => { if (!siteForm.binding.dataset.edited) siteForm.binding.value = siteForm.site.value; };
 siteForm.binding.oninput = () => { siteForm.binding.dataset.edited = "1"; };
 $("#btn-new-site").onclick = () => { siteForm.reset(); delete siteForm.binding.dataset.edited; syncSiteForm(); dialog.showModal(); siteForm.site.focus(); };
