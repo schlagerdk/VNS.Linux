@@ -10,6 +10,7 @@ source lib/common.sh
 source lib/admin_vendor.sh
 
 trap 'echo "FAILED at ${BASH_SOURCE[0]}:${LINENO} (exit $?): ${BASH_COMMAND}" >&2; echo "Admin site is incomplete - run ./delete_site.sh ${_site:-<site>} n to clean up" >&2' ERR
+trap 'release_port_reservation' EXIT
 set -o errtrace
 
 
@@ -94,6 +95,7 @@ install_scripts "${_solutionFolder}/admin/scripts"
 
 install_apache_config "${_solutionFolder}/admin/apache.conf.tpl"
 install_service "${_solutionFolder}/admin/service.tpl"
+release_port_reservation
 
 echo "Admin site created: https://${_binding}/ (user: ${_adminUser}, folder: ${_site})"
 echo "Change the password later with ${_siteRoot}/scripts/set_password.sh"

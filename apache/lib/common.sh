@@ -4,7 +4,9 @@
 
 _apacheDir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _solutionFolder="${_apacheDir}/solutionfiles"
-_portNumberFile="${_apacheDir}/_portnumber.txt"
+_portReservationDir=/run/lock/vns-apache-port-reservations
+_portAllocationLock=/run/lock/vns-apache-port-allocation.lock
+_portReservationFile=""
 _rootPath=/var/www
 _publishFolder=_publish
 _acme=/etc/acmesh/acme.sh
@@ -105,7 +107,6 @@ render() {
 		-e "s|@PUBLISH_FOLDER@|${_publishFolder}|g" \
 		-e "s|@DOC_ROOT@|${_docRoot:-}|g" \
 		-e "s|@PORT_HTTP@|${_portHttp:-}|g" \
-		-e "s|@PORT_HTTPS@|${_portHttps:-}|g" \
 		-e "s|@DOTNET_VERSION@|${_dotNetVersion:-}|g" \
 		-e "s|@UMBRACO_VERSION@|${_umbracoVersion:-}|g" \
 		-e "s|@CERT_FILE@|${_certificateFile}|g" \
@@ -136,15 +137,63 @@ install_scripts() {
 	done
 }
 
-# Reserve the next port number and set _portHttp/_portHttps
+# Reserve the first available port starting at 4000 and set _portHttp.
+# Existing Apache/systemd configurations, listening sockets and concurrent creations are respected.
 allocate_ports() {
-	local _old _new
-	_old=$(cat "${_portNumberFile}")
-	_new=$((_old + 1))
-	echo "${_new}" >"${_portNumberFile}"
-	_portHttp=$((_new + 4000))
-	_portHttps=$((_new + 6000))
-	echo "Ports: http=${_portHttp} https=${_portHttps}"
+	local _port _siteName=${_site:-${SITE:-unknown}}
+	sudo mkdir -p "${_portReservationDir}"
+	_port=$(sudo flock -x "${_portAllocationLock}" bash -c '
+		set -euo pipefail
+		dir=$1
+		owner_pid=$2
+		site_name=$3
+		shopt -s nullglob
+		declare -a used=()
+
+		for reservation in "$dir"/*.reserve; do
+			port=${reservation##*/}
+			port=${port%.reserve}
+			read -r pid _site <"$reservation" || true
+			if [[ ! ${pid:-} =~ ^[0-9]+$ ]] || ! kill -0 "$pid" 2>/dev/null; then
+				rm -f "$reservation"
+			else
+				used[$port]=1
+			fi
+		done
+
+		command -v ss >/dev/null || { echo "ss is required to detect listening ports." >&2; exit 1; }
+		while read -r _state _recv _send address _peer; do
+			port=${address##*:}
+			[[ $port =~ ^[0-9]+$ ]] && used[$port]=1
+		done < <(ss -H -ltn)
+
+		for config in /etc/apache2/sites-available/*.conf /etc/systemd/system/*.service; do
+			[[ -f $config ]] || continue
+			while IFS= read -r port; do
+				[[ $port =~ ^[0-9]+$ ]] && used[$port]=1
+			done < <(grep -hEo "(127\\.0\\.0\\.1|localhost|\\*):[0-9]{1,5}" "$config" 2>/dev/null | cut -d: -f2 || true)
+		done
+
+		for ((port = 4000; port <= 65535; port++)); do
+			if [[ ! ${used[$port]+yes} && ! -e $dir/$port.reserve ]]; then
+				printf "%s %s\\n" "$owner_pid" "$site_name" >"$dir/$port.reserve"
+				printf "%s\\n" "$port"
+				exit 0
+			fi
+		done
+		echo "No available site ports in the range 4000-65535." >&2
+		exit 1
+	' _ "${_portReservationDir}" "$$" "${_siteName}") || return 1
+	_portHttp=${_port}
+	_portReservationFile="${_portReservationDir}/${_port}.reserve"
+	echo "Port: ${_portHttp}"
+}
+
+release_port_reservation() {
+	if [[ -n ${_portReservationFile:-} ]]; then
+		sudo rm -f "${_portReservationFile}" || true
+		_portReservationFile=""
+	fi
 }
 
 require_acme() {

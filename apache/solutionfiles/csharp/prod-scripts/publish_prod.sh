@@ -5,7 +5,7 @@
 # Creates the folder, systemd service, Apache config and certificate on the target if they are missing.
 # Requirements on prod: VNS.Linux apache/init.sh has been run, and the login is root or has passwordless sudo.
 # DNS for PROD_BINDING must point to the target server before the certificate can be issued.
-# With PROD_LOCAL_PATH use a PROD_FOLDER, PROD_BINDING and port that differ from the site it is published from.
+# With PROD_LOCAL_PATH use a PROD_FOLDER and PROD_BINDING that differ from the site it is published from.
 cd "$(dirname "$0")"
 cd ..
 set -euo pipefail
@@ -18,7 +18,6 @@ PROD_PASSWORD=@PROD_PASSWORD@       # SSH password (needs sshpass). Empty = use 
 PROD_SSH_PORT=@PROD_SSH_PORT@
 PROD_FOLDER=@PROD_FOLDER@           # Site name on prod: folder /var/www/<folder>, service and Apache config
 PROD_BINDING=@PROD_BINDING@         # Public domain on prod, e.g. account.vns.dk
-PROD_PORT_HTTP=@PROD_PORT_HTTP@     # Local Kestrel port on prod
 PROD_ENVIRONMENT="Production"
 PROD_ADMIN_MAIL="@ADMIN_MAIL@"
 # ---------------------------------------------------------------------------
@@ -99,7 +98,7 @@ fi
 _umbraco=0
 grep -qs "Umbraco.Cms" ./*.csproj && _umbraco=1
 
-_vars="SITE='${PROD_FOLDER}' BINDING='${PROD_BINDING}' PORT='${PROD_PORT_HTTP}' ENVIRONMENT='${PROD_ENVIRONMENT}' MAIL='${PROD_ADMIN_MAIL}' PROJECT='${_projectName}' UMBRACO='${_umbraco}' ROOT='${_root}'"
+_vars="SITE='${PROD_FOLDER}' BINDING='${PROD_BINDING}' ENVIRONMENT='${PROD_ENVIRONMENT}' MAIL='${PROD_ADMIN_MAIL}' PROJECT='${_projectName}' UMBRACO='${_umbraco}' ROOT='${_root}'"
 
 echo "Prepare ${PROD_FOLDER} on ${PROD_IP:-this server}"
 run_script <<'REMOTE'
@@ -110,11 +109,26 @@ conf=/etc/apache2/sites-available/${SITE}.conf
 service=/etc/systemd/system/${SITE}.service
 certdir=/etc/ssl/certs/${BINDING}_ecc
 acme=/etc/acmesh/acme.sh
+source /vns/apache/lib/common.sh
 
 if [[ -e ${service} ]] && ! grep -qx "WorkingDirectory=${root}" "${service}"; then
 	echo "Service ${SITE} already exists and runs from a different folder. Use another PROD_FOLDER (and PROD_BINDING)." >&2
 	exit 1
 fi
+
+PORT=""
+if [[ -e ${service} ]]; then
+	PORT=$(grep '^ExecStart=' "${service}" | grep -oE '(localhost|127\.0\.0\.1|\*):[0-9]+' | head -n 1 | cut -d: -f2 || true)
+	[[ -n ${PORT} ]] || { echo "Could not determine the existing port from ${service}." >&2; exit 1; }
+elif [[ -e ${conf} ]]; then
+	PORT=$(grep -hEo '(127\.0\.0\.1|localhost|\*):[0-9]{1,5}' "${conf}" | head -n 1 | cut -d: -f2)
+fi
+if [[ -z ${PORT} ]]; then
+	_site=${SITE}
+	allocate_ports
+	PORT=${_portHttp}
+fi
+echo "Using production port ${PORT}"
 
 mkdir -p "${docroot}" "/var/lib/vns-roots/${SITE}"
 if [[ -e ${service} ]]; then
@@ -264,6 +278,7 @@ a2enmod ssl proxy proxy_http proxy_wstunnel rewrite headers >/dev/null
 [[ -e /etc/apache2/sites-enabled/${SITE}.conf ]] || a2ensite "${SITE}.conf" >/dev/null
 apache2ctl configtest
 systemctl reload apache2
+release_port_reservation
 REMOTE
 
 if ((_local)); then

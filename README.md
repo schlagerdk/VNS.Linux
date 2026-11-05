@@ -34,7 +34,7 @@ cd VNS.Linux
 /vns/update.sh
 ```
 
-Fetches the latest version from GitHub and synchronizes it to `/vns`. Local files are not deleted, and `apache/_portnumber.txt` is never overwritten, preserving existing port numbers.
+Fetches the latest version from GitHub and synchronizes it to `/vns`. Local files are not deleted. Apache site ports are assigned automatically to the first available port starting at 4000, and a port is reusable after its site is deleted.
 
 ## Contents
 

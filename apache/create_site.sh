@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 source lib/common.sh
 
 trap 'echo "FAILED at ${BASH_SOURCE[0]}:${LINENO} (exit $?): ${BASH_COMMAND}" >&2; echo "Site is incomplete - run ./delete_site.sh ${_site:-<site>} n to clean up" >&2' ERR
+trap 'release_port_reservation' EXIT
 set -o errtrace
 
 _defaultUmbracoVersion=18.3.0
@@ -188,6 +189,7 @@ case "${_type}" in
 	*) echo "Unknown site type: ${_type}" >&2; exit 1 ;;
 esac
 
+release_port_reservation
 echo "Site created: https://${_binding}/ (folder: ${_site})"
 if [[ ${_type} == csharp ]]; then
 	echo "Run ${_siteRoot}/scripts/create_prod.sh when you want a production target for this site."

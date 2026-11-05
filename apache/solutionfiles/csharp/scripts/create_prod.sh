@@ -18,7 +18,6 @@ _binding=@BINDING@
 _projectName=@PROJECT_NAME@
 _siteRoot=@SITE_ROOT@
 _publishFolder=@PUBLISH_FOLDER@
-_testPort=@PORT_HTTP@
 _adminMail=@ADMIN_MAIL@
 _kind=@CSHARP_KIND@
 
@@ -71,21 +70,17 @@ if [[ ${_target} == local ]]; then
 		exit 1
 	fi
 fi
-ask _prodPort "Kestrel port on production" "$((_testPort + 2000))"
-[[ ${_prodPort} =~ ^[0-9]+$ ]] || { echo "Port must be a number." >&2; exit 1; }
-
 echo
 echo "Target:   ${_target}${_ip:+ (${_user}@${_ip}:${_sshPort})}${_localPath:+ (${_localPath})}"
 echo "Site:     ${_prodFolder}"
 echo "Binding:  ${_prodBinding}"
-echo "Port:     ${_prodPort}"
 read -r -p "Create the production scripts? [Y/n]: " _confirm
 [[ ${_confirm:-y} =~ ^[Yy] ]] || { echo "Cancelled."; exit 1; }
 
 _q() { printf '%q' "$1"; }
 export R_PROD_LOCAL_PATH="$(_q "${_localPath}")" R_PROD_IP="$(_q "${_ip}")" R_PROD_USER="$(_q "${_user}")" \
 	R_PROD_PASSWORD="$(_q "${_password}")" R_PROD_SSH_PORT="$(_q "${_sshPort}")" R_PROD_FOLDER="$(_q "${_prodFolder}")" \
-	R_PROD_BINDING="$(_q "${_prodBinding}")" R_PROD_PORT_HTTP="${_prodPort}" R_ADMIN_MAIL="${_adminMail}" \
+	R_PROD_BINDING="$(_q "${_prodBinding}")" R_ADMIN_MAIL="${_adminMail}" \
 	R_PROJECT_NAME="${_projectName}" R_PUBLISH_FOLDER="${_publishFolder}" R_SITE="${_site}"
 
 # Render everything first, so a missing template fails before anything is renamed

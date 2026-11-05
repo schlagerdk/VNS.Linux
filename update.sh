@@ -31,13 +31,15 @@ main() {
         [ "$sa_quoted" = "'@SA_PASSWORD@'" ] && sa_quoted=""
     fi
 
-    # Do not use --delete, so local files (e.g. SQL data) are preserved. _portnumber.txt is never overwritten.
+    # Do not use --delete, so local files (e.g. SQL data) are preserved.
     rsync -a \
         --exclude '.git' \
         --exclude '.DS_Store' \
         --exclude '.gitignore' \
-        --exclude '_portnumber.txt' \
         "$src"/ "$TARGET"/
+
+    # Site ports are discovered from active configs now; remove the obsolete counter.
+    rm -f "$TARGET/apache/_portnumber.txt"
 
     # Templates hold no local data, so remove templates that no longer exist in the repository
     if [ -d "$src/apache/solutionfiles" ]; then
@@ -47,12 +49,6 @@ main() {
     if [ -n "$sa_quoted" ]; then
         source "$TARGET/sql/lib/sa_password.sh"
         sa_apply_quoted "$TARGET/sql" "$sa_quoted"
-    fi
-
-    # Copy the initial value only if the file does not already exist, so existing port numbers are never overwritten
-    if [ -f "$src/apache/_portnumber.txt" ] && [ ! -e "$TARGET/apache/_portnumber.txt" ]; then
-        mkdir -p "$TARGET/apache"
-        cp "$src/apache/_portnumber.txt" "$TARGET/apache/_portnumber.txt"
     fi
 
     find "$TARGET" -name '*.sh' -exec chmod +x {} +
