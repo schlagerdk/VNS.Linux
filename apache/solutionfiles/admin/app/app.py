@@ -13,6 +13,7 @@ import socket
 import queue
 import re
 import secrets
+import shlex
 import shutil
 import signal
 import subprocess
@@ -278,11 +279,24 @@ def remote_status(site):
     return status
 
 
+def service_environment(unit):
+    try:
+        result = subprocess.run(
+            ["systemctl", "show", unit + ".service", "--property=Environment", "--value"],
+            capture_output=True, text=True, timeout=10, check=True)
+        variables = dict(item.split("=", 1) for item in shlex.split(result.stdout) if "=" in item)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        app.logger.error("Could not read environment for %s: %s", unit, exc)
+        return "Unknown"
+    return variables.get("DOTNET_ENVIRONMENT") or variables.get("ASPNETCORE_ENVIRONMENT", "")
+
+
 def environment_info(key, label, unit, binding, port, path, states, **extra):
     service = bool(unit) and unit_of(unit)
     info = {"key": key, "label": label, "unit": unit if service else "", "binding": binding, "port": port, "path": path,
             "state": states.get(unit, "") if service else ""}
     info.update(extra)
+    info["environment"] = service_environment(unit) if service else ""
     info.update(https_status(unit=unit))
     return info
 
@@ -386,11 +400,11 @@ def site_info(name, states):
             inside = full == WEB_ROOT or full.startswith(WEB_ROOT + os.sep)
             unit = prod["PROD_FOLDER"]
             environments.append(environment_info("prod", "Production", unit, prod["PROD_BINDING"] or conf_binding(unit), prod["PROD_PORT_HTTP"] or service_port(unit),
-                                                 rel(full) if inside else "", states, mode="local", exists=os.path.isdir(full), environment="Production"))
+                                                 rel(full) if inside else "", states, mode="local", exists=os.path.isdir(full)))
         else:
             environments.append({"key": "prod", "label": "Production", "mode": "remote", "unit": "", "state": "", "binding": prod["PROD_BINDING"],
                                  "port": prod["PROD_PORT_HTTP"], "path": "", "host": prod["PROD_IP"], "user": prod["PROD_USER"],
-                                 "ssh_port": prod["PROD_SSH_PORT"], "folder": prod["PROD_FOLDER"], "environment": "Production",
+                                 "ssh_port": prod["PROD_SSH_PORT"], "folder": prod["PROD_FOLDER"], "environment": "Unknown",
                                  **remote_status(name)})
 
     return {

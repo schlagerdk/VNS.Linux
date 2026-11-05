@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import tempfile
@@ -58,7 +59,7 @@ class RemoteApiTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.app.config["TESTING"] = True
         self.ns = dict(
-            app=self.app, os=os, json=json, subprocess=subprocess, time=time,
+            app=self.app, os=os, json=json, subprocess=subprocess, time=time, shlex=shlex,
             base64=base64, abort=abort, jsonify=jsonify, request=request,
             io=io, send_file=send_file,
             HTTPException=HTTPException, APACHE_DIR=str(APACHE), WEB_ROOT="/var/www",
@@ -66,7 +67,8 @@ class RemoteApiTests(unittest.TestCase):
             parse_prod=lambda root: {"PROD_LOCAL_PATH": "", "PROD_FOLDER": "production.test"},
             site_arg=lambda data: "example.test",
         )
-        functions = {"error", "remote_command", "remote_status", "remote_site", "api_service", "api_logs", "build_command", "remote_fs"}
+        functions = {"error", "remote_command", "remote_status", "remote_site", "api_service", "api_logs", "build_command", "remote_fs",
+                     "service_environment", "environment_info"}
         nodes = [node for node in ast.parse(APP_SOURCE.read_text()).body
                  if isinstance(node, ast.FunctionDef) and node.name in functions]
         exec(compile(ast.Module(body=nodes, type_ignores=[]), str(APP_SOURCE), "exec"), self.ns)
@@ -116,6 +118,18 @@ class RemoteApiTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as error:
                 self.ns["remote_command"]("example.test", "status")
             self.assertEqual(error.exception.code, 502)
+
+    def test_local_production_badge_uses_effective_environment(self):
+        self.ns["unit_of"] = lambda unit: True
+        self.ns["https_status"] = lambda unit: {"https": True, "scheme": "https"}
+        with patch("subprocess.run", return_value=Mock(
+                stdout='"ASPNETCORE_ENVIRONMENT=Production" "DOTNET_ENVIRONMENT=Staging"')) as run:
+            info = self.ns["environment_info"](
+                "prod", "Production", "prod.test", "prod.test", "", "prod.test",
+                {"prod.test": "active"}, mode="local", environment="Production")
+        self.assertEqual(info["environment"], "Staging")
+        self.assertEqual(run.call_args.args[0],
+                         ["systemctl", "show", "prod.test.service", "--property=Environment", "--value"])
 
     def test_remote_file_routes_and_binary_transfer(self):
         command = Mock(return_value=Mock(stdout=b'{"ok": true}'))
