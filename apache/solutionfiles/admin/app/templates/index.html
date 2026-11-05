@@ -22,15 +22,15 @@
   <div class="user">
     <button id="btn-settings" class="ghost" title="Settings" aria-haspopup="true">⚙ Settings</button>
     <div id="settings-menu" class="menu" hidden>
-      <div class="menu-group" role="group" aria-label="Apache">
-        <div class="menu-group-title">Apache</div>
-        <button id="settings-restart-apache" type="button">Restart Apache</button>
-        <button id="settings-apache-test" type="button">Test Apache config</button>
-      </div>
       <div class="menu-group" role="group" aria-label="Server">
         <div class="menu-group-title">Server</div>
-        <button id="btn-browse" type="button">Browse /var/www</button>
         <button id="btn-server-shell" type="button">Server shell</button>
+        <button id="btn-browse" type="button">Browse /var/www</button>
+      </div>
+      <div class="menu-group" role="group" aria-label="Apache">
+        <div class="menu-group-title">Apache</div>
+        <button id="settings-apache-test" type="button">Test Apache config</button>
+        <button id="settings-restart-apache" type="button">Restart Apache</button>
       </div>
       <div id="settings-admin-group" class="menu-group" role="group" aria-label="Administration" hidden>
         <div class="menu-group-title">Administration</div>
