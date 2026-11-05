@@ -136,6 +136,9 @@ dialog legend { color: var(--muted); font-size: 12px; padding: 0 6px; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 14px 0 0; }
 dialog.danger h2 { color: var(--red); }
 dialog.danger .primary { background: #da3633; border-color: var(--red); }
+#dlg-prompt { width: min(520px, 92vw); min-width: 0; }
+#prompt-message { overflow-wrap: anywhere; }
+#dlg-prompt .confirmation-copy { white-space: normal; }
 
 #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
 .toast { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 8px; padding: 10px 14px; box-shadow: var(--shadow); max-width: 420px; animation: pop .15s ease-out; }
