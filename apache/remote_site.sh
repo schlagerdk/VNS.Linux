@@ -83,9 +83,9 @@ REMOTE
 			edit_conf)
 				_code='set -e; nano "/etc/apache2/sites-available/$SITE.conf"; read -r -p "Test config and reload Apache? [Y/n]: " answer; if [[ ! $answer =~ ^[nN] ]]; then apache2ctl configtest; systemctl reload apache2; fi'
 				;;
-			shell) _code='cd "/var/www/$SITE" && exec bash -l' ;;
+			shell) _code='cd "/var/www/$SITE" && export force_color_prompt=yes && exec bash -il' ;;
 		esac
-		printf -v _command 'env %s bash -c %q' "${_vars}" "${_code}"
+		printf -v _command 'env TERM=xterm-256color COLORTERM=truecolor %s bash -c %q' "${_vars}" "${_code}"
 		prod_exec "${_command}" tty
 		;;
 	files)

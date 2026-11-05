@@ -94,6 +94,7 @@ Fetches the latest version from GitHub and synchronizes it to `/vns`. Local file
 - File browser confined to `/var/www`: edit, upload, download, create, rename, delete.
 - Security: **the site runs as root.** Login is rate limited per IP, sessions are HttpOnly/Secure/SameSite=Strict with a 2 hour idle timeout, and all POSTs require a CSRF token. Use a long password and preferably the IP allowlist.
 - `apache/init.sh` offers to run the installer at the end. To remove the admin site again (service, Apache config, optional certificate, files and login) run `apache/uninstall_admin_site.sh`; other sites are not touched.
+- Remote Shell uses an interactive login shell with `TERM=xterm-256color`, `COLORTERM=truecolor` and Ubuntu's `force_color_prompt=yes`. These settings apply only to the session; server-wide shell configuration is unchanged. Individual commands still control their own color output.
 - To update an installed admin site after `update.sh`, run `apache/update_admin_site.sh`. It replaces the app code, updates the Python packages and restarts the site, and keeps the login, the virtual environment and the terminal library.
 - Change the password with `scripts/set_password.sh` in the admin site (this also signs out all sessions). The xterm.js assets (jsdelivr) and the Monaco editor (npm registry, ~13 MB) are downloaded into `static/vendor` when the site is installed or updated; without Monaco the file editor falls back to a plain textarea.
 

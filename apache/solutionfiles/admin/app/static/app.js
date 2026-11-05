@@ -459,7 +459,7 @@ function quickActions(env) {
 function envPanel(site, env) {
 	const dot = env.unit ? env.state || "unknown" : "";
 	const heading = el("div", { className: "env-head" },
-		el("span", { className: "dot " + dot }), ...(env.environment && env.environment.toLowerCase() === env.label.toLowerCase() ? [] : [el("h3", { textContent: env.label })]),
+		el("span", { className: "dot " + dot }),
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
 	const environment = site.kind === "python" ? "Live" : env.environment;
 	if (environment) heading.append(el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));

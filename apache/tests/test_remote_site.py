@@ -233,6 +233,12 @@ class RemoteTransportTests(unittest.TestCase):
                 self.assertIn("sudo -n", args)
                 self.assertEqual("-tt\n" in args, action in ("shell", "edit_service", "edit_conf"))
                 self.assertIn("SITE=production.test", args)
+                if action in ("shell", "edit_service", "edit_conf"):
+                    self.assertIn("TERM=xterm-256color", args)
+                    self.assertIn("COLORTERM=truecolor", args)
+                if action == "shell":
+                    self.assertIn("force_color_prompt=yes", args)
+                    self.assertIn("bash\\ -il", args)
             ssh.write_text("#!/bin/bash\nexit 7\n")
             result = subprocess.run(["/bin/bash", str(root / "remote_site.sh"), "example.test", "status"],
                                     capture_output=True, env=env)
