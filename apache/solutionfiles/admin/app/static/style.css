@@ -92,7 +92,7 @@ a.link:hover { text-decoration: underline; }
 .package-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
 .package-name .ico { flex: none; width: 18px; height: 18px; color: var(--purple); }
 .package-name > span { min-width: 0; }
-.package-version { max-width: 100%; padding: 3px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); color: var(--muted); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+.package-version { max-width: 100%; padding: 5px 12px; border: 1px solid rgba(88, 166, 255, .5); border-radius: 6px; background: rgba(88, 166, 255, .15); color: var(--blue); font: 600 14px ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
 .package-error { margin: 12px 20px; color: var(--orange); font-size: 12px; }
 #files td:first-child { white-space: nowrap; }
 .list.dragging { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue); }

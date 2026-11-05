@@ -334,11 +334,11 @@ function renderSite(name) {
 	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
 	add("Files", () => go(filesLink(site.name)));
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
+	if (!hasProd(site)) add("Change binding", () => changeBinding(site, "test"));
 	if (site.scripts.includes("create_prod.sh")) {
 		add("Create production site", () => openCreateProdDialog(site));
 	}
-	if (!hasProd(site)) add("Change binding", () => changeBinding(site, "test"));
-	if (site.scripts.includes("outdated.sh")) {
+	if (site.kind !== "csharp" && site.kind !== "umbraco" && site.scripts.includes("outdated.sh")) {
 		actions.append(el("button", { textContent: "Check outdated", title: "outdated.sh", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));
 	}
 	if (site.kind === "python") {
@@ -362,6 +362,9 @@ function renderSite(name) {
 		const packageActions = el("div", { className: "actions" },
 			el("button", { textContent: "Add package", onclick: () => run(() => openPackageDialog(site, "add")) }),
 			el("button", { textContent: "Remove package", onclick: () => run(() => openPackageDialog(site, "remove")) }));
+		if (site.scripts.includes("outdated.sh")) {
+			packageActions.append(el("button", { textContent: "Check outdated", title: "outdated.sh", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));
+		}
 		const packageList = el("div", { className: "package-list" });
 		for (const item of packages) {
 			packageList.append(el("button", {
