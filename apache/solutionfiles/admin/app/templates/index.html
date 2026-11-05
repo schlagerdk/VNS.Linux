@@ -16,7 +16,7 @@
     <span class="logo">▤</span>
     <span><h1>Server admin</h1><span class="host">{{ hostname }}</span></span>
   </a>
-  <input id="search" type="search" placeholder="Search sites…  ( / )" autocomplete="off">
+  <input id="search" type="search" placeholder="Search sites…  ( / )" autocomplete="off" hidden>
   <span class="spacer"></span>
   <button id="btn-dock" class="ghost" title="Terminals (Ctrl+`)" hidden>⌨ Terminals <span id="term-count" class="count" hidden></span></button>
   <div class="user">
@@ -55,7 +55,14 @@
       <button id="btn-new-site" class="primary">＋ New site</button>
     </div>
     <div id="sites" class="cards"></div>
-    <p id="no-sites" class="empty" hidden>No sites match.</p>
+    <div id="no-sites" class="sites-empty" hidden>
+      <div class="sites-empty-icon" aria-hidden="true">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      </div>
+      <h2 id="empty-sites-title">Your first site starts here</h2>
+      <p id="empty-sites-description">Create a home for your next idea. Set up your first site in just a few steps.</p>
+      <button id="btn-empty-new-site" class="primary" type="button"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New site</button>
+    </div>
   </section>
 
   <section id="view-site" hidden>

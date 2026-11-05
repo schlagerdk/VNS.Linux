@@ -138,7 +138,7 @@ const views = ["sites", "site"];
 function showView(name) {
 	currentView = name;
 	for (const view of views) $("#view-" + view).hidden = view !== name;
-	if (name === "sites" && $("#dock").hidden) $("#search").focus({ preventScroll: true });
+	if (name === "sites" && $("#dock").hidden && !$("#search").hidden) $("#search").focus({ preventScroll: true });
 }
 
 // Hash routes: #sites, #site/<name>, #files/<path>
@@ -220,9 +220,11 @@ function renderStats() {
 		const n = count((s) => s.kind === kind);
 		if (n) chips.push([kind, kindLabel[kind], n]);
 	}
+	if (!chips.some(([key, , n]) => key === filter && n > 0)) filter = "all";
 	const box = $("#stats");
 	box.replaceChildren();
 	for (const [key, label, n] of chips) {
+		if (!n) continue;
 		box.append(el("div", { className: "chip" + (filter === key ? " active" : ""), onclick: () => { filter = key; renderSites(); } },
 			el("b", { textContent: n }), el("span", { textContent: label })));
 	}
@@ -308,6 +310,13 @@ function renderSites() {
 	box.replaceChildren();
 	const visible = listedSites().filter(matches);
 	$("#no-sites").hidden = visible.length > 0;
+	$("#btn-new-site").hidden = visible.length === 0;
+	const firstSite = listedSites().length === 0;
+	$("#search").hidden = firstSite;
+	$("#empty-sites-title").textContent = firstSite ? "Your first site starts here" : "Make room for your next idea";
+	$("#empty-sites-description").textContent = firstSite
+		? "Create a home for your next idea. Set up your first site in just a few steps."
+		: "Try a different search or filter, or bring something new to life by creating a site.";
 	for (const site of visible) box.append(siteCard(site));
 	decorate(box);
 }
@@ -531,7 +540,10 @@ function envPanel(site, env) {
 	if (env.mode === "remote") heading.append(remoteIcon(env));
 
 	const scheme = env.scheme || "https";
-	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, env.binding ? openLink(env.binding, scheme + "://" + env.binding + "/") : bindingLink("")));
+	const binding = !env.binding ? bindingLink("") : site.admin && env.key !== "prod"
+		? el("span", { textContent: env.binding })
+		: openLink(env.binding, scheme + "://" + env.binding + "/");
+	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, binding));
 	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(env.binding + "/umbraco", scheme + "://" + env.binding + "/umbraco")));
 	if (env.port) meta.append(el("dt", { textContent: "Port" }), el("dd", { textContent: env.port }));
 	if (env.mode === "remote") {
@@ -669,7 +681,7 @@ $("#btn-server-shell").onclick = () => run(() => openTask({ kind: "shell" }));
 $("#btn-browse").onclick = () => run(() => openFiles(""));
 document.addEventListener("keydown", (event) => {
 	const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
-	if (event.key === "/" && !typing) { event.preventDefault(); if (currentView !== "sites") go("sites"); $("#search").focus(); }
+	if (event.key === "/" && !typing && !$("#search").hidden) { event.preventDefault(); if (currentView !== "sites") go("sites"); $("#search").focus(); }
 	if (event.key === "`" && event.ctrlKey) { event.preventDefault(); toggleDock(); }
 	if (event.key === "Escape") $("#user-menu").hidden = true;
 });
@@ -715,6 +727,7 @@ siteForm.addEventListener("change", (event) => { if (event.target.name === "type
 siteForm.site.oninput = () => { if (!siteForm.binding.dataset.edited) siteForm.binding.value = siteForm.site.value; };
 siteForm.binding.oninput = () => { siteForm.binding.dataset.edited = "1"; };
 $("#btn-new-site").onclick = () => { siteForm.reset(); siteForm.version.value = defaultUmbracoVersion; delete siteForm.binding.dataset.edited; syncSiteForm(); dialog.showModal(); siteForm.site.focus(); };
+$("#btn-empty-new-site").onclick = () => $("#btn-new-site").click();
 $("#site-cancel").onclick = (e) => { e.preventDefault(); dialog.close(); };
 siteForm.onsubmit = () => {
 	const data = Object.fromEntries(new FormData(siteForm));
