@@ -48,7 +48,21 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	const field = $("#prompt-input");
 	const okButton = $("#prompt-ok");
 	$("#prompt-title").textContent = title;
-	$("#prompt-message").textContent = message;
+	const messageBox = $("#prompt-message");
+	messageBox.textContent = message;
+	const matchIndex = match ? message.indexOf(match) : -1;
+	if (matchIndex >= 0) {
+		const copy = el("button", {
+			type: "button", className: "confirmation-copy", textContent: match,
+			title: "Copy confirmation text", ariaLabel: "Copy confirmation text: " + match,
+			onclick: () => run(async () => {
+				if (!navigator.clipboard) throw new Error("Clipboard access requires HTTPS or localhost.");
+				await navigator.clipboard.writeText(match);
+				toast("Copied " + match, "ok");
+			}),
+		});
+		messageBox.replaceChildren(message.slice(0, matchIndex), copy, message.slice(matchIndex + match.length));
+	}
 	$("#prompt-message").hidden = !message;
 	field.hidden = !input;
 	field.value = value;

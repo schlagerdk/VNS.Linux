@@ -301,6 +301,8 @@ a.btn-link .ico { width: 13px; height: 13px; flex: none; }
 	.site-environment-links { margin-left: auto; }
 }
 .https-lock { display: inline-flex; align-items: center; flex: none; }
+.confirmation-copy { display: inline; padding: 2px 6px; border: 1px dashed var(--blue); border-radius: 5px; background: rgba(88, 166, 255, .08); color: var(--blue); font: inherit; overflow-wrap: anywhere; }
+.confirmation-copy:hover { border-color: var(--blue); background: rgba(88, 166, 255, .18); }
 .https-lock.secure { color: #e3b341; }
 .https-lock.insecure { color: var(--red); }
 .https-lock.unknown { color: var(--muted); }
