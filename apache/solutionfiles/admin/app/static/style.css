@@ -190,3 +190,5 @@ dialog.wide { width: min(1000px, 94vw); }
 @media (max-width: 800px) { .page-header #search { min-width: 0; flex: 1; } .brand h1, .brand .host { display: none; } .envs { grid-template-columns: 1fr; } }
 
 .list { position: relative; overflow-x: auto; }
+.env .actions.quick { margin-top: 12px; }
+.env .actions.quick button { background: var(--accent-soft, transparent); }

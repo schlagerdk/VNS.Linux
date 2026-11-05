@@ -247,6 +247,23 @@ function renderSite(name) {
 	for (const env of site.environments) envs.append(envPanel(site, env));
 }
 
+// [script candidates, button label, confirmation text (null = none; the script asks itself)]
+function quickActions(env) {
+	if (env.key === "prod") {
+		return [
+			[["publish_prod.sh"], "Publish", "Build and publish this site to production. The service is restarted."],
+			[["sync_prod.sh"], "Sync to prod", "Sync content to production."],
+			[["clear_logs_prod.sh"], "Clear logs", "Delete the production logs."],
+		];
+	}
+	return [
+		[["publish_local.sh", "publish.sh"], "Publish", "Build and publish the test site. The service is restarted."],
+		[["clear_logs_local.sh", "clear_logs.sh"], "Clear logs", "Delete the test site logs."],
+		[["issue_certificat.sh"], "Issue certificate", "Issue a new certificate for the test site binding."],
+		[["change_env.sh"], "Change environment", null],
+	];
+}
+
 function envPanel(site, env) {
 	const dot = env.unit ? env.state || "unknown" : "";
 	const heading = el("div", { className: "env-head" },
@@ -276,17 +293,28 @@ function envPanel(site, env) {
 		add("Files", () => go(filesLink(env.path)));
 	}
 
+	const quick = el("div", { className: "actions quick" });
+	for (const [files, label, confirm] of quickActions(env)) {
+		const file = files.find((f) => site.scripts.includes(f));
+		if (!file) continue;
+		quick.append(el("button", { textContent: label, className: "small", title: file, onclick: () => run(async () => {
+			if (confirm && !(await ask({ title: `${label}?`, message: `${confirm} (${env.label.toLowerCase()} · ${site.name})`, input: false, ok: label }))) return;
+			await openTask({ kind: "script", site: site.name, script: file });
+		}) }));
+	}
 	if (hasProd(site) && !site.admin) add("Change binding", () => changeBinding(site, env.key === "prod" ? "prod" : "test", env));
 	if (hasProd(site) && !site.admin) add(env.key === "prod" ? "Delete production site" : "Delete test site", () => deleteSite(site, env.key === "prod" ? "prod" : "test"), "danger");
 
 	const panel = el("section", { className: "env " + (env.key === "prod" ? "prod" : "") }, heading, meta);
 	if (env.exists === false) panel.append(el("p", { className: "muted", textContent: "Nothing published here yet." }));
 	if (env.mode === "remote") panel.append(el("p", { className: "muted", textContent: "Runs on another server. Use publish_prod.sh and sync_prod.sh from “Run script…” to deploy." }));
+	if (quick.children.length) panel.append(quick);
 	panel.append(actions);
 	return panel;
 }
 
 async function serviceAction(site, env, action) {
+	if (action !== "start" && !(await ask({ title: `${action === "stop" ? "Stop" : "Restart"} ${env.unit}?`, message: `${env.label} · ${site.name}`, input: false, ok: action === "stop" ? "Stop" : "Restart", danger: action === "stop" }))) return;
 	await api(`/api/sites/${encodeURIComponent(site.name)}/service`, { json: { action, unit: env.unit } });
 	toast(`${env.unit}: ${action} done`, "ok");
 	await loadSites();
