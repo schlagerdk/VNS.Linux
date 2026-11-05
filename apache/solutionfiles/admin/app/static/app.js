@@ -190,6 +190,7 @@ const iconPaths = {
 	external: "M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6",
 	key: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4",
 	server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01M12 7h5M12 17h5",
+	package: "m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8M7.5 5.5l9 5",
 };
 
 // label (exact, or a prefix ending in "*") -> [icon, tone]
@@ -357,20 +358,30 @@ function renderSite(name) {
 	for (const env of site.environments) envs.append(envPanel(site, env));
 	if (site.kind === "csharp" || site.kind === "umbraco") {
 		packagesPanel.hidden = false;
+		const packages = (site.packages || []).filter((item) => item.name.toLowerCase() !== "microsoft.icu.icu4c.runtime");
 		const packageActions = el("div", { className: "actions" },
 			el("button", { textContent: "Add package", onclick: () => run(() => openPackageDialog(site, "add")) }),
 			el("button", { textContent: "Remove package", onclick: () => run(() => openPackageDialog(site, "remove")) }));
 		const packageList = el("div", { className: "package-list" });
-		for (const item of site.packages || []) {
-			packageList.append(el("div", { className: "package-row" },
-				el("code", { textContent: item.name }),
-				el("span", { className: "muted", textContent: item.version || "Version managed separately" })));
+		for (const item of packages) {
+			packageList.append(el("button", {
+				type: "button", className: "package-row", title: `Copy ${item.name}`,
+				onclick: () => run(async () => {
+					if (!navigator.clipboard) throw new Error("Clipboard access requires HTTPS or localhost.");
+					await navigator.clipboard.writeText(item.name);
+					toast(`Copied ${item.name}`, "ok");
+				}),
+			},
+				el("span", { className: "package-name" }, svgIcon("package"), el("span", { textContent: item.name })),
+				el("span", { className: "package-version", textContent: item.version || "Managed separately" })));
 		}
 		if (!packageList.children.length && !(site.package_errors || []).length) {
-			packageList.append(el("p", { className: "muted", textContent: "No PackageReference entries found in the project files." }));
+			packageList.append(el("p", { className: "muted", textContent: "No packages to display." }));
 		}
 		packagesPanel.append(
-			el("div", { className: "package-head" }, el("h3", { textContent: "NuGet packages" }), packageActions),
+			el("div", { className: "package-head" },
+				el("div", { className: "package-heading" }, el("h3", { textContent: "NuGet packages" }), el("span", { className: "package-count", textContent: String(packages.length), title: "Visible package references" })),
+				packageActions),
 			...(site.package_errors || []).map((message) => el("p", { className: "package-error", textContent: `Could not read package references: ${message}` })),
 			packageList);
 	}
