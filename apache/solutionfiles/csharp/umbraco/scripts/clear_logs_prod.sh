@@ -10,8 +10,6 @@ PROD_SSH_PORT=22
 PROD_FOLDER="@SITE@"            # Folder name on prod (/var/www/<folder>)
 # ---------------------------------------------------------------------------
 
-_publishFolder=@PUBLISH_FOLDER@
-
 if [[ -z ${PROD_IP} || -z ${PROD_USER} || -z ${PROD_FOLDER} ]]; then
 	echo "Set PROD_IP, PROD_USER and PROD_FOLDER at the top of this script" >&2
 	exit 1
@@ -29,7 +27,7 @@ _sudo=""
 "${_ssh[@]}" "${PROD_USER}@${PROD_IP}" "${_sudo} bash -s" <<REMOTE
 set -e
 systemctl stop '${PROD_FOLDER}'
-rm -rf '/var/www/${PROD_FOLDER}/${_publishFolder}/umbraco/Logs'
+rm -rf '/var/www/${PROD_FOLDER}/umbraco/Logs'
 systemctl start '${PROD_FOLDER}'
 systemctl status '${PROD_FOLDER}' --no-pager
 REMOTE

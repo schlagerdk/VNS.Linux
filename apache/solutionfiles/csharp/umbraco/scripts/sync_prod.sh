@@ -14,7 +14,7 @@ PROD_FOLDER="@SITE@"            # Folder name on prod (/var/www/<folder>)
 # ---------------------------------------------------------------------------
 
 _publishFolder=@PUBLISH_FOLDER@
-_destination=/var/www/${PROD_FOLDER}/${_publishFolder}
+_destination=/var/www/${PROD_FOLDER}
 
 if [[ -z ${PROD_IP} || -z ${PROD_USER} || -z ${PROD_FOLDER} ]]; then
 	echo "Destination not found: set PROD_IP, PROD_USER and PROD_FOLDER at the top of this script" >&2

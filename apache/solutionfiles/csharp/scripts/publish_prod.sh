@@ -14,7 +14,7 @@ PROD_PASSWORD=""                # SSH password (needs sshpass). Leave empty to u
 PROD_SSH_PORT=22
 PROD_FOLDER="@SITE@"            # Folder name on prod (/var/www/<folder>)
 PROD_BINDING="@BINDING@"        # Public domain on prod, e.g. account.vns.dk
-PROD_PORT_HTTP="@PORT_HTTP@"    # Local Kestrel port on prod (must be unused there)
+PROD_PORT_HTTP=$((@PORT_HTTP@ + 2000))   # Local Kestrel port on prod: test port + 2000, so it cannot clash with sites created locally on prod
 PROD_ENVIRONMENT="Production"
 PROD_ADMIN_MAIL="@ADMIN_MAIL@"
 # ---------------------------------------------------------------------------
@@ -50,19 +50,19 @@ fi
 _umbraco=0
 [[ -f ${_publishFolder}/Umbraco.Cms.Core.dll ]] && _umbraco=1
 
-_vars="SITE='${PROD_FOLDER}' BINDING='${PROD_BINDING}' PORT='${PROD_PORT_HTTP}' ENVIRONMENT='${PROD_ENVIRONMENT}' MAIL='${PROD_ADMIN_MAIL}' PROJECT='${_projectName}' PUBLISH='${_publishFolder}' UMBRACO='${_umbraco}'"
+_vars="SITE='${PROD_FOLDER}' BINDING='${PROD_BINDING}' PORT='${PROD_PORT_HTTP}' ENVIRONMENT='${PROD_ENVIRONMENT}' MAIL='${PROD_ADMIN_MAIL}' PROJECT='${_projectName}' UMBRACO='${_umbraco}'"
 
 echo "Prepare ${PROD_FOLDER} on ${PROD_IP}"
 remote "${_sudo} env ${_vars} bash -s" <<'REMOTE'
 set -euo pipefail
 root=/var/www/${SITE}
-docroot=${root}/${PUBLISH}/wwwroot
+docroot=${root}/wwwroot
 conf=/etc/apache2/sites-available/${SITE}.conf
 service=/etc/systemd/system/${SITE}.service
 certdir=/etc/ssl/certs/${SITE}_ecc
 acme=/etc/acmesh/acme.sh
 
-mkdir -p "${root}/${PUBLISH}" "${docroot}" "/var/lib/vns-roots/${SITE}"
+mkdir -p "${docroot}" "/var/lib/vns-roots/${SITE}"
 if [[ -e ${service} ]]; then
 	echo "Stop service"
 	systemctl stop "${SITE}" || true
@@ -77,8 +77,8 @@ Description=Running .NET Core [${SITE}]
 [Service]
 User=www-data
 Group=www-data
-WorkingDirectory=${root}/${PUBLISH}
-ExecStart=/usr/lib/dotnet/dotnet ${root}/${PUBLISH}/${PROJECT}.dll --urls "http://localhost:${PORT}"
+WorkingDirectory=${root}
+ExecStart=/usr/lib/dotnet/dotnet ${root}/${PROJECT}.dll --urls "http://localhost:${PORT}"
 RestartSec=10
 Restart=always
 KillSignal=SIGINT
@@ -102,7 +102,7 @@ RootDirectory=/var/lib/vns-roots/${SITE}
 BindReadOnlyPaths=/usr/lib/dotnet /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu /lib64 /usr/lib/ssl -/usr/share/zoneinfo -/usr/share/ca-certificates /etc/ssl /etc/ld.so.cache /etc/resolv.conf /etc/hosts /etc/nsswitch.conf /etc/passwd /etc/group /etc/localtime /etc/os-release
 BindPaths=${root}
 MountAPIVFS=yes
-ReadWritePaths=${root}/${PUBLISH}
+ReadWritePaths=${root}
 
 [Install]
 WantedBy=multi-user.target
@@ -198,17 +198,17 @@ EOF
 fi
 REMOTE
 
-echo "Upload to ${_target}:${_root}/${_publishFolder}"
+echo "Upload to ${_target}:${_root}"
 # Keep prod-specific settings and content that only exists on prod
 _keep=(--exclude 'appsettings-schema*.json' --exclude 'umbraco-package-schema.json' --exclude 'appsettings*.json' --exclude 'wwwroot/media/' --exclude 'umbraco/Data/' --exclude 'umbraco/Logs/' --exclude 'App_Data/')
-rsync -az --delete "${_keep[@]}" -e "${_rsyncShell}" --rsync-path="${_rsyncPath}" "${_publishFolder}/" "${_target}:${_root}/${_publishFolder}/"
+rsync -az --delete "${_keep[@]}" -e "${_rsyncShell}" --rsync-path="${_rsyncPath}" "${_publishFolder}/" "${_target}:${_root}/"
 # appsettings are only copied the first time
-rsync -az --ignore-existing --include 'appsettings*.json' --exclude '*' -e "${_rsyncShell}" --rsync-path="${_rsyncPath}" "${_publishFolder}/" "${_target}:${_root}/${_publishFolder}/"
+rsync -az --ignore-existing --include 'appsettings*.json' --exclude '*' -e "${_rsyncShell}" --rsync-path="${_rsyncPath}" "${_publishFolder}/" "${_target}:${_root}/"
 
 echo "Start service"
 remote "${_sudo} env ${_vars} bash -s" <<'REMOTE'
 set -euo pipefail
-dir=/var/www/${SITE}/${PUBLISH}
+dir=/var/www/${SITE}
 file=${dir}/appsettings.json
 if [[ ${UMBRACO} == 1 && -f ${file} ]]; then
 	sed -i -E "s|(\"UmbracoApplicationUrl\"[[:space:]]*:[[:space:]]*\")[^\"]*|\1https://${BINDING}|" "${file}"
