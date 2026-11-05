@@ -23,7 +23,7 @@ import ptyprocess
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, session
 from flask_sock import Sock
 from werkzeug.exceptions import HTTPException
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.environ.get("VNS_ADMIN_CONFIG", os.path.join(BASE, "config.json"))
@@ -158,7 +158,7 @@ def logout():
 
 @app.route("/")
 def index():
-    return render_template("index.html", csrf=csrf_token(), admin_site=ADMIN_SITE, hostname=socket.gethostname())
+    return render_template("index.html", csrf=csrf_token(), admin_site=ADMIN_SITE, hostname=socket.gethostname(), user=session["user"])
 
 
 # ------------------------------------------------------------------ helpers
@@ -192,12 +192,59 @@ def read_text(path):
         return ""
 
 
+PROD_KEYS = ("PROD_LOCAL_PATH", "PROD_IP", "PROD_USER", "PROD_SSH_PORT", "PROD_FOLDER", "PROD_BINDING", "PROD_PORT_HTTP")
+
+
+def parse_prod(root):
+    """A site has a production site when scripts/publish_prod.sh exists; its settings block has the details.
+    The password is never read."""
+    text = read_text(os.path.join(root, "scripts", "publish_prod.sh"))
+    if not text:
+        return None
+    values = {}
+    for key in PROD_KEYS:
+        match = re.search(r"^%s=(\S*)" % key, text, re.M)
+        value = match.group(1).strip("'\"") if match else ""
+        values[key] = "" if value.startswith("@") else value
+    return values
+
+
+def conf_binding(unit):
+    match = re.search(r"^\s*ServerName\s+(\S+)", read_text(os.path.join(APACHE_SITES, unit + ".conf")), re.M)
+    return match.group(1) if match else ""
+
+
+def service_port(unit):
+    match = re.search(r"(?:localhost|127\.0\.0\.1):(\d+)", read_text(os.path.join(SERVICE_DIR, unit + ".service")))
+    return match.group(1) if match else ""
+
+
+def unit_of(name):
+    return os.path.isfile(os.path.join(SERVICE_DIR, name + ".service"))
+
+
+def environment_info(key, label, unit, binding, port, path, states, **extra):
+    service = bool(unit) and unit_of(unit)
+    info = {"key": key, "label": label, "unit": unit if service else "", "binding": binding, "port": port, "path": path,
+            "state": states.get(unit, "") if service else ""}
+    info.update(extra)
+    return info
+
+
+def site_units(name):
+    """Unit names the admin may control for a site: its own service and a local production service."""
+    units = [name]
+    prod = parse_prod(os.path.join(WEB_ROOT, name))
+    if prod and prod["PROD_LOCAL_PATH"] and NAME_RE.match(prod["PROD_FOLDER"] or ""):
+        units.append(prod["PROD_FOLDER"])
+    return units
+
+
 def site_info(name, states):
     root = os.path.join(WEB_ROOT, name)
     conf = os.path.join(APACHE_SITES, name + ".conf")
-    service_file = os.path.join(SERVICE_DIR, name + ".service")
+    service_text = read_text(os.path.join(SERVICE_DIR, name + ".service"))
     conf_text = read_text(conf)
-    service_text = read_text(service_file)
 
     binding = ""
     match = re.search(r"^\s*ServerName\s+(\S+)", conf_text, re.M)
@@ -207,6 +254,7 @@ def site_info(name, states):
     match = re.search(r"(?:localhost|127\.0\.0\.1):(\d+)", service_text)
     if match:
         port = match.group(1)
+    aspnet = re.search(r"ASPNETCORE_ENVIRONMENT=(\S+)", service_text)
 
     projects = glob.glob(os.path.join(root, "*.csproj"))
     if projects:
@@ -221,16 +269,32 @@ def site_info(name, states):
     if os.path.isdir(scripts_dir):
         scripts = sorted(f for f in os.listdir(scripts_dir) if SCRIPT_RE.match(f) and os.path.isfile(os.path.join(scripts_dir, f)))
 
+    first_label = "Test" if not aspnet or aspnet.group(1) != "Production" else "Production"
+    if name == ADMIN_SITE:
+        first_label = "Admin"
+    environments = [environment_info("main", first_label if kind in ("csharp", "umbraco") else "Live", name, binding, port, name, states,
+                                     environment=aspnet.group(1) if aspnet else "", apache=os.path.exists(os.path.join(APACHE_ENABLED, name + ".conf")))]
+
+    prod = parse_prod(root)
+    if prod:
+        local = prod["PROD_LOCAL_PATH"]
+        if local:
+            full = os.path.realpath(local)
+            inside = full == WEB_ROOT or full.startswith(WEB_ROOT + os.sep)
+            unit = prod["PROD_FOLDER"]
+            environments.append(environment_info("prod", "Production", unit, prod["PROD_BINDING"] or conf_binding(unit), prod["PROD_PORT_HTTP"] or service_port(unit),
+                                                 rel(full) if inside else "", states, mode="local", exists=os.path.isdir(full), environment="Production"))
+        else:
+            environments.append({"key": "prod", "label": "Production", "mode": "remote", "unit": "", "state": "", "binding": prod["PROD_BINDING"],
+                                 "port": prod["PROD_PORT_HTTP"], "path": "", "host": prod["PROD_IP"], "user": prod["PROD_USER"],
+                                 "ssh_port": prod["PROD_SSH_PORT"], "folder": prod["PROD_FOLDER"], "environment": "Production"})
+
     return {
         "name": name,
-        "binding": binding,
         "kind": kind,
-        "port": port,
-        "service": os.path.isfile(service_file),
-        "state": states.get(name, "") if os.path.isfile(service_file) else "",
-        "apache": os.path.exists(os.path.join(APACHE_ENABLED, name + ".conf")),
         "scripts": scripts,
         "admin": name == ADMIN_SITE,
+        "environments": environments,
     }
 
 
@@ -270,23 +334,81 @@ def own_like_parent(path):
 @app.route("/api/sites")
 def api_sites():
     names = site_dirs()
-    states = service_states(names)
+    units = []
+    for n in names:
+        units.extend(site_units(n))
+    states = service_states(units)
     return jsonify(sites=[site_info(n, states) for n in names])
 
 
 @app.route("/api/sites/<name>/service", methods=["POST"])
 def api_service(name):
-    action = (request.get_json(silent=True) or {}).get("action")
-    if name not in site_dirs() or action not in ("start", "stop", "restart"):
-        return error("Unknown site or action")
-    if not os.path.isfile(os.path.join(SERVICE_DIR, name + ".service")):
+    data = request.get_json(silent=True) or {}
+    action = data.get("action")
+    unit = data.get("unit") or name
+    if name not in site_dirs() or action not in ("start", "stop", "restart") or unit not in site_units(name):
+        return error("Unknown site, service or action")
+    if not unit_of(unit):
         return error("The site has no service")
-    if name == ADMIN_SITE and action != "restart":
+    if unit == ADMIN_SITE and action != "restart":
         return error("The admin site cannot stop itself")
-    result = subprocess.run(["systemctl", action, name], capture_output=True, text=True, timeout=60)
+    result = subprocess.run(["systemctl", action, unit], capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
         return error((result.stderr or result.stdout).strip() or "systemctl failed", 500)
     return jsonify(ok=True)
+
+
+@app.route("/api/sites/<name>/logs")
+def api_logs(name):
+    unit = request.args.get("unit") or name
+    if name not in site_dirs() or unit not in site_units(name):
+        return error("Unknown site or service")
+    result = subprocess.run(["journalctl", "-u", unit, "-n", "300", "--no-pager", "-o", "short-iso"], capture_output=True, text=True, timeout=20)
+    return jsonify(text=result.stdout or result.stderr)
+
+
+# ------------------------------------------------------------------- profile
+
+CONFIG_LOCK = threading.Lock()
+
+
+def save_config():
+    fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(cfg, f, indent=2)
+    os.chmod(CONFIG_PATH, 0o600)
+
+
+@app.route("/api/profile", methods=["GET", "POST"])
+def api_profile():
+    if request.method == "GET":
+        return jsonify(user=cfg["user"])
+    data = request.get_json(silent=True) or {}
+    ip = client_ip()
+    if login_locked(ip):
+        return error("Too many failed attempts. Try again later.", 429)
+    if not check_password_hash(cfg["password_hash"], data.get("current_password", "")):
+        record_failure(ip)
+        time.sleep(1)
+        return error("The current password is wrong.", 403)
+    user = (data.get("username") or "").strip() or cfg["user"]
+    new_password = data.get("new_password") or ""
+    if not re.match(r"^[A-Za-z0-9._@-]{1,64}$", user):
+        return error("Invalid username. Use letters, numbers and . _ @ - (max 64).")
+    if new_password and len(new_password) < 12:
+        return error("The new password must be at least 12 characters.")
+    if user == cfg["user"] and not new_password:
+        return error("Nothing to change.")
+    with CONFIG_LOCK:
+        cfg["user"] = user
+        if new_password:
+            cfg["password_hash"] = generate_password_hash(new_password)
+            # A new secret key signs out every other session; this one is re-signed below
+            cfg["secret_key"] = secrets.token_hex(32)
+            app.secret_key = cfg["secret_key"]
+        save_config()
+    session["user"] = user
+    return jsonify(ok=True, user=user)
 
 
 # ------------------------------------------------------------- terminal API
@@ -391,7 +513,14 @@ def build_command(data):
         site = data.get("site") or ""
         if site:
             site = site_arg(data)
-            return "Shell: " + site, [bash, "-l"], os.path.join(WEB_ROOT, site)
+            cwd = os.path.join(WEB_ROOT, site)
+            title = "Shell: " + site
+            if data.get("path"):
+                cwd = safe_path(data["path"])
+                if not os.path.isdir(cwd):
+                    abort(400, "Unknown folder")
+                title = "Shell: " + (data.get("label") or rel(cwd))[:60]
+            return title, [bash, "-l"], cwd
         return "Shell: server", [bash, "-l"], WEB_ROOT
     if kind == "script":
         site = site_arg(data)

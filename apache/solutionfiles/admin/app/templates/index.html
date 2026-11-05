@@ -12,24 +12,29 @@
 </head>
 <body>
 <header class="page-header">
-  <div class="brand">
-    <h1>Server admin</h1>
-    <span class="host">{{ hostname }}</span>
+  <a class="brand" href="#sites" title="All sites">
+    <span class="logo">▤</span>
+    <span><h1>Server admin</h1><span class="host">{{ hostname }}</span></span>
+  </a>
+  <input id="search" type="search" placeholder="Search sites…  ( / )" autocomplete="off">
+  <span class="spacer"></span>
+  <button id="btn-dock" class="ghost" title="Terminals (Ctrl+`)">⌨ Terminals <span id="term-count" class="count" hidden></span></button>
+  <div class="user">
+    <button id="btn-user" class="avatar" title="Account" aria-haspopup="true">{{ user[:1]|upper }}</button>
+    <div id="user-menu" class="menu" hidden>
+      <div class="menu-head"><b id="menu-user">{{ user }}</b><span class="muted">Administrator</span></div>
+      <button id="menu-profile" type="button">Profile…</button>
+      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Log out</button></form>
+    </div>
   </div>
-  <nav>
-    <button data-view="sites" class="active">Sites</button>
-    <button data-view="files">Files</button>
-    <button data-view="terminals">Terminals <span id="term-count" class="count"></span></button>
-  </nav>
-  <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="ghost">Log out</button></form>
 </header>
 <main>
   <section id="view-sites">
-    <div class="stats" id="stats"></div>
     <div class="toolbar">
-      <input id="search" type="search" placeholder="Search sites…  ( / )" autocomplete="off">
+      <div class="stats" id="stats"></div>
       <span class="spacer"></span>
       <button id="btn-new-site" class="primary">＋ New site</button>
+      <button id="btn-browse">Browse /var/www</button>
       <button id="btn-server-shell">Server shell</button>
       <button id="btn-refresh" title="Refresh">⟳</button>
     </div>
@@ -37,8 +42,17 @@
     <p id="no-sites" class="empty" hidden>No sites match.</p>
   </section>
 
+  <section id="view-site" hidden>
+    <div class="toolbar">
+      <a class="link back" href="#sites">← All sites</a>
+    </div>
+    <div id="site-head"></div>
+    <div id="envs" class="envs"></div>
+  </section>
+
   <section id="view-files" hidden>
     <div class="toolbar">
+      <a id="files-back" class="link back" href="#sites">← All sites</a>
       <div id="crumbs" class="crumbs"></div>
       <span class="spacer"></span>
       <button id="btn-new-file">New file</button>
@@ -63,13 +77,17 @@
       </div>
     </div>
   </section>
-
-  <section id="view-terminals" hidden>
-    <div id="tabs"></div>
-    <div id="panes"></div>
-    <p id="no-terminals" class="empty">No terminals open. Open a shell or run a script from the Sites view.</p>
-  </section>
 </main>
+
+<section id="dock" hidden>
+  <div class="dock-bar">
+    <div id="tabs"></div>
+    <span class="spacer"></span>
+    <button id="dock-size" class="ghost small" title="Taller / shorter">⤢</button>
+    <button id="dock-close" class="ghost small" title="Hide (processes keep running)">✕</button>
+  </div>
+  <div id="panes"></div>
+</section>
 
 <div id="toasts"></div>
 
@@ -101,6 +119,24 @@
     <p class="hint">The script runs in a terminal, so you can answer any extra prompt there.</p>
     <menu><button type="button" id="site-cancel">Cancel</button><button type="submit" value="ok" class="primary">Create</button></menu>
   </form>
+</dialog>
+
+<dialog id="dlg-profile">
+  <form method="dialog" id="form-profile">
+    <h2>Profile</h2>
+    <label>Username <input name="username" autocomplete="username" required></label>
+    <label>New password <input name="new_password" type="password" autocomplete="new-password" placeholder="leave empty to keep"></label>
+    <label>Repeat new password <input name="repeat" type="password" autocomplete="new-password"></label>
+    <label>Current password (required) <input name="current_password" type="password" autocomplete="current-password" required></label>
+    <p class="hint">Passwords need at least 12 characters. Changing the password signs out all other sessions.</p>
+    <menu><button type="button" id="profile-cancel">Cancel</button><button type="submit" value="ok" class="primary">Save</button></menu>
+  </form>
+</dialog>
+
+<dialog id="dlg-logs" class="wide">
+  <h2 id="logs-title"></h2>
+  <pre id="logs-text"></pre>
+  <menu><button type="button" id="logs-refresh">Refresh</button><button type="button" id="logs-close" class="primary">Close</button></menu>
 </dialog>
 
 <script src="/static/vendor/xterm.js"></script>

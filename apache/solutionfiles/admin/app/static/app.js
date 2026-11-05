@@ -70,16 +70,39 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 // ------------------------------------------------------------------ views
 
 let filesLoaded = false;
-const views = ["sites", "files", "terminals"];
+let currentView = "sites";
+const views = ["sites", "site", "files"];
+
 function showView(name) {
-	if (!views.includes(name)) name = "sites";
+	currentView = name;
 	for (const view of views) $("#view-" + view).hidden = view !== name;
-	for (const button of document.querySelectorAll("nav button")) button.classList.toggle("active", button.dataset.view === name);
-	history.replaceState(null, "", "#" + name);
-	if (name === "terminals") fitActive();
-	if (name === "files" && !filesLoaded) { filesLoaded = true; run(() => loadFiles(currentPath)); }
+	if (name === "sites") $("#search").focus({ preventScroll: true });
 }
-for (const button of document.querySelectorAll("nav button")) button.onclick = () => showView(button.dataset.view);
+
+// Hash routes: #sites, #site/<name>, #files/<path>
+async function route() {
+	const hash = decodeURIComponent(location.hash.slice(1));
+	const slash = hash.indexOf("/");
+	const view = slash < 0 ? hash : hash.slice(0, slash);
+	const arg = slash < 0 ? "" : hash.slice(slash + 1);
+	if (currentView === "files" && view !== "files" && !(await discardOk())) {
+		history.replaceState(null, "", "#files/" + encodeURI(currentPath));
+		return;
+	}
+	if (view === "files") {
+		showView("files");
+		await run(() => loadFiles(arg));
+	} else if (view === "site" && arg) {
+		showView("site");
+		renderSite(arg);
+	} else {
+		showView("sites");
+	}
+}
+window.addEventListener("hashchange", route);
+const go = (hash) => { location.hash = hash; };
+const siteLink = (name) => "#site/" + encodeURIComponent(name);
+const filesLink = (path) => "#files/" + path.split("/").map(encodeURIComponent).join("/");
 
 // ------------------------------------------------------------------ sites
 
@@ -92,14 +115,24 @@ const kindLabel = { umbraco: "Umbraco", csharp: "C# / .NET", python: "Python", h
 async function loadSites() {
 	allSites = (await api("/api/sites")).sites;
 	renderSites();
+	if (currentView === "site") renderSite(decodeURIComponent(location.hash.slice(6)));
 }
+
+// A site is running when any of its services is; sites without a service are static
+function siteState(site) {
+	const units = site.environments.filter((e) => e.unit);
+	if (!units.length) return "";
+	return units.some((e) => e.state === "active") ? "active" : "inactive";
+}
+const hasProd = (site) => site.environments.some((e) => e.key === "prod");
 
 function renderStats() {
 	const count = (test) => allSites.filter(test).length;
 	const chips = [
 		["all", "All", allSites.length],
-		["running", "Running", count((s) => s.state === "active")],
-		["stopped", "Stopped", count((s) => s.service && s.state !== "active")],
+		["running", "Running", count((s) => siteState(s) === "active")],
+		["stopped", "Stopped", count((s) => siteState(s) === "inactive")],
+		["prod", "With prod", count(hasProd)],
 	];
 	for (const kind of Object.keys(kindLabel)) {
 		const n = count((s) => s.kind === kind);
@@ -114,11 +147,14 @@ function renderStats() {
 }
 
 function matches(site) {
-	if (filter === "running" && site.state !== "active") return false;
-	if (filter === "stopped" && !(site.service && site.state !== "active")) return false;
+	const state = siteState(site);
+	if (filter === "running" && state !== "active") return false;
+	if (filter === "stopped" && state !== "inactive") return false;
+	if (filter === "prod" && !hasProd(site)) return false;
 	if (kindLabel[filter] && site.kind !== filter) return false;
 	const text = query.trim().toLowerCase();
-	return !text || (site.name + " " + site.binding).toLowerCase().includes(text);
+	const haystack = site.name + " " + site.environments.map((e) => e.binding + " " + (e.host || "")).join(" ");
+	return !text || haystack.toLowerCase().includes(text);
 }
 
 function renderSites() {
@@ -130,26 +166,54 @@ function renderSites() {
 	for (const site of visible) box.append(siteCard(site));
 }
 
-function siteCard(site) {
-	const state = site.service ? site.state || "unknown" : "";
+const bindingLink = (binding) => binding
+	? el("a", { className: "link", textContent: binding, href: "https://" + binding + "/", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() })
+	: el("span", { className: "muted", textContent: "no binding" });
+
+function kindBadges(site) {
 	const badges = el("div", { className: "badges" }, el("span", { className: "badge " + site.kind, textContent: kindLabel[site.kind] || site.kind }));
 	if (site.admin) badges.append(el("span", { className: "badge admin", textContent: "this admin site" }));
-	badges.append(el("span", { className: "badge " + (state ? "state-" + state : ""), textContent: state || "static" }));
+	return badges;
+}
 
-	const binding = site.binding
-		? el("a", { className: "link", textContent: site.binding, href: "https://" + site.binding + "/", target: "_blank", rel: "noopener noreferrer" })
-		: el("span", { className: "muted", textContent: "—" });
-	const meta = el("dl", { className: "meta" },
-		el("dt", { textContent: "Binding" }), el("dd", {}, binding),
-		el("dt", { textContent: "Folder" }), el("dd", { textContent: "/var/www/" + site.name }));
-	if (site.port) meta.append(el("dt", { textContent: "Port" }), el("dd", { textContent: site.port }));
-
+function siteCard(site) {
+	const state = siteState(site);
+	const rows = el("div", { className: "env-rows" });
+	for (const env of site.environments) {
+		const dot = env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "";
+		rows.append(el("div", { className: "env-row" },
+			el("span", { className: "dot " + dot }),
+			el("span", { className: "env-label", textContent: env.label }),
+			bindingLink(env.binding),
+			env.mode === "remote" ? el("span", { className: "muted", textContent: "on " + (env.host || "remote") }) : el("span")));
+	}
 	const actions = el("div", { className: "actions" });
-	const add = (label, handler, className, title) => actions.append(el("button", { textContent: label, title: title || "", className: "small " + (className || ""), onclick: () => run(handler) }));
-	add("Shell", () => openTask({ kind: "shell", site: site.name }), "", "Open a terminal in the site folder");
-	add("Files", () => openFiles(site.name));
+	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: "small " + (className || ""), onclick: (event) => { event.stopPropagation(); run(handler); } }));
+	add("Manage", () => go(siteLink(site.name)), "primary");
+	add("Shell", () => openTask({ kind: "shell", site: site.name }));
+	add("Files", () => go(filesLink(site.name)));
+
+	return el("article", { className: "site " + state + (site.admin ? " is-admin" : ""), onclick: () => go(siteLink(site.name)) },
+		el("div", { className: "site-head" }, el("span", { className: "dot " + state }), el("h3", { className: "site-title", textContent: site.name })),
+		kindBadges(site), rows, actions);
+}
+
+function renderSite(name) {
+	const site = allSites.find((s) => s.name === name);
+	const head = $("#site-head");
+	const envs = $("#envs");
+	head.replaceChildren();
+	envs.replaceChildren();
+	if (!site) {
+		head.append(el("p", { className: "empty", textContent: allSites.length ? "Site not found." : "Loading…" }));
+		return;
+	}
+	const actions = el("div", { className: "actions" });
+	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: className || "", onclick: () => run(handler) }));
+	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
+	add("Files", () => go(filesLink(site.name)));
 	if (site.scripts.length) {
-		const select = el("select", { className: "small", title: "Run a script from the site's scripts folder" }, el("option", { textContent: "Scripts…", value: "" }));
+		const select = el("select", { title: "Run a script from the site's scripts folder" }, el("option", { textContent: "Run script…", value: "" }));
 		for (const script of site.scripts) select.append(el("option", { textContent: script, value: script }));
 		select.onchange = () => {
 			const script = select.value;
@@ -158,23 +222,71 @@ function siteCard(site) {
 		};
 		actions.append(select);
 	}
-	if (site.service) {
-		if (!site.admin) add(state === "active" ? "Stop" : "Start", () => serviceAction(site.name, state === "active" ? "stop" : "start"));
-		add("Restart", () => serviceAction(site.name, "restart"));
-	}
-	add("Binding", () => changeBinding(site), "", "Change the domain");
-	if (!site.admin) add("Delete", () => deleteSite(site), "danger");
-
-	return el("article", { className: "site " + state + (site.admin ? " is-admin" : "") },
-		el("div", { className: "site-head" }, el("span", { className: "dot " + state }), el("h3", { className: "site-title", textContent: site.name })),
-		badges, meta, actions);
+	add("Change binding", () => changeBinding(site));
+	if (!site.admin) add("Delete site", () => deleteSite(site), "danger");
+	head.append(el("div", { className: "detail-title" }, el("h2", { textContent: site.name }), kindBadges(site)), actions);
+	for (const env of site.environments) envs.append(envPanel(site, env));
 }
 
-async function serviceAction(name, action) {
-	await api(`/api/sites/${encodeURIComponent(name)}/service`, { json: { action } });
-	toast(`${name}: ${action} done`, "ok");
+function envPanel(site, env) {
+	const dot = env.unit ? env.state || "unknown" : "";
+	const heading = el("div", { className: "env-head" },
+		el("span", { className: "dot " + dot }), el("h3", { textContent: env.label }),
+		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
+	if (env.environment) heading.append(el("span", { className: "muted", textContent: env.environment }));
+
+	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, bindingLink(env.binding)));
+	if (env.port) meta.append(el("dt", { textContent: "Port" }), el("dd", { textContent: env.port }));
+	if (env.mode === "remote") {
+		meta.append(el("dt", { textContent: "Server" }), el("dd", { textContent: `${env.user || "?"}@${env.host || "?"}:${env.ssh_port || 22}` }));
+		meta.append(el("dt", { textContent: "Folder" }), el("dd", { textContent: env.folder ? "/var/www/" + env.folder : "—" }));
+	} else {
+		meta.append(el("dt", { textContent: "Folder" }), el("dd", { textContent: "/var/www/" + env.path }));
+		if (env.unit) meta.append(el("dt", { textContent: "Service" }), el("dd", { textContent: env.unit }));
+	}
+
+	const actions = el("div", { className: "actions" });
+	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: "small " + (className || ""), onclick: () => run(handler) }));
+	if (env.unit) {
+		if (env.unit !== site.name || !site.admin) add(env.state === "active" ? "Stop" : "Start", () => serviceAction(site, env, env.state === "active" ? "stop" : "start"));
+		add("Restart", () => serviceAction(site, env, "restart"));
+		add("Logs", () => showLogs(site, env));
+	}
+	if (env.mode !== "remote" && env.path && env.exists !== false) {
+		add("Shell", () => openTask({ kind: "shell", site: site.name, path: env.path, label: site.name + " · " + env.label }));
+		add("Files", () => go(filesLink(env.path)));
+	}
+
+	const panel = el("section", { className: "env " + (env.key === "prod" ? "prod" : "") }, heading, meta);
+	if (env.exists === false) panel.append(el("p", { className: "muted", textContent: "Nothing published here yet." }));
+	if (env.mode === "remote") panel.append(el("p", { className: "muted", textContent: "Runs on another server. Use publish_prod.sh and sync_prod.sh from “Run script…” to deploy." }));
+	panel.append(actions);
+	return panel;
+}
+
+async function serviceAction(site, env, action) {
+	await api(`/api/sites/${encodeURIComponent(site.name)}/service`, { json: { action, unit: env.unit } });
+	toast(`${env.unit}: ${action} done`, "ok");
 	await loadSites();
 }
+
+const logsDialog = $("#dlg-logs");
+let logsTarget = null;
+async function showLogs(site, env) {
+	logsTarget = { site, env };
+	$("#logs-title").textContent = `Logs · ${env.unit}`;
+	if (!logsDialog.open) logsDialog.showModal();
+	await refreshLogs();
+}
+async function refreshLogs() {
+	$("#logs-text").textContent = "Loading…";
+	const data = await api(`/api/sites/${encodeURIComponent(logsTarget.site.name)}/logs?unit=${encodeURIComponent(logsTarget.env.unit)}`);
+	const box = $("#logs-text");
+	box.textContent = data.text || "(no log lines)";
+	box.scrollTop = box.scrollHeight;
+}
+$("#logs-refresh").onclick = () => run(refreshLogs);
+$("#logs-close").onclick = () => logsDialog.close();
 
 async function changeBinding(site) {
 	const binding = await ask({ title: "Change binding", message: `New domain for ${site.name}`, value: site.binding, ok: "Change" });
@@ -191,17 +303,52 @@ async function deleteSite(site) {
 	await openTask({ kind: "delete_site", site: site.name, certificates });
 }
 
-$("#search").oninput = (event) => { query = event.target.value; renderSites(); };
+$("#search").oninput = (event) => {
+	query = event.target.value;
+	if (currentView !== "sites") go("sites");
+	renderSites();
+};
 $("#btn-refresh").onclick = () => run(loadSites);
 $("#btn-server-shell").onclick = () => run(() => openTask({ kind: "shell" }));
+$("#btn-browse").onclick = () => go("files/");
 document.addEventListener("keydown", (event) => {
 	const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
-	if (event.key === "/" && !typing && !$("#view-sites").hidden) { event.preventDefault(); $("#search").focus(); }
+	if (event.key === "/" && !typing) { event.preventDefault(); if (currentView !== "sites") go("sites"); $("#search").focus(); }
+	if (event.key === "`" && event.ctrlKey) { event.preventDefault(); toggleDock(); }
+	if (event.key === "Escape") $("#user-menu").hidden = true;
 });
 setInterval(() => {
-	const busy = document.activeElement && $("#sites").contains(document.activeElement);
-	if (!document.hidden && !$("#view-sites").hidden && !busy && !document.querySelector("dialog[open]")) loadSites().catch(() => {});
+	const busy = document.activeElement && $("#view-sites").contains(document.activeElement) && document.activeElement.tagName !== "BODY";
+	if (!document.hidden && currentView !== "files" && !busy && !document.querySelector("dialog[open]")) loadSites().catch(() => {});
 }, 15000);
+
+// ------------------------------------------------------------------ account
+
+$("#btn-user").onclick = (event) => { event.stopPropagation(); $("#user-menu").hidden = !$("#user-menu").hidden; };
+document.addEventListener("click", (event) => { if (!$("#user-menu").contains(event.target)) $("#user-menu").hidden = true; });
+const profileDialog = $("#dlg-profile");
+const profileForm = $("#form-profile");
+$("#menu-profile").onclick = () => {
+	$("#user-menu").hidden = true;
+	profileForm.reset();
+	profileForm.username.value = $("#menu-user").textContent;
+	profileDialog.showModal();
+	profileForm.current_password.focus();
+};
+$("#profile-cancel").onclick = () => profileDialog.close();
+profileForm.onsubmit = (event) => {
+	event.preventDefault();
+	const data = Object.fromEntries(new FormData(profileForm));
+	run(async () => {
+		if (data.new_password !== data.repeat) throw new Error("The new passwords do not match.");
+		delete data.repeat;
+		const result = await api("/api/profile", { json: data });
+		$("#menu-user").textContent = result.user;
+		$("#btn-user").textContent = result.user.slice(0, 1).toUpperCase();
+		profileDialog.close();
+		toast("Profile saved", "ok");
+	});
+};
 
 const dialog = $("#dlg-site");
 const siteForm = $("#form-site");
@@ -239,15 +386,14 @@ async function discardOk() {
 	return !dirty || (await ask({ title: "Unsaved changes", message: `${openFile} has unsaved changes.`, input: false, ok: "Discard", danger: true })) === true;
 }
 
-async function openFiles(path) {
-	filesLoaded = true;
-	showView("files");
-	await run(() => loadFiles(path));
-}
-
 async function loadFiles(path) {
 	const data = await api("/api/fs/list?path=" + encodeURIComponent(path));
 	currentPath = data.path;
+	filesLoaded = true;
+	history.replaceState(null, "", filesLink(currentPath));
+	const site = currentPath.split("/")[0];
+	$("#files-back").href = site ? siteLink(site) : "#sites";
+	$("#files-back").textContent = site ? "← " + site : "← All sites";
 	const crumbs = $("#crumbs");
 	crumbs.replaceChildren(el("a", { className: "link", textContent: "/var/www", onclick: () => run(() => loadFiles("")) }));
 	let accumulated = "";
@@ -365,9 +511,25 @@ let activeTerminal = null;
 
 function updateTerminalState() {
 	const count = Object.keys(terminals).length;
-	$("#term-count").textContent = count ? `(${count})` : "";
-	$("#no-terminals").hidden = count > 0;
+	$("#term-count").textContent = count;
+	$("#term-count").hidden = !count;
+	if (!count) $("#dock").hidden = true;
 }
+
+function showDock() {
+	$("#dock").hidden = false;
+	document.body.classList.add("with-dock");
+	fitActive();
+}
+
+function toggleDock() {
+	if (!$("#dock").hidden) { $("#dock").hidden = true; return; }
+	if (!Object.keys(terminals).length) { toast("No terminals open. Open a shell or run a script from a site.", ""); return; }
+	showDock();
+}
+$("#btn-dock").onclick = toggleDock;
+$("#dock-close").onclick = () => { $("#dock").hidden = true; };
+$("#dock-size").onclick = () => { $("#dock").classList.toggle("tall"); fitActive(); };
 
 function fitActive() {
 	const t = terminals[activeTerminal];
@@ -444,8 +606,8 @@ function openTerminal(id, title) {
 
 async function openTask(payload) {
 	const data = await api("/api/term", { json: payload });
-	showView("terminals");
 	openTerminal(data.id, data.title);
+	showDock();
 }
 
 async function restoreTerminals() {
@@ -456,8 +618,8 @@ async function restoreTerminals() {
 
 run(async () => {
 	syncSiteForm();
-	showView(location.hash.slice(1));
 	await loadSites();
+	await route();
 	await restoreTerminals();
 	updateTerminalState();
 });
