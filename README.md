@@ -72,11 +72,13 @@ Fetches the latest version from GitHub and synchronizes it to `/vns`. Local file
 
 ### Admin site
 
-`apache/setup_admin_site.sh` creates a Flask website (served by gunicorn behind Apache with a certificate) for managing every site in `/var/www`. It asks for folder name, binding, username, password (min. 12 characters) and an optional IP/CIDR allowlist (empty = everyone).
+`apache/install_admin_site.sh` creates a Flask website (served by gunicorn behind Apache with a certificate) for managing every site in `/var/www`. It asks for folder name, binding, username, password (min. 12 characters) and an optional IP/CIDR allowlist (empty = everyone).
 
 - Sites overview with start/stop/restart, binding and port; run `create_site.sh`, `change_binding.sh` and `delete_site.sh`; run the scripts in a site's `scripts/` folder; open a shell in a site (e.g. `dotnet add package ...`). Everything runs in interactive terminals that survive a browser reload.
 - File browser confined to `/var/www`: edit, upload, download, create, rename, delete.
 - Security: **the site runs as root.** Login is rate limited per IP, sessions are HttpOnly/Secure/SameSite=Strict with a 2 hour idle timeout, and all POSTs require a CSRF token. Use a long password and preferably the IP allowlist.
+- `apache/init.sh` offers to run the installer at the end. To remove the admin site again (service, Apache config, optional certificate, files and login) run `apache/uninstall_admin_site.sh`; other sites are not touched.
+- To update an installed admin site after `update.sh`, run `apache/update_admin_site.sh`. It replaces the app code, updates the Python packages and restarts the site, and keeps the login, the virtual environment and the terminal library.
 - Change the password with `scripts/set_password.sh` in the admin site (this also signs out all sessions). The xterm.js assets are downloaded from jsdelivr when the site is created.
 
 ## Requirements

@@ -6,32 +6,40 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="csrf" content="{{ csrf }}">
 <meta name="admin-site" content="{{ admin_site }}">
-<title>Server admin</title>
+<title>{{ hostname }} · Server admin</title>
 <link rel="stylesheet" href="/static/vendor/xterm.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header>
-  <h1>Server admin</h1>
+<header class="page-header">
+  <div class="brand">
+    <h1>Server admin</h1>
+    <span class="host">{{ hostname }}</span>
+  </div>
   <nav>
     <button data-view="sites" class="active">Sites</button>
     <button data-view="files">Files</button>
-    <button data-view="terminals">Terminals <span id="term-count"></span></button>
+    <button data-view="terminals">Terminals <span id="term-count" class="count"></span></button>
   </nav>
-  <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Log out</button></form>
+  <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="ghost">Log out</button></form>
 </header>
 <main>
   <section id="view-sites">
+    <div class="stats" id="stats"></div>
     <div class="toolbar">
-      <button id="btn-new-site">New site</button>
+      <input id="search" type="search" placeholder="Search sites…  ( / )" autocomplete="off">
+      <span class="spacer"></span>
+      <button id="btn-new-site" class="primary">＋ New site</button>
       <button id="btn-server-shell">Server shell</button>
-      <button id="btn-refresh">Refresh</button>
+      <button id="btn-refresh" title="Refresh">⟳</button>
     </div>
-    <table id="sites"><thead><tr><th>Site</th><th>Binding</th><th>Type</th><th>Port</th><th>State</th><th>Actions</th></tr></thead><tbody></tbody></table>
+    <div id="sites" class="cards"></div>
+    <p id="no-sites" class="empty" hidden>No sites match.</p>
   </section>
+
   <section id="view-files" hidden>
     <div class="toolbar">
-      <span id="crumbs"></span>
+      <div id="crumbs" class="crumbs"></div>
       <span class="spacer"></span>
       <button id="btn-new-file">New file</button>
       <button id="btn-new-folder">New folder</button>
@@ -39,25 +47,40 @@
       <input type="file" id="upload-input" multiple hidden>
     </div>
     <div class="split">
-      <table id="files"><thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead><tbody></tbody></table>
-      <div id="editor" hidden>
+      <div class="panel list" id="drop">
+        <table id="files"><thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="drop-hint">Drop files here to upload</div>
+      </div>
+      <div id="editor" class="panel" hidden>
         <div class="toolbar">
-          <strong id="editor-path"></strong>
+          <strong id="editor-path"></strong><span id="editor-dirty" class="dirty" hidden>● unsaved</span>
           <span class="spacer"></span>
-          <span id="editor-status"></span>
-          <button id="editor-save">Save (Ctrl+S)</button>
+          <span id="editor-status" class="muted"></span>
+          <button id="editor-save" class="primary">Save (Ctrl+S)</button>
           <button id="editor-close">Close</button>
         </div>
         <textarea id="editor-text" spellcheck="false"></textarea>
       </div>
     </div>
   </section>
+
   <section id="view-terminals" hidden>
     <div id="tabs"></div>
     <div id="panes"></div>
-    <p id="no-terminals">No terminals open. Open a shell or run a script from the Sites view.</p>
+    <p id="no-terminals" class="empty">No terminals open. Open a shell or run a script from the Sites view.</p>
   </section>
 </main>
+
+<div id="toasts"></div>
+
+<dialog id="dlg-prompt">
+  <form method="dialog" id="form-prompt">
+    <h2 id="prompt-title"></h2>
+    <p id="prompt-message"></p>
+    <input id="prompt-input" autocomplete="off" spellcheck="false">
+    <menu><button type="button" id="prompt-cancel">Cancel</button><button type="submit" id="prompt-ok" class="primary">OK</button></menu>
+  </form>
+</dialog>
 
 <dialog id="dlg-site">
   <form method="dialog" id="form-site">
@@ -65,9 +88,10 @@
     <label>Folder name <input name="site" required placeholder="www.example.com"></label>
     <label>Binding (domain) <input name="binding" required placeholder="www.example.com"></label>
     <label>Type
-      <select name="type"><option>html</option><option>python</option><option selected>csharp</option></select>
+      <select name="type"><option value="html">HTML</option><option value="python">Python</option><option value="csharp" selected>C# / .NET</option></select>
     </label>
     <fieldset id="csharp-options">
+      <legend>C# options</legend>
       <label>Kind <select name="csharp"><option>umbraco</option><option>empty</option></select></label>
       <label>Umbraco version <input name="version" placeholder="default"></label>
       <label>C# project name <input name="project" placeholder="folder name"></label>
@@ -75,7 +99,7 @@
       <label>Build <select name="build"><option>Debug</option><option>Release</option></select></label>
     </fieldset>
     <p class="hint">The script runs in a terminal, so you can answer any extra prompt there.</p>
-    <menu><button type="button" id="site-cancel">Cancel</button><button type="submit" value="ok">Create</button></menu>
+    <menu><button type="button" id="site-cancel">Cancel</button><button type="submit" value="ok" class="primary">Create</button></menu>
   </form>
 </dialog>
 

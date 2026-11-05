@@ -7,6 +7,7 @@ import glob
 import hmac
 import json
 import os
+import socket
 import queue
 import re
 import secrets
@@ -157,7 +158,7 @@ def logout():
 
 @app.route("/")
 def index():
-    return render_template("index.html", csrf=csrf_token(), admin_site=ADMIN_SITE)
+    return render_template("index.html", csrf=csrf_token(), admin_site=ADMIN_SITE, hostname=socket.gethostname())
 
 
 # ------------------------------------------------------------------ helpers
@@ -207,8 +208,9 @@ def site_info(name, states):
     if match:
         port = match.group(1)
 
-    if glob.glob(os.path.join(root, "*.csproj")):
-        kind = "csharp"
+    projects = glob.glob(os.path.join(root, "*.csproj"))
+    if projects:
+        kind = "umbraco" if any("Umbraco.Cms" in read_text(p) for p in projects) else "csharp"
     elif os.path.isfile(os.path.join(root, "app", "app.py")):
         kind = "python"
     else:

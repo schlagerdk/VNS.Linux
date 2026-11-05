@@ -1,7 +1,6 @@
 "use strict";
 
 const csrf = document.querySelector("meta[name=csrf]").content;
-const adminSite = document.querySelector("meta[name=admin-site]").content;
 const $ = (selector) => document.querySelector(selector);
 
 // Elements are always built with textContent, so file and site names can never inject HTML
@@ -29,80 +28,180 @@ async function api(url, options = {}) {
 	return data;
 }
 
+function toast(message, type) {
+	const node = el("div", { className: "toast " + (type || ""), textContent: message });
+	$("#toasts").append(node);
+	setTimeout(() => node.remove(), type === "error" ? 8000 : 3500);
+}
+
 async function run(action) {
 	try {
 		return await action();
 	} catch (err) {
-		alert(err.message);
+		toast(err.message, "error");
 	}
+}
+
+// Replaces prompt()/confirm(). Resolves to the entered text (or true without an input), or null when cancelled.
+function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null }) {
+	const dlg = $("#dlg-prompt");
+	const field = $("#prompt-input");
+	const okButton = $("#prompt-ok");
+	$("#prompt-title").textContent = title;
+	$("#prompt-message").textContent = message;
+	$("#prompt-message").hidden = !message;
+	field.hidden = !input;
+	field.value = value;
+	field.placeholder = placeholder;
+	okButton.value = "ok";
+	okButton.textContent = ok;
+	okButton.disabled = match !== null;
+	dlg.classList.toggle("danger", danger);
+	field.oninput = () => { if (match !== null) okButton.disabled = field.value !== match; };
+	$("#prompt-cancel").onclick = () => dlg.close("cancel");
+	dlg.returnValue = "";
+	return new Promise((resolve) => {
+		dlg.onclose = () => resolve(dlg.returnValue === "ok" ? (input ? field.value : true) : null);
+		dlg.showModal();
+		if (input) { field.focus(); field.select(); } else okButton.focus();
+	});
 }
 
 // ------------------------------------------------------------------ views
 
+let filesLoaded = false;
+const views = ["sites", "files", "terminals"];
 function showView(name) {
-	for (const view of ["sites", "files", "terminals"]) $("#view-" + view).hidden = view !== name;
+	if (!views.includes(name)) name = "sites";
+	for (const view of views) $("#view-" + view).hidden = view !== name;
 	for (const button of document.querySelectorAll("nav button")) button.classList.toggle("active", button.dataset.view === name);
+	history.replaceState(null, "", "#" + name);
 	if (name === "terminals") fitActive();
+	if (name === "files" && !filesLoaded) { filesLoaded = true; run(() => loadFiles(currentPath)); }
 }
 for (const button of document.querySelectorAll("nav button")) button.onclick = () => showView(button.dataset.view);
 
 // ------------------------------------------------------------------ sites
 
-async function loadSites() {
-	const { sites } = await api("/api/sites");
-	const body = $("#sites tbody");
-	body.replaceChildren();
-	for (const site of sites) {
-		const actions = el("td", { className: "actions" });
-		const add = (label, handler, className) => actions.append(el("button", { textContent: label, onclick: () => run(handler), className: className || "" }));
-		add("Shell", () => openTask({ kind: "shell", site: site.name }));
-		add("Files", () => openFiles(site.name));
-		if (site.scripts.length) {
-			const select = el("select", {}, el("option", { textContent: "Scripts…", value: "" }));
-			for (const script of site.scripts) select.append(el("option", { textContent: script, value: script }));
-			select.onchange = () => {
-				const script = select.value;
-				select.value = "";
-				if (script) run(() => openTask({ kind: "script", site: site.name, script }));
-			};
-			actions.append(select);
-		}
-		if (site.service) {
-			if (!site.admin) add(site.state === "active" ? "Stop" : "Start", () => serviceAction(site.name, site.state === "active" ? "stop" : "start"));
-			add("Restart", () => serviceAction(site.name, "restart"));
-		}
-		add("Binding", () => changeBinding(site));
-		if (!site.admin) add("Delete", () => deleteSite(site), "danger");
+let allSites = [];
+let filter = "all";
+let query = "";
 
-		const name = el("td", {}, el("strong", { textContent: site.name }));
-		if (site.admin) name.append(el("span", { className: "muted", textContent: " (this admin site)" }));
-		body.append(el("tr", {}, name,
-			el("td", { textContent: site.binding }),
-			el("td", { textContent: site.kind }),
-			el("td", { textContent: site.port }),
-			el("td", { className: site.state ? "state-" + site.state : "muted", textContent: site.service ? site.state : "no service" }),
-			actions));
+const kindLabel = { umbraco: "Umbraco", csharp: "C# / .NET", python: "Python", html: "HTML" };
+
+async function loadSites() {
+	allSites = (await api("/api/sites")).sites;
+	renderSites();
+}
+
+function renderStats() {
+	const count = (test) => allSites.filter(test).length;
+	const chips = [
+		["all", "All", allSites.length],
+		["running", "Running", count((s) => s.state === "active")],
+		["stopped", "Stopped", count((s) => s.service && s.state !== "active")],
+	];
+	for (const kind of Object.keys(kindLabel)) {
+		const n = count((s) => s.kind === kind);
+		if (n) chips.push([kind, kindLabel[kind], n]);
 	}
+	const box = $("#stats");
+	box.replaceChildren();
+	for (const [key, label, n] of chips) {
+		box.append(el("div", { className: "chip" + (filter === key ? " active" : ""), onclick: () => { filter = key; renderSites(); } },
+			el("b", { textContent: n }), el("span", { textContent: label })));
+	}
+}
+
+function matches(site) {
+	if (filter === "running" && site.state !== "active") return false;
+	if (filter === "stopped" && !(site.service && site.state !== "active")) return false;
+	if (kindLabel[filter] && site.kind !== filter) return false;
+	const text = query.trim().toLowerCase();
+	return !text || (site.name + " " + site.binding).toLowerCase().includes(text);
+}
+
+function renderSites() {
+	renderStats();
+	const box = $("#sites");
+	box.replaceChildren();
+	const visible = allSites.filter(matches);
+	$("#no-sites").hidden = visible.length > 0;
+	for (const site of visible) box.append(siteCard(site));
+}
+
+function siteCard(site) {
+	const state = site.service ? site.state || "unknown" : "";
+	const badges = el("div", { className: "badges" }, el("span", { className: "badge " + site.kind, textContent: kindLabel[site.kind] || site.kind }));
+	if (site.admin) badges.append(el("span", { className: "badge admin", textContent: "this admin site" }));
+	badges.append(el("span", { className: "badge " + (state ? "state-" + state : ""), textContent: state || "static" }));
+
+	const binding = site.binding
+		? el("a", { className: "link", textContent: site.binding, href: "https://" + site.binding + "/", target: "_blank", rel: "noopener noreferrer" })
+		: el("span", { className: "muted", textContent: "—" });
+	const meta = el("dl", { className: "meta" },
+		el("dt", { textContent: "Binding" }), el("dd", {}, binding),
+		el("dt", { textContent: "Folder" }), el("dd", { textContent: "/var/www/" + site.name }));
+	if (site.port) meta.append(el("dt", { textContent: "Port" }), el("dd", { textContent: site.port }));
+
+	const actions = el("div", { className: "actions" });
+	const add = (label, handler, className, title) => actions.append(el("button", { textContent: label, title: title || "", className: "small " + (className || ""), onclick: () => run(handler) }));
+	add("Shell", () => openTask({ kind: "shell", site: site.name }), "", "Open a terminal in the site folder");
+	add("Files", () => openFiles(site.name));
+	if (site.scripts.length) {
+		const select = el("select", { className: "small", title: "Run a script from the site's scripts folder" }, el("option", { textContent: "Scripts…", value: "" }));
+		for (const script of site.scripts) select.append(el("option", { textContent: script, value: script }));
+		select.onchange = () => {
+			const script = select.value;
+			select.value = "";
+			if (script) run(() => openTask({ kind: "script", site: site.name, script }));
+		};
+		actions.append(select);
+	}
+	if (site.service) {
+		if (!site.admin) add(state === "active" ? "Stop" : "Start", () => serviceAction(site.name, state === "active" ? "stop" : "start"));
+		add("Restart", () => serviceAction(site.name, "restart"));
+	}
+	add("Binding", () => changeBinding(site), "", "Change the domain");
+	if (!site.admin) add("Delete", () => deleteSite(site), "danger");
+
+	return el("article", { className: "site " + state + (site.admin ? " is-admin" : "") },
+		el("div", { className: "site-head" }, el("span", { className: "dot " + state }), el("h3", { className: "site-title", textContent: site.name })),
+		badges, meta, actions);
 }
 
 async function serviceAction(name, action) {
 	await api(`/api/sites/${encodeURIComponent(name)}/service`, { json: { action } });
+	toast(`${name}: ${action} done`, "ok");
 	await loadSites();
 }
 
-function changeBinding(site) {
-	const binding = prompt(`New binding for ${site.name}:`, site.binding);
-	if (binding && binding !== site.binding) return openTask({ kind: "change_binding", site: site.name, binding });
+async function changeBinding(site) {
+	const binding = await ask({ title: "Change binding", message: `New domain for ${site.name}`, value: site.binding, ok: "Change" });
+	if (binding && binding !== site.binding) await openTask({ kind: "change_binding", site: site.name, binding: binding.trim() });
 }
 
-function deleteSite(site) {
-	if (prompt(`This deletes the site, its files, service and Apache config.\nType the site name to confirm: ${site.name}`) !== site.name) return;
-	const certificates = confirm("Also revoke and remove the certificate?");
-	return openTask({ kind: "delete_site", site: site.name, certificates });
+async function deleteSite(site) {
+	const typed = await ask({
+		title: "Delete site", danger: true, ok: "Delete", match: site.name, placeholder: site.name,
+		message: `This deletes the site, its files, service and Apache config.\nType "${site.name}" to confirm.`,
+	});
+	if (typed === null) return;
+	const certificates = (await ask({ title: "Certificate", message: "Also revoke and remove the certificate?", input: false, ok: "Remove certificate" })) === true;
+	await openTask({ kind: "delete_site", site: site.name, certificates });
 }
 
+$("#search").oninput = (event) => { query = event.target.value; renderSites(); };
 $("#btn-refresh").onclick = () => run(loadSites);
 $("#btn-server-shell").onclick = () => run(() => openTask({ kind: "shell" }));
+document.addEventListener("keydown", (event) => {
+	const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
+	if (event.key === "/" && !typing && !$("#view-sites").hidden) { event.preventDefault(); $("#search").focus(); }
+});
+setInterval(() => {
+	const busy = document.activeElement && $("#sites").contains(document.activeElement);
+	if (!document.hidden && !$("#view-sites").hidden && !busy && !document.querySelector("dialog[open]")) loadSites().catch(() => {});
+}, 15000);
 
 const dialog = $("#dlg-site");
 const siteForm = $("#form-site");
@@ -112,7 +211,7 @@ function syncSiteForm() {
 siteForm.type.onchange = syncSiteForm;
 siteForm.site.oninput = () => { if (!siteForm.binding.dataset.edited) siteForm.binding.value = siteForm.site.value; };
 siteForm.binding.oninput = () => { siteForm.binding.dataset.edited = "1"; };
-$("#btn-new-site").onclick = () => { siteForm.reset(); delete siteForm.binding.dataset.edited; syncSiteForm(); dialog.showModal(); };
+$("#btn-new-site").onclick = () => { siteForm.reset(); delete siteForm.binding.dataset.edited; syncSiteForm(); dialog.showModal(); siteForm.site.focus(); };
 $("#site-cancel").onclick = () => dialog.close();
 siteForm.onsubmit = () => {
 	const data = Object.fromEntries(new FormData(siteForm));
@@ -122,13 +221,26 @@ siteForm.onsubmit = () => {
 
 // ------------------------------------------------------------------ files
 
-let currentPath = "";
+var currentPath = "";
 let openFile = null;
+let dirty = false;
 
 const sizeText = (n) => (n < 1024 ? n + " B" : n < 1048576 ? Math.round(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB");
 const join = (a, b) => (a ? a + "/" + b : b);
+const parentOf = (path) => path.split("/").slice(0, -1).join("/");
+
+function setDirty(value) {
+	dirty = value;
+	$("#editor-dirty").hidden = !value;
+}
+window.addEventListener("beforeunload", (event) => { if (dirty) event.preventDefault(); });
+
+async function discardOk() {
+	return !dirty || (await ask({ title: "Unsaved changes", message: `${openFile} has unsaved changes.`, input: false, ok: "Discard", danger: true })) === true;
+}
 
 async function openFiles(path) {
+	filesLoaded = true;
 	showView("files");
 	await run(() => loadFiles(path));
 }
@@ -146,35 +258,41 @@ async function loadFiles(path) {
 	}
 	const body = $("#files tbody");
 	body.replaceChildren();
-	if (currentPath) body.append(el("tr", {}, el("td", {}, el("a", { className: "link", textContent: "..", onclick: () => run(() => loadFiles(currentPath.split("/").slice(0, -1).join("/"))) })), el("td"), el("td"), el("td")));
+	if (currentPath) {
+		body.append(el("tr", { onclick: () => run(() => loadFiles(parentOf(currentPath))), style: "cursor:pointer" }, el("td", { textContent: "↰ .." }), el("td"), el("td"), el("td")));
+	}
 	for (const item of data.items) {
 		const full = join(currentPath, item.name);
-		const link = el("a", { className: "link", textContent: (item.dir ? "📁 " : "") + item.name, onclick: () => run(() => (item.dir ? loadFiles(full) : editFile(full))) });
-		const tools = el("td", { className: "actions" });
+		const link = el("a", { className: "link", textContent: (item.dir ? "📁 " : "📄 ") + item.name, onclick: () => run(() => (item.dir ? loadFiles(full) : editFile(full))) });
+		const tools = el("td", { className: "tools" });
 		if (!item.dir) tools.append(el("a", { className: "link", textContent: "Download", href: "/api/fs/download?path=" + encodeURIComponent(full) }));
 		tools.append(el("a", { className: "link", textContent: "Rename", onclick: () => run(() => renameItem(full, item.name)) }));
 		tools.append(el("a", { className: "link", textContent: "Delete", onclick: () => run(() => deleteItem(full, item.name)) }));
-		body.append(el("tr", {}, el("td", {}, link), el("td", { textContent: item.dir ? "" : sizeText(item.size) }), el("td", { textContent: new Date(item.modified * 1000).toLocaleString() }), tools));
+		body.append(el("tr", {}, el("td", {}, link), el("td", { className: "num muted", textContent: item.dir ? "" : sizeText(item.size) }), el("td", { className: "muted", textContent: new Date(item.modified * 1000).toLocaleString() }), tools));
 	}
+	if (!data.items.length) body.append(el("tr", {}, el("td", { colSpan: 4, className: "empty", textContent: "This folder is empty." })));
 }
 
 async function editFile(path) {
+	if (!(await discardOk())) return;
 	const data = await api("/api/fs/read?path=" + encodeURIComponent(path));
 	openFile = path;
 	$("#editor").hidden = false;
 	$("#editor-path").textContent = path;
 	$("#editor-text").value = data.content;
 	$("#editor-status").textContent = "";
+	setDirty(false);
 }
 
 async function saveFile() {
 	if (openFile === null) return;
 	await api("/api/fs/save", { json: { path: openFile, content: $("#editor-text").value } });
+	setDirty(false);
 	$("#editor-status").textContent = "Saved " + new Date().toLocaleTimeString();
 }
 
 async function renameItem(path, name) {
-	const next = prompt("New name:", name);
+	const next = await ask({ title: "Rename", value: name, ok: "Rename" });
 	if (next && next !== name) {
 		await api("/api/fs/rename", { json: { path, name: next } });
 		await loadFiles(currentPath);
@@ -182,35 +300,62 @@ async function renameItem(path, name) {
 }
 
 async function deleteItem(path, name) {
-	if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
+	if ((await ask({ title: "Delete", message: `Delete ${name}? This cannot be undone.`, input: false, ok: "Delete", danger: true })) !== true) return;
 	await api("/api/fs/delete", { json: { path } });
-	if (openFile === path) { openFile = null; $("#editor").hidden = true; }
+	if (openFile === path) { openFile = null; setDirty(false); $("#editor").hidden = true; }
 	await loadFiles(currentPath);
 }
 
-async function createItem(kind, label) {
-	const name = prompt(label);
+async function createItem(kind, title) {
+	const name = await ask({ title, ok: "Create" });
 	if (name) {
 		await api("/api/fs/" + kind, { json: { path: currentPath, name } });
 		await loadFiles(currentPath);
 	}
 }
 
-$("#btn-new-file").onclick = () => run(() => createItem("newfile", "New file name:"));
-$("#btn-new-folder").onclick = () => run(() => createItem("mkdir", "New folder name:"));
-$("#btn-upload").onclick = () => $("#upload-input").click();
-$("#upload-input").onchange = (event) => run(async () => {
+async function uploadFiles(files) {
+	if (!files.length) return;
 	const form = new FormData();
 	form.append("path", currentPath);
-	for (const file of event.target.files) form.append("files", file);
-	event.target.value = "";
-	await api("/api/fs/upload", { method: "POST", body: form });
+	for (const file of files) form.append("files", file);
+	const result = await api("/api/fs/upload", { method: "POST", body: form });
+	toast(`Uploaded ${result.count} file(s)`, "ok");
 	await loadFiles(currentPath);
+}
+
+$("#btn-new-file").onclick = () => run(() => createItem("newfile", "New file"));
+$("#btn-new-folder").onclick = () => run(() => createItem("mkdir", "New folder"));
+$("#btn-upload").onclick = () => $("#upload-input").click();
+$("#upload-input").onchange = (event) => {
+	const files = [...event.target.files];
+	event.target.value = "";
+	run(() => uploadFiles(files));
+};
+const drop = $("#drop");
+drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("dragging"); });
+drop.addEventListener("dragleave", (event) => { if (event.target === drop || !drop.contains(event.relatedTarget)) drop.classList.remove("dragging"); });
+drop.addEventListener("drop", (event) => {
+	event.preventDefault();
+	drop.classList.remove("dragging");
+	run(() => uploadFiles([...event.dataTransfer.files]));
 });
 $("#editor-save").onclick = () => run(saveFile);
-$("#editor-close").onclick = () => { openFile = null; $("#editor").hidden = true; };
+$("#editor-close").onclick = async () => {
+	if (!(await discardOk())) return;
+	openFile = null;
+	setDirty(false);
+	$("#editor").hidden = true;
+};
+$("#editor-text").oninput = () => setDirty(true);
 $("#editor-text").onkeydown = (event) => {
 	if ((event.ctrlKey || event.metaKey) && event.key === "s") { event.preventDefault(); run(saveFile); }
+	if (event.key === "Tab" && !event.shiftKey) {
+		event.preventDefault();
+		const area = event.target;
+		area.setRangeText("\t", area.selectionStart, area.selectionEnd, "end");
+		setDirty(true);
+	}
 };
 
 // -------------------------------------------------------------- terminals
@@ -269,7 +414,7 @@ function openTerminal(id, title) {
 	$("#tabs").append(tab);
 	$("#panes").append(pane);
 
-	const term = new Terminal({ cursorBlink: true, fontSize: 14, scrollback: 5000, theme: { background: "#000000" } });
+	const term = new Terminal({ cursorBlink: true, fontSize: 14, scrollback: 5000, fontFamily: "ui-monospace, Menlo, Consolas, monospace", theme: { background: "#000000" } });
 	const fit = new FitAddon.FitAddon();
 	term.loadAddon(fit);
 	term.open(pane);
@@ -283,7 +428,7 @@ function openTerminal(id, title) {
 
 	close.onclick = async (event) => {
 		event.stopPropagation();
-		if (!t.exited && !confirm("The process is still running. Close and stop it?")) return;
+		if (!t.exited && !(await ask({ title: "Close terminal", message: "The process is still running. Close and stop it?", input: false, ok: "Stop and close", danger: true }))) return;
 		await run(() => api(`/api/term/${id}/close`, { json: {} }));
 		t.ws && (t.exited = true, t.ws.close());
 		term.dispose(); tab.remove(); pane.remove();
@@ -311,6 +456,7 @@ async function restoreTerminals() {
 
 run(async () => {
 	syncSiteForm();
+	showView(location.hash.slice(1));
 	await loadSites();
 	await restoreTerminals();
 	updateTerminalState();

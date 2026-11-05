@@ -2,7 +2,7 @@
 # Create the admin site: a web page to manage every site in /var/www.
 # It can create, delete and change the binding of sites (the scripts in /vns/apache), run each site's scripts,
 # open a shell in a site, and browse/edit/upload/download files.
-# Usage: setup_admin_site.sh [folder] [binding] [username]
+# Usage: install_admin_site.sh [folder] [binding] [username]
 # The site runs as root. Use a long password and, if you can, restrict it to your own IP addresses.
 set -euo pipefail
 cd "$(dirname "$0")"
