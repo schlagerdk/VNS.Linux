@@ -235,6 +235,8 @@ const bindingLink = (binding) => binding
 	? el("a", { className: "link", textContent: binding, href: "https://" + binding + "/", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() })
 	: el("span", { className: "muted", textContent: "no binding" });
 
+const backofficeLink = (binding) => el("a", { className: "link", textContent: binding + "/umbraco", href: "https://" + binding + "/umbraco", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() });
+
 const versionColors = 8; // majors 18, 19, 20 … get different colours (see .badge.version[data-major] in style.css)
 
 function kindBadges(site) {
@@ -360,6 +362,7 @@ function envPanel(site, env) {
 	if (env.environment) heading.append(el("span", { className: "muted", textContent: env.environment }));
 
 	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, bindingLink(env.binding)));
+	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, backofficeLink(env.binding)));
 	if (env.port) meta.append(el("dt", { textContent: "Port" }), el("dd", { textContent: env.port }));
 	if (env.mode === "remote") {
 		meta.append(el("dt", { textContent: "Server" }), el("dd", { textContent: `${env.user || "?"}@${env.host || "?"}:${env.ssh_port || 22}` }));
