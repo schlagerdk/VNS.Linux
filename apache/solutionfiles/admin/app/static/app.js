@@ -241,7 +241,7 @@ function renderSite(name) {
 	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
 	add("Files", () => go(filesLink(site.name)));
 	if (site.scripts.length) actions.append(scriptSelect(site));
-	add("Change binding", () => changeBinding(site));
+	if (!hasProd(site)) add("Change binding", () => changeBinding(site, "test"));
 	if (!site.admin) add(hasProd(site) ? "Delete everything" : "Delete site", () => deleteSite(site, "all"), "danger");
 	head.append(el("div", { className: "detail-title" }, el("h2", { textContent: site.name }), kindBadges(site)), actions);
 	for (const env of site.environments) envs.append(envPanel(site, env));
@@ -276,6 +276,7 @@ function envPanel(site, env) {
 		add("Files", () => go(filesLink(env.path)));
 	}
 
+	if (hasProd(site) && !site.admin) add("Change binding", () => changeBinding(site, env.key === "prod" ? "prod" : "test", env));
 	if (hasProd(site) && !site.admin) add(env.key === "prod" ? "Delete production site" : "Delete test site", () => deleteSite(site, env.key === "prod" ? "prod" : "test"), "danger");
 
 	const panel = el("section", { className: "env " + (env.key === "prod" ? "prod" : "") }, heading, meta);
@@ -309,9 +310,11 @@ async function refreshLogs() {
 $("#logs-refresh").onclick = () => run(refreshLogs);
 $("#logs-close").onclick = () => logsDialog.close();
 
-async function changeBinding(site) {
-	const binding = await ask({ title: "Change binding", message: `New domain for ${site.name}`, value: site.binding, ok: "Change" });
-	if (binding && binding !== site.binding) await openTask({ kind: "change_binding", site: site.name, binding: binding.trim() });
+async function changeBinding(site, scope, env) {
+	const current = env ? env.binding : site.binding;
+	const label = scope === "prod" ? "production site" : "test site";
+	const binding = await ask({ title: `Change ${label} binding`, message: `New domain for the ${label} of ${site.name}`, value: current, ok: "Change" });
+	if (binding && binding.trim() !== current) await openTask({ kind: "change_binding", site: site.name, binding: binding.trim(), scope });
 }
 
 async function deleteSite(site, scope) {

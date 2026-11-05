@@ -556,6 +556,10 @@ def build_command(data):
         binding = (data.get("binding") or "").lower()
         if not BINDING_RE.match(binding):
             abort(400, "Invalid binding")
+        if data.get("scope") == "prod":
+            if not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
+                abort(400, "This site has no production site")
+            return "Prod binding: " + site, [bash, os.path.join(APACHE_DIR, "change_binding_prod.sh"), site, binding], APACHE_DIR
         return "Binding: " + site, [bash, os.path.join(APACHE_DIR, "change_binding.sh"), site, binding], APACHE_DIR
     if kind == "delete_site":
         site = site_arg(data)
