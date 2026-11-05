@@ -108,7 +108,7 @@ root=${ROOT}
 docroot=${root}/wwwroot
 conf=/etc/apache2/sites-available/${SITE}.conf
 service=/etc/systemd/system/${SITE}.service
-certdir=/etc/ssl/certs/${SITE}_ecc
+certdir=/etc/ssl/certs/${BINDING}_ecc
 acme=/etc/acmesh/acme.sh
 
 if [[ -e ${service} ]] && ! grep -qx "WorkingDirectory=${root}" "${service}"; then
@@ -201,7 +201,7 @@ EOF
 		exit 1
 	fi
 	mkdir -p "${certdir}"
-	"${acme}" --install-cert -d "${BINDING}" --key-file "${certdir}/${SITE}.key" \
+	"${acme}" --install-cert -d "${BINDING}" --key-file "${certdir}/${BINDING}.key" \
 		--fullchain-file "${certdir}/fullchain.cer" --reloadcmd "systemctl reload apache2"
 fi
 
@@ -252,7 +252,7 @@ ${extra}
   SSLEngine On
 
   SSLCertificateFile ${certdir}/fullchain.cer
-  SSLCertificateKeyFile ${certdir}/${SITE}.key
+  SSLCertificateKeyFile ${certdir}/${BINDING}.key
 
   ErrorLog /var/log/apache2/${SITE}-443-error.log
 </VirtualHost>
