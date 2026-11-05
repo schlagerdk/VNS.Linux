@@ -303,6 +303,7 @@ a.btn-link .ico { width: 13px; height: 13px; flex: none; }
 .https-lock { display: inline-flex; align-items: center; flex: none; }
 .confirmation-copy { display: inline; padding: 0; border: 0; border-radius: 2px; background: transparent; color: inherit; font: inherit; overflow-wrap: anywhere; }
 .confirmation-copy:hover { background: transparent; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; }
+.clipboard-transfer { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .https-lock.secure { color: #e3b341; }
 .https-lock.insecure { color: var(--red); }
 .https-lock.unknown { color: var(--muted); }

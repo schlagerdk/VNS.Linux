@@ -42,6 +42,35 @@ async function run(action) {
 	}
 }
 
+async function copyText(text, container) {
+	if (navigator.clipboard) {
+		try {
+			await navigator.clipboard.writeText(text);
+			return;
+		} catch (error) {
+			if (error.name !== "NotAllowedError" && error.name !== "SecurityError") throw error;
+		}
+	}
+	const previous = document.activeElement;
+	const selection = previous instanceof HTMLInputElement
+		? { start: previous.selectionStart, end: previous.selectionEnd } : null;
+	const area = el("textarea", { value: text, className: "clipboard-transfer", readOnly: true });
+	container.append(area);
+	try {
+		area.focus();
+		area.select();
+		if (!document.execCommand("copy")) {
+			throw new Error("Copy was blocked by the browser. Select the confirmation text and copy it manually.");
+		}
+	} finally {
+		area.remove();
+		if (previous instanceof HTMLElement) previous.focus({ preventScroll: true });
+		if (selection && selection.start !== null && selection.end !== null) {
+			previous.setSelectionRange(selection.start, selection.end);
+		}
+	}
+}
+
 // Replaces prompt()/confirm(). Resolves to the entered text (or true without an input), or null when cancelled.
 function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null }) {
 	const dlg = $("#dlg-prompt");
@@ -49,17 +78,24 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	const okButton = $("#prompt-ok");
 	$("#prompt-title").textContent = title;
 	const messageBox = $("#prompt-message");
+	const copyStatus = $("#prompt-copy-status");
+	copyStatus.textContent = "";
+	copyStatus.hidden = true;
 	messageBox.textContent = message;
 	const matchIndex = match ? message.indexOf(match) : -1;
 	if (matchIndex >= 0) {
 		const copy = el("button", {
 			type: "button", className: "confirmation-copy", textContent: match,
 			title: "Copy confirmation text", ariaLabel: "Copy confirmation text: " + match,
-			onclick: () => run(async () => {
-				if (!navigator.clipboard) throw new Error("Clipboard access requires HTTPS or localhost.");
-				await navigator.clipboard.writeText(match);
-				toast("Copied " + match, "ok");
-			}),
+			onclick: async () => {
+				try {
+					await copyText(match, dlg);
+					copyStatus.textContent = "Copied to clipboard.";
+				} catch (error) {
+					copyStatus.textContent = error.message;
+				}
+				copyStatus.hidden = false;
+			},
 		});
 		messageBox.replaceChildren(message.slice(0, matchIndex), copy, message.slice(matchIndex + match.length));
 	}
