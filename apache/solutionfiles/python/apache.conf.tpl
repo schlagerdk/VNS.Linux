@@ -1,6 +1,6 @@
 <VirtualHost *:80>
   ServerAdmin @ADMIN_MAIL@
-  ServerName @SITE@
+  ServerName @BINDING@
   DocumentRoot @DOC_ROOT@
 
   RewriteEngine On
@@ -12,7 +12,7 @@
 
 <VirtualHost *:443>
   ServerAdmin @ADMIN_MAIL@
-  ServerName @SITE@
+  ServerName @BINDING@
   DocumentRoot @DOC_ROOT@
 
   AllowEncodedSlashes NoDecode

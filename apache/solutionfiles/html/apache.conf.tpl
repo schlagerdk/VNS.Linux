@@ -1,13 +1,13 @@
 <VirtualHost *:80>
   ServerAdmin @ADMIN_MAIL@
-  ServerName @SITE@
-  Redirect permanent / https://@SITE@/
+  ServerName @BINDING@
+  Redirect permanent / https://@BINDING@/
   ErrorLog /var/log/apache2/@SITE@-80-error.log
 </VirtualHost>
 
 <VirtualHost *:443>
   ServerAdmin @ADMIN_MAIL@
-  ServerName @SITE@
+  ServerName @BINDING@
   DocumentRoot @DOC_ROOT@
 
   AllowEncodedSlashes NoDecode

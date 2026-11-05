@@ -10,6 +10,11 @@ _deleteCertificate=${2:-}
 ask _site "Enter site name"
 validate_site_name "${_site}" || exit 1
 set_site_vars
+_binding=${_site}
+if [[ -f ${_configPath} ]]; then
+	_binding=$(awk '$1 == "ServerName" { print $2; exit }' "${_configPath}")
+	_binding=${_binding:-${_site}}
+fi
 
 if [[ -f ${_servicePath} ]]; then
 	echo "Stop, disable and delete service"
@@ -42,8 +47,8 @@ fi
 
 if [[ ${_deleteCertificate} =~ ^([yY]|[yY][eE][sS])$ ]]; then
 	echo "Revoke and remove certificate"
-	sudo "${_acme}" --revoke -d "${_site}"
-	sudo "${_acme}" --remove -d "${_site}"
+	sudo "${_acme}" --revoke -d "${_binding}"
+	sudo "${_acme}" --remove -d "${_binding}"
 	sudo rm -rf "${_certificateDirectory}"
 	echo "All is removed!"
 fi

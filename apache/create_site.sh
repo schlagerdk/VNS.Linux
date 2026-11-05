@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: create_site.sh [site] [html|python|csharp] [umbraco|empty] [umbraco-version]
+# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding]
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
@@ -14,8 +14,10 @@ _site=${1:-}
 _type=${2:-}
 _csharpKind=${3:-}
 _umbracoVersion=${4:-}
+_projectName=${5:-}
+_binding=${6:-}
 
-ask _site "Enter site name"
+ask _site "Enter folder name"
 validate_site_name "${_site}"
 
 if [[ -z ${_type} ]]; then
@@ -31,6 +33,19 @@ if [[ -z ${_type} ]]; then
 		*) echo "Unknown choice: ${_choice}" >&2; exit 1 ;;
 	esac
 fi
+
+if [[ ${_type} == csharp ]]; then
+	ask _projectName "Enter C# project name" "${_site}"
+	validate_project_name "${_projectName}"
+fi
+
+if [[ -z ${_binding} && ${_site} == *.* ]]; then
+	ask _binding "Enter site URL binding" "${_site}"
+else
+	ask _binding "Enter site URL binding"
+fi
+validate_binding "${_binding}"
+_binding=${_binding,,}
 
 set_site_vars
 
@@ -67,7 +82,8 @@ create_python() {
 }
 
 create_csharp() {
-	local _kindFolder="${_solutionFolder}/csharp" _project="${_siteRoot}/${_site}.csproj"
+	local _kindFolder="${_solutionFolder}/csharp"
+	local _project="${_siteRoot}/${_projectName}.csproj"
 	ask _csharpKind "C# site kind (umbraco/empty)" umbraco
 	_docRoot="${_siteRoot}/${_publishFolder}/wwwroot"
 
@@ -91,7 +107,7 @@ create_csharp() {
 		create_umbraco_project
 	else
 		echo "Create empty ASP.NET Core project"
-		sudo dotnet new web --name "${_site}" --output . --force
+		sudo dotnet new web --name "${_projectName}" --output . --force
 		sudo dotnet publish -c Debug -p:PublishDir="${_publishFolder}" --self-contained false --nologo
 		sudo rm -rf bin obj
 	fi
@@ -113,6 +129,7 @@ create_umbraco_project() {
 	echo "Create new umbraco instance in folder"
 	sudo dotnet new install "Umbraco.Templates@${_umbracoVersion}" --force
 	sudo dotnet new umbraco --force
+	sudo find "${_siteRoot}" -maxdepth 1 -name '*.csproj' -delete
 
 	echo "Remove central package management from template (our csproj sets versions itself)"
 	sudo rm -f Directory.Packages.props Directory.Build.props Directory.Build.targets
@@ -143,9 +160,9 @@ create_umbraco_project() {
 
 	echo "Add appsettings.json and web.config"
 	sudo cp -f "${_files}/appsettings.json" "${_publish}/appsettings.json"
-	sudo sed -i "s|FolderName|${_site}|g; s|UUID|$(uuidgen)|g" "${_publish}/appsettings.json"
+	sudo sed -i "s|FolderName|${_binding}|g; s|UUID|$(uuidgen)|g" "${_publish}/appsettings.json"
 	sudo cp -f "${_files}/web.config" "${_publish}/web.config"
-	sudo sed -i "s|UmbracoCoreProjectName|${_site}|g" "${_publish}/web.config"
+	sudo sed -i "s|UmbracoCoreProjectName|${_projectName}|g" "${_publish}/web.config"
 
 	echo "Add default wwwroot, views and uSync"
 	sudo cp -rf "${_files}/wwwroot" "${_files}/Views" "${_files}/uSync" "${_publish}/"
@@ -158,4 +175,4 @@ case "${_type}" in
 	*) echo "Unknown site type: ${_type}" >&2; exit 1 ;;
 esac
 
-echo "Site created: https://${_site}/"
+echo "Site created: https://${_binding}/ (folder: ${_site})"

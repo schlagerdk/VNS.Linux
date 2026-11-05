@@ -36,7 +36,33 @@ validate_site_name() {
 	fi
 }
 
-# Placeholders available in every template. Call set_site_vars after _site (and ports) are known.
+validate_binding() {
+	local _binding=$1 _label
+	if [[ ! ${_binding} =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
+		echo "Invalid binding. Enter a fully qualified DNS name, without scheme or path." >&2
+		return 1
+	fi
+	if ((${#_binding} > 253)); then
+		echo "Binding is too long." >&2
+		return 1
+	fi
+	IFS=. read -r -a _labels <<<"${_binding}"
+	for _label in "${_labels[@]}"; do
+		if ((${#_label} > 63)); then
+			echo "DNS labels cannot exceed 63 characters." >&2
+			return 1
+		fi
+	done
+}
+
+validate_project_name() {
+	if [[ ! $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+		echo "Invalid C# project name. Use letters, numbers, dots, hyphens or underscores." >&2
+		return 1
+	fi
+}
+
+# Placeholders available in every template. Call set_site_vars after _site, _binding and ports are known.
 set_site_vars() {
 	_siteRoot="${_rootPath}/${_site}"
 	_certificateDirectory="/etc/ssl/certs/${_site}_ecc"
@@ -50,6 +76,8 @@ set_site_vars() {
 render() {
 	sed \
 		-e "s|@SITE@|${_site}|g" \
+		-e "s|@BINDING@|${_binding:-${_site}}|g" \
+		-e "s|@PROJECT_NAME@|${_projectName:-${_site}}|g" \
 		-e "s|@ROOT_PATH@|${_rootPath}|g" \
 		-e "s|@SITE_ROOT@|${_siteRoot}|g" \
 		-e "s|@PUBLISH_FOLDER@|${_publishFolder}|g" \
@@ -113,11 +141,14 @@ issue_certificate() {
 
 	echo "Issue certificate"
 	# acme.sh returns 2 when a still-valid certificate is skipped
-	sudo "${_acme}" --issue --apache --server "${_acmeServer}" -d "${_site}" || [[ $? -eq 2 ]]
+	sudo "${_acme}" --issue --apache --server "${_acmeServer}" -d "${_binding}" || {
+		local _status=$?
+		[[ ${_status} -eq 2 ]] || return "${_status}"
+	}
 
 	echo "Install certificate for Apache"
 	sudo mkdir -p "${_certificateDirectory}"
-	sudo "${_acme}" --install-cert -d "${_site}" \
+	sudo "${_acme}" --install-cert -d "${_binding}" \
 		--key-file "${_keyFile}" \
 		--fullchain-file "${_certificateFile}" \
 		--reloadcmd "systemctl reload apache2"

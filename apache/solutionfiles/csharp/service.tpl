@@ -6,7 +6,7 @@ Description=Running .NET Core [@SITE@]
 User=www-data
 Group=www-data
 WorkingDirectory=@SITE_ROOT@/@PUBLISH_FOLDER@
-ExecStart=/usr/lib/dotnet/dotnet @SITE_ROOT@/@PUBLISH_FOLDER@/@SITE@.dll --urls "http://127.0.0.1:@PORT_HTTP@"
+ExecStart=/usr/lib/dotnet/dotnet @SITE_ROOT@/@PUBLISH_FOLDER@/@PROJECT_NAME@.dll --urls "http://127.0.0.1:@PORT_HTTP@"
 
 # Restart service after 10 seconds if the dotnet service crashes:
 RestartSec=10

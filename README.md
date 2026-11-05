@@ -49,7 +49,9 @@ Fetches the latest version from GitHub and synchronizes it to `/vns`. Local file
 ### Apache (`apache/`)
 
 - `init.sh` installs Apache (with `ssl rewrite headers proxy proxy_http proxy_wstunnel`), acme.sh (Let's Encrypt, automatic renewal via cron), the .NET 10 SDK and ASP.NET Core runtime, Python 3, and `dotnet-outdated`.
-- `create_site.sh [site] [html|python|csharp] [umbraco|empty] [umbraco-version]` creates a site with a virtual host, certificate, and (for Python/C#) a systemd service with an automatically assigned port.
+- `create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding]` asks for the site folder and type. For C# sites, it asks for the project name (default: folder name), then asks for the DNS binding (default: folder name when it is a fully qualified domain name). The DNS name must already resolve to the server for Let's Encrypt certificate issuance.
+- `change_binding.sh [folder] [new-domain]` changes an existing site's Apache binding and issues a certificate for the new domain. It revokes and removes the old certificate after the new binding is active, unless another site still uses the old domain. DNS for the new domain must point to the server and HTTP port 80 must be reachable.
+- Example: create a site with folder `narhat.dk` and temporary binding `narhat.linux-01.vns.dk`; later run `/vns/apache/change_binding.sh narhat.dk narhat.dk` once `narhat.dk` resolves to the server.
 - `delete_site.sh [site] [y|n]` removes a site, service, and optionally its certificates.
 - `solutionfiles/` contains templates for `html`, `python`, and `csharp` (including an Umbraco template).
 
