@@ -67,7 +67,7 @@ remote() { "${_ssh[@]}" "${_target}" "$@"; }
 # Run the script from stdin as root on the target (this machine in local mode)
 run_script() {
 	if ((_local)); then
-		${_sudo} env ${_vars} bash -s
+		${_sudo} bash -c "env ${_vars} bash -s"
 	else
 		remote "${_sudo} env ${_vars} bash -s"
 	fi

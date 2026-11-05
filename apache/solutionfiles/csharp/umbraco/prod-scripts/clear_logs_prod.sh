@@ -2,13 +2,13 @@
 # Clear the Umbraco logs on the production server over SSH.
 set -euo pipefail
 
-# ---- Production settings --------------------------------------------------
-PROD_LOCAL_PATH=""               # Optional: clear logs in this local folder (e.g. /var/www/_Prod) instead of on a remote server
-PROD_IP=""                      # IP or hostname of the production server
-PROD_USER="root"                # SSH login
-PROD_PASSWORD=""                # SSH password (needs sshpass). Leave empty to use an SSH key
-PROD_SSH_PORT=22
-PROD_FOLDER="@SITE@"            # Folder name on prod (/var/www/<folder>)
+# ---- Production settings (filled in by create_prod.sh, edit if needed) -----
+PROD_LOCAL_PATH=@PROD_LOCAL_PATH@   # If set: clear logs in this local folder instead of on a remote server
+PROD_IP=@PROD_IP@                   # IP or hostname of the production server
+PROD_USER=@PROD_USER@               # SSH login
+PROD_PASSWORD=@PROD_PASSWORD@       # SSH password (needs sshpass). Empty = use an SSH key
+PROD_SSH_PORT=@PROD_SSH_PORT@
+PROD_FOLDER=@PROD_FOLDER@           # Site name on prod (/var/www/<folder>)
 # ---------------------------------------------------------------------------
 
 if [[ -n ${PROD_LOCAL_PATH} ]]; then

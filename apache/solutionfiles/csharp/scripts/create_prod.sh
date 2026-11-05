@@ -49,13 +49,11 @@ case "${_target}" in
 		ask _sshPort "SSH port" 22
 		[[ ${_sshPort} =~ ^[0-9]+$ ]] || { echo "SSH port must be a number." >&2; exit 1; }
 		_defaultFolder=${_site}
-		_defaultBinding=${_binding}
 		;;
 	local)
-		ask _localPath "Local production folder (absolute path)" "${_siteRoot}/_Prod"
+		ask _localPath "Local production folder (absolute path)" "${_siteRoot}/_prod"
 		[[ ${_localPath} == /* ]] || { echo "The path must be absolute." >&2; exit 1; }
 		_defaultFolder=${_site}-prod
-		_defaultBinding=""
 		;;
 	*)
 		echo "Target must be remote or local." >&2
@@ -65,7 +63,7 @@ esac
 
 ask _prodFolder "Production site name (folder /var/www/<name>, service and Apache config)" "${_defaultFolder}"
 validate_site_name "${_prodFolder}"
-ask _prodBinding "Production binding (domain)" "${_defaultBinding}"
+ask _prodBinding "Production binding (domain)" "${_prodFolder}"
 validate_binding "${_prodBinding}"
 if [[ ${_target} == local ]]; then
 	if [[ ${_prodFolder} == "${_site}" || ${_prodBinding} == "${_binding}" ]]; then
