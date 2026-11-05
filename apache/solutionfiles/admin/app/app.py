@@ -3,12 +3,13 @@
 Runs as root behind Apache (HTTPS). Everything except /login and /static requires a logged-in session.
 """
 import codecs
+import base64
 import glob
 import hmac
+import io
 import json
 import os
 import socket
-import ssl
 import queue
 import re
 import secrets
@@ -20,6 +21,7 @@ import time
 import tempfile
 import uuid
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 import ptyprocess
@@ -228,30 +230,51 @@ def unit_of(name):
     return os.path.isfile(os.path.join(SERVICE_DIR, name + ".service"))
 
 
-HTTPS_STATUS = {}
+def https_status(unit):
+    text = read_text(os.path.join(APACHE_SITES, unit + ".conf"))
+    secure = bool(re.search(r"<VirtualHost\s+[^>]*:443>", text))
+    certificate = re.search(r'^\s*SSLCertificateFile\s+"?([^"\s]+)', text, re.M)
+    return {"scheme": "https" if secure else "http",
+            "https": secure and bool(certificate and os.path.isfile(certificate.group(1)))}
 
 
-def https_status(unit="", binding=""):
-    if unit:
-        text = read_text(os.path.join(APACHE_SITES, unit + ".conf"))
-        secure = bool(re.search(r"<VirtualHost\s+[^>]*:443>", text))
-        certificate = re.search(r'^\s*SSLCertificateFile\s+"?([^"\s]+)', text, re.M)
-        return {"scheme": "https" if secure else "http",
-                "https": secure and bool(certificate and os.path.isfile(certificate.group(1)))}
-    if not binding:
-        return {"scheme": "https", "https": False}
-    cached = HTTPS_STATUS.get(binding)
-    if cached and time.time() - cached[0] < 300:
-        return cached[1]
-    secure = False
+REMOTE_STATUS = {}
+
+
+def remote_command(site, action, timeout=60, **kwargs):
     try:
-        with socket.create_connection((binding, 443), timeout=2) as connection:
-            with ssl.create_default_context().wrap_socket(connection, server_hostname=binding):
-                secure = True
-    except (OSError, ValueError) as exc:
-        app.logger.warning("Could not verify HTTPS for %s: %s", binding, exc)
-    status = {"scheme": "https", "https": secure}
-    HTTPS_STATUS[binding] = (time.time(), status)
+        result = subprocess.run(
+            ["/bin/bash", os.path.join(APACHE_DIR, "remote_site.sh"), site, action],
+            capture_output=True, timeout=timeout, **kwargs)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        app.logger.error("Remote %s failed for %s: %s", action, site, exc)
+        abort(502, "Could not connect to the remote server")
+    if result.returncode:
+        message = result.stderr or result.stdout
+        if isinstance(message, bytes):
+            message = message.decode("utf-8", errors="replace")
+        app.logger.error("Remote %s failed for %s: %s", action, site, message)
+        abort(502, message.strip() or "Remote action failed")
+    return result
+
+
+def remote_status(site):
+    cached = REMOTE_STATUS.get(site)
+    if cached and time.time() - cached[0] < 15:
+        return cached[1]
+    try:
+        result = remote_command(site, "status", timeout=20, text=True)
+        status = json.loads(result.stdout)
+        if not isinstance(status, dict) or not {"unit", "state", "scheme", "https", "exists"} <= status.keys():
+            raise ValueError("Invalid remote status response")
+        if not status.get("binding"):
+            status.pop("binding", None)
+    except HTTPException as exc:
+        status = {"https": None, "state": "unknown", "remote_error": exc.description}
+    except (ValueError, TypeError) as exc:
+        app.logger.error("Invalid remote status for %s: %s", site, exc)
+        status = {"https": None, "state": "unknown", "remote_error": "Invalid remote status response"}
+    REMOTE_STATUS[site] = (time.time(), status)
     return status
 
 
@@ -368,7 +391,7 @@ def site_info(name, states):
             environments.append({"key": "prod", "label": "Production", "mode": "remote", "unit": "", "state": "", "binding": prod["PROD_BINDING"],
                                  "port": prod["PROD_PORT_HTTP"], "path": "", "host": prod["PROD_IP"], "user": prod["PROD_USER"],
                                  "ssh_port": prod["PROD_SSH_PORT"], "folder": prod["PROD_FOLDER"], "environment": "Production",
-                                 **https_status(binding=prod["PROD_BINDING"])})
+                                 **remote_status(name)})
 
     return {
         "name": name,
@@ -428,7 +451,9 @@ def api_sites():
     for n in names:
         units.extend(site_units(n))
     states = service_states(units)
-    return jsonify(sites=[site_info(n, states) for n in names], defaults={"umbraco_version": default_umbraco_version()})
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        sites = list(executor.map(lambda name: site_info(name, states), names))
+    return jsonify(sites=sites, defaults={"umbraco_version": default_umbraco_version()})
 
 
 @app.route("/api/sites/<name>/service", methods=["POST"])
@@ -436,6 +461,13 @@ def api_service(name):
     data = request.get_json(silent=True) or {}
     action = data.get("action")
     unit = data.get("unit") or name
+    if data.get("scope") == "prod":
+        remote_site(name)
+        if action not in ("start", "stop", "restart"):
+            return error("Unknown service action")
+        remote_command(name, action, text=True)
+        REMOTE_STATUS.pop(name, None)
+        return jsonify(ok=True)
     if name not in site_dirs() or action not in ("start", "stop", "restart") or unit not in site_units(name):
         return error("Unknown site, service or action")
     if not unit_of(unit):
@@ -450,11 +482,23 @@ def api_service(name):
 
 @app.route("/api/sites/<name>/logs")
 def api_logs(name):
+    if request.args.get("scope") == "prod":
+        remote_site(name)
+        return jsonify(text=remote_command(name, "logs", text=True).stdout)
     unit = request.args.get("unit") or name
     if name not in site_dirs() or unit not in site_units(name):
         return error("Unknown site or service")
     result = subprocess.run(["journalctl", "-u", unit, "-n", "300", "--no-pager", "-o", "short-iso"], capture_output=True, text=True, timeout=20)
     return jsonify(text=result.stdout or result.stderr)
+
+
+def remote_site(name):
+    if name not in site_dirs():
+        abort(400, "Unknown site")
+    prod = parse_prod(os.path.join(WEB_ROOT, name))
+    if not prod or prod["PROD_LOCAL_PATH"]:
+        abort(400, "This site has no remote production target")
+    return prod
 
 
 # ------------------------------------------------------------------- profile
@@ -562,6 +606,7 @@ class TermSession:
             pass
         status = self.proc.exitstatus
         self.exit = status if status is not None else -(self.proc.signalstatus or 1)
+        REMOTE_STATUS.clear()
         with self.lock:
             for q in list(self.subscribers):
                 q.put(None)
@@ -725,6 +770,14 @@ def build_command(data):
     """Validate a terminal request and return (title, argv, cwd). Nothing is passed through a shell."""
     kind = data.get("kind")
     bash = "/bin/bash"
+    if kind == "remote_tool":
+        site = site_arg(data)
+        remote_site(site)
+        tool = data.get("tool")
+        if tool not in ("check_service", "edit_service", "edit_conf", "shell"):
+            abort(400, "Unknown remote tool")
+        REMOTE_STATUS.pop(site, None)
+        return "Remote %s: %s" % (tool.replace("_", " "), site), [bash, os.path.join(APACHE_DIR, "remote_site.sh"), site, tool], WEB_ROOT
     if kind == "shell":
         site = data.get("site") or ""
         if site:
@@ -953,6 +1006,36 @@ def ws_term(ws, sid):
 # ---------------------------------------------------------------- files API
 
 MAX_EDIT_BYTES = 2 * 1024 * 1024
+
+
+@app.route("/api/remote-fs/<site>/<action>", methods=["GET", "POST"])
+def remote_fs(site, action):
+    remote_site(site)
+    if action not in ("list", "read", "download", "save", "mkdir", "newfile", "rename", "delete", "upload"):
+        abort(400, "Unknown file action")
+    if request.method == "GET":
+        if action not in ("list", "read", "download"):
+            abort(405)
+        data = {"path": request.args.get("path", "")}
+    elif action == "upload":
+        data = {"path": request.form.get("path", ""), "files": [
+            {"name": upload.filename or "", "content": base64.b64encode(upload.read()).decode("ascii")}
+            for upload in request.files.getlist("files")]}
+    else:
+        data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        abort(400, "Expected a file operation object")
+    data["action"] = action
+    result = remote_command(site, "files", timeout=120, input=json.dumps(data).encode("utf-8"))
+    try:
+        response = json.loads(result.stdout)
+    except ValueError:
+        app.logger.error("Invalid remote file response for %s", site)
+        abort(502, "Invalid remote file response")
+    if action == "download":
+        return send_file(io.BytesIO(base64.b64decode(response["content"])), as_attachment=True,
+                         download_name=os.path.basename(data["path"]))
+    return jsonify(response)
 
 
 @app.route("/api/fs/list")

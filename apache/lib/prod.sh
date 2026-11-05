@@ -28,20 +28,27 @@ load_prod_settings() {
 	fi
 }
 
-# prod_run "<VAR='x' ...>"  runs the script on stdin as root on the production target
-prod_run() {
-	local _vars=$1
+prod_exec() {
+	local _command=$1 _interactive=${2:-}
 	if [[ -n ${PROD_LOCAL_PATH} ]]; then
-		sudo bash -c "env ${_vars} bash -s"
+		sudo bash -c "${_command}"
 		return
 	fi
-	local _ssh=(ssh -p "${PROD_SSH_PORT}" -o StrictHostKeyChecking=accept-new)
+	local _ssh=(ssh -p "${PROD_SSH_PORT}" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2)
+	[[ ${_interactive} != tty ]] || _ssh+=(-tt)
 	if [[ -n ${PROD_PASSWORD} ]]; then
 		command -v sshpass >/dev/null || { echo "sshpass is required for password login: sudo apt install sshpass" >&2; exit 1; }
 		export SSHPASS=${PROD_PASSWORD}
 		_ssh=(sshpass -e "${_ssh[@]}")
+	else
+		_ssh+=(-o BatchMode=yes)
 	fi
 	local _sudo=""
 	[[ ${PROD_USER} == root ]] || _sudo="sudo -n"
-	"${_ssh[@]}" "${PROD_USER}@${PROD_IP}" "${_sudo} env ${_vars} bash -s"
+	"${_ssh[@]}" "${PROD_USER}@${PROD_IP}" "${_sudo} ${_command}"
+}
+
+# prod_run "<VAR='x' ...>" runs the script on stdin as root on the production target
+prod_run() {
+	prod_exec "env $1 bash -s"
 }

@@ -70,6 +70,7 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 // ------------------------------------------------------------------ views
 
 let filesLoaded = false;
+let remoteFilesSite = "";
 let currentView = "sites";
 const views = ["sites", "site", "files"];
 
@@ -85,13 +86,20 @@ async function route() {
 	const slash = hash.indexOf("/");
 	const view = slash < 0 ? hash : hash.slice(0, slash);
 	const arg = slash < 0 ? "" : hash.slice(slash + 1);
-	if (currentView === "files" && view !== "files" && !(await discardOk())) {
-		history.replaceState(null, "", "#files/" + encodeURI(currentPath));
+	if (currentView === "files" && (view !== "files" || arg !== currentPath) && !(await discardOk())) {
+		history.replaceState(null, "", activeFilesLink(currentPath));
 		return;
 	}
-	if (view === "files") {
+	if (editorDialog.open) {
+		openFile = null;
+		setDirty(false);
+		editorDialog.close();
+	}
+	if (view === "files" || view === "remote-files") {
+		const parts = arg.split("/");
+		remoteFilesSite = view === "remote-files" ? parts.shift() : "";
 		showView("files");
-		await run(() => loadFiles(arg));
+		await run(() => loadFiles(view === "remote-files" ? parts.join("/") : arg));
 	} else if (view === "site" && arg) {
 		showView("site");
 		renderSite(arg);
@@ -103,6 +111,10 @@ window.addEventListener("hashchange", route);
 const go = (hash) => { location.hash = hash; };
 const siteLink = (name) => "#site/" + encodeURIComponent(name);
 const filesLink = (path) => "#files/" + path.split("/").map(encodeURIComponent).join("/");
+const activeFilesLink = (path) => remoteFilesSite
+	? "#remote-files/" + encodeURIComponent(remoteFilesSite) + "/" + path.split("/").map(encodeURIComponent).join("/")
+	: filesLink(path);
+const fsUrl = (action) => remoteFilesSite ? "/api/remote-fs/" + encodeURIComponent(remoteFilesSite) + "/" + action : "/api/fs/" + action;
 
 // ------------------------------------------------------------------ sites
 
@@ -199,7 +211,7 @@ const iconPaths = {
 // label (exact, or a prefix ending in "*") -> [icon, tone]
 const buttonStyles = {
 	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
-	"Publish": ["upload", "green"], "Sync to prod": ["sync", "green"], "Start": ["play", "green"],
+	"Publish": ["upload", "green"], "Sync to*": ["sync", "green"], "Start": ["play", "green"],
 	"Add package": ["download", "green"], "Remove package": ["trash", "red"],
 	"Fix permissions": ["shield", "teal"], "Update Python packages": ["sync", "blue"],
 	"Create production site": ["server", "purple"],
@@ -223,7 +235,7 @@ function svgIcon(name) {
 function decorate(root) {
 	for (const button of root.querySelectorAll("button:not([data-tone])")) {
 		const label = button.textContent.trim();
-		const style = buttonStyles[label] || (label.startsWith("Delete") ? buttonStyles["Delete*"] : null);
+		const style = buttonStyles[label] || (label.startsWith("Delete") ? buttonStyles["Delete*"] : label.startsWith("Sync to ") ? buttonStyles["Sync to*"] : null);
 		if (!style) continue;
 		button.dataset.tone = style[1];
 		button.prepend(svgIcon(style[0]));
@@ -267,8 +279,12 @@ function kindBadges(site) {
 }
 
 function httpsLock(secure) {
-	const label = secure ? "HTTPS enabled" : "HTTPS not verified or not enabled";
-	return el("span", { className: "https-lock " + (secure ? "secure" : "insecure"), title: label, ariaLabel: label }, svgIcon(secure ? "lock" : "unlock"));
+	const label = secure == null ? "HTTPS status unavailable" : secure ? "HTTPS enabled" : "HTTPS not enabled";
+	return el("span", { className: "https-lock " + (secure == null ? "unknown" : secure ? "secure" : "insecure"), title: label, ariaLabel: label }, svgIcon(secure ? "lock" : "unlock"));
+}
+
+function remoteIcon(env) {
+	return el("span", { className: "remote-icon", title: "Remote server: " + env.host, ariaLabel: "Remote server: " + env.host }, svgIcon("server"));
 }
 
 function siteCard(site) {
@@ -279,6 +295,7 @@ function siteCard(site) {
 		const production = env.key === "prod";
 		const prefix = production ? "Prod " : "";
 		const group = el("div", { className: "site-link-group" + (production ? " production" : ""), role: "group", ariaLabel: production ? "Production links" : "Site links" });
+		if (env.mode === "remote") group.append(remoteIcon(env));
 		const scheme = env.scheme || "https";
 		const frontend = openLink(prefix + "Frontend", scheme + "://" + env.binding + "/", "", true);
 		frontend.prepend(httpsLock(env.https));
@@ -366,8 +383,10 @@ function renderSite(name) {
 		}
 	}
 	if (hasProd(site) && site.scripts.includes("sync_prod.sh")) {
-		actions.append(el("button", { textContent: "Sync to prod", title: "sync_prod.sh", onclick: () => run(async () => {
-			if (await ask({ title: "Sync to prod?", message: `Sync content to production (${site.name}).`, input: false, ok: "Sync to prod" })) await openTask({ kind: "script", site: site.name, script: "sync_prod.sh" });
+		const target = site.environments.find((env) => env.key === "prod");
+		const label = "Sync to " + (target.environment || "target");
+		actions.append(el("button", { textContent: label, title: "sync_prod.sh", onclick: () => run(async () => {
+			if (await ask({ title: label + "?", message: `Sync content to ${target.binding || target.host || site.name}.`, input: false, ok: label })) await openTask({ kind: "script", site: site.name, script: "sync_prod.sh" });
 		}) }));
 	}
 	if (!site.admin) add(hasProd(site) ? "Delete everything" : "Delete site", () => deleteSite(site, "all"), "danger");
@@ -438,6 +457,7 @@ function envPanel(site, env) {
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
 	if (env.environment) heading.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment }));
 	heading.append(httpsLock(env.https));
+	if (env.mode === "remote") heading.append(remoteIcon(env));
 
 	const scheme = env.scheme || "https";
 	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, env.binding ? openLink(env.binding, scheme + "://" + env.binding + "/") : bindingLink("")));
@@ -453,14 +473,14 @@ function envPanel(site, env) {
 
 	const actions = el("div", { className: "actions" });
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: "small " + (className || ""), onclick: () => run(handler) }));
-	if (env.unit) {
+	if (env.unit || env.mode === "remote") {
 		if (env.unit !== site.name || !site.admin) add(env.state === "active" ? "Stop" : "Start", () => serviceAction(site, env, env.state === "active" ? "stop" : "start"));
 		add("Restart", () => serviceAction(site, env, "restart"));
 		add("Logs", () => showLogs(site, env));
 	}
-	if (env.key === "prod" && env.mode !== "remote" && env.path && env.exists !== false) {
-		add("Shell", () => openTask({ kind: "shell", site: site.name, path: env.path, label: site.name + " · " + env.label }));
-		add("Files", () => go(filesLink(env.path)));
+	if (env.mode === "remote") {
+		add("Shell", () => openTask({ kind: "remote_tool", site: site.name, tool: "shell" }));
+		add("Files", () => go("#remote-files/" + encodeURIComponent(site.name) + "/"));
 	}
 
 	const quick = el("div", { className: "actions quick" });
@@ -483,10 +503,10 @@ function envPanel(site, env) {
 			await openTask(action ? { kind: "prod_action", site: site.name, action, scope: env.key === "prod" ? "prod" : "test" } : { kind: "script", site: site.name, script: file });
 		}) }));
 	}
-	if (env.unit && env.mode !== "remote") {
+	if (env.unit || env.mode === "remote") {
 		const tools = el("div", { className: "actions quick" });
 		for (const [tool, label] of [["check_service", "Check service"], ["edit_service", "Edit service"], ["edit_conf", "Edit config"]]) {
-			tools.append(el("button", { textContent: label, className: "small", onclick: () => run(() => openTask({ kind: "unit_tool", site: site.name, unit: env.unit, tool })) }));
+			tools.append(el("button", { textContent: label, className: "small", onclick: () => run(() => openTask({ kind: env.mode === "remote" ? "remote_tool" : "unit_tool", site: site.name, unit: env.unit, tool })) }));
 		}
 		extraTools = tools;
 	}
@@ -494,7 +514,7 @@ function envPanel(site, env) {
 
 	const panel = el("section", { className: "env " + (env.key === "prod" ? "prod" : "") }, heading, meta);
 	if (env.exists === false) panel.append(el("p", { className: "muted", textContent: "Nothing published here yet." }));
-	if (env.mode === "remote") panel.append(el("p", { className: "muted", textContent: "Runs on another server. Use publish_prod.sh and sync_prod.sh from “Run script…” to deploy." }));
+	if (env.remote_error) panel.append(el("p", { className: "package-error", textContent: "Remote status unavailable: " + env.remote_error }));
 	if (quick.children.length) panel.append(quick);
 	if (settings.children.length) panel.append(settings);
 	if (extraTools) panel.append(extraTools);
@@ -503,9 +523,10 @@ function envPanel(site, env) {
 }
 
 async function serviceAction(site, env, action) {
-	if (action !== "start" && !(await ask({ title: `${action === "stop" ? "Stop" : "Restart"} ${env.unit}?`, message: site.name, input: false, ok: action === "stop" ? "Stop" : "Restart", danger: action === "stop" }))) return;
-	await api(`/api/sites/${encodeURIComponent(site.name)}/service`, { json: { action, unit: env.unit } });
-	toast(`${env.unit}: ${action} done`, "ok");
+	const unit = env.unit || env.folder;
+	if (action !== "start" && !(await ask({ title: `${action === "stop" ? "Stop" : "Restart"} ${unit}?`, message: env.binding || site.name, input: false, ok: action === "stop" ? "Stop" : "Restart", danger: action === "stop" }))) return;
+	await api(`/api/sites/${encodeURIComponent(site.name)}/service`, { json: { action, unit: env.unit, scope: env.mode === "remote" ? "prod" : "local" } });
+	toast(`${unit}: ${action} done`, "ok");
 	await loadSites();
 }
 
@@ -513,13 +534,13 @@ const logsDialog = $("#dlg-logs");
 let logsTarget = null;
 async function showLogs(site, env) {
 	logsTarget = { site, env };
-	$("#logs-title").textContent = `Logs · ${env.unit}`;
+	$("#logs-title").textContent = `Logs · ${env.unit || env.folder}`;
 	if (!logsDialog.open) logsDialog.showModal();
 	await refreshLogs();
 }
 async function refreshLogs() {
 	$("#logs-text").textContent = "Loading…";
-	const data = await api(`/api/sites/${encodeURIComponent(logsTarget.site.name)}/logs?unit=${encodeURIComponent(logsTarget.env.unit)}`);
+	const data = await api(`/api/sites/${encodeURIComponent(logsTarget.site.name)}/logs?unit=${encodeURIComponent(logsTarget.env.unit)}&scope=${logsTarget.env.mode === "remote" ? "prod" : "local"}`);
 	const box = $("#logs-text");
 	box.textContent = data.text || "(no log lines)";
 	box.scrollTop = box.scrollHeight;
@@ -688,10 +709,14 @@ function openEnvironmentDialog(site, env) {
 	environmentForm.reset();
 	environmentForm.dataset.site = site.name;
 	environmentForm.dataset.scope = env.key === "prod" ? "prod" : "test";
-	environmentForm.elements.environment.value = env.environment || (env.key === "prod" ? "Production" : "Test");
+	const choices = [...environmentForm.querySelectorAll("input[name=environment]")];
+	const selected = choices.find((input) => input.value.toLowerCase() === (env.environment || "").toLowerCase());
+	if (selected) selected.checked = true;
 	$("#environment-site").textContent = env.binding || site.name;
+	$("#environment-current").textContent = env.environment || "Unknown";
+	$("#environment-current").className = "badge env-" + (env.environment || "unknown").toLowerCase();
 	environmentDialog.showModal();
-	environmentForm.elements.environment.focus();
+	(selected || choices[0]).focus();
 }
 $("#environment-cancel").onclick = () => environmentDialog.close();
 environmentForm.onsubmit = (event) => {
@@ -758,15 +783,15 @@ async function discardOk() {
 }
 
 async function loadFiles(path) {
-	const data = await api("/api/fs/list?path=" + encodeURIComponent(path));
+	const data = await api(fsUrl("list") + "?path=" + encodeURIComponent(path));
 	currentPath = data.path;
 	filesLoaded = true;
-	history.replaceState(null, "", filesLink(currentPath));
-	const site = currentPath.split("/")[0];
+	history.replaceState(null, "", activeFilesLink(currentPath));
+	const site = remoteFilesSite || currentPath.split("/")[0];
 	$("#files-back").href = site ? siteLink(site) : "#sites";
 	$("#files-back").textContent = site ? "← " + site : "← All sites";
 	const crumbs = $("#crumbs");
-	crumbs.replaceChildren(el("a", { className: "link", textContent: "/var/www", onclick: () => run(() => loadFiles("")) }));
+	crumbs.replaceChildren(el("a", { className: "link", textContent: remoteFilesSite ? "Remote production · " + remoteFilesSite : "/var/www", onclick: () => run(() => loadFiles("")) }));
 	let accumulated = "";
 	for (const part of currentPath ? currentPath.split("/") : []) {
 		accumulated = join(accumulated, part);
@@ -782,7 +807,7 @@ async function loadFiles(path) {
 		const full = join(currentPath, item.name);
 		const link = el("a", { className: "link", textContent: (item.dir ? "📁 " : "📄 ") + item.name, onclick: () => run(() => (item.dir ? loadFiles(full) : editFile(full))) });
 		const tools = el("td", { className: "tools" });
-		if (!item.dir) tools.append(el("a", { className: "link", textContent: "Download", href: "/api/fs/download?path=" + encodeURIComponent(full) }));
+		if (!item.dir) tools.append(el("a", { className: "link", textContent: "Download", href: fsUrl("download") + "?path=" + encodeURIComponent(full) }));
 		tools.append(el("a", { className: "link", textContent: "Rename", onclick: () => run(() => renameItem(full, item.name)) }));
 		tools.append(el("a", { className: "link", textContent: "Delete", onclick: () => run(() => deleteItem(full, item.name)) }));
 		body.append(el("tr", {}, el("td", {}, link), el("td", { className: "num muted", textContent: item.dir ? "" : sizeText(item.size) }), el("td", { className: "muted", textContent: new Date(item.modified * 1000).toLocaleString() }), tools));
@@ -818,6 +843,7 @@ function languageFor(path) {
 }
 
 let loadingContent = false;
+let openFileSaveUrl = "";
 async function showInEditor(path, content) {
 	let monaco = null;
 	try { monaco = await loadMonaco(); } catch (_) { monaco = null; }
@@ -849,8 +875,10 @@ const editorValue = () => (monacoEditor && !$("#editor-box").hidden ? monacoEdit
 
 async function editFile(path) {
 	if (!(await discardOk())) return;
-	const data = await api("/api/fs/read?path=" + encodeURIComponent(path));
+	const saveUrl = fsUrl("save");
+	const data = await api(fsUrl("read") + "?path=" + encodeURIComponent(path));
 	openFile = path;
+	openFileSaveUrl = saveUrl;
 	if (!editorDialog.open) editorDialog.showModal();
 	$("#editor-path").textContent = path;
 	$("#editor-status").textContent = "";
@@ -860,7 +888,7 @@ async function editFile(path) {
 
 async function saveFile() {
 	if (openFile === null) return;
-	await api("/api/fs/save", { json: { path: openFile, content: editorValue() } });
+	await api(openFileSaveUrl, { json: { path: openFile, content: editorValue() } });
 	setDirty(false);
 	$("#editor-status").textContent = "Saved " + new Date().toLocaleTimeString();
 }
@@ -868,7 +896,7 @@ async function saveFile() {
 async function createItem(kind, title) {
 	const name = await ask({ title, placeholder: "Name", ok: "Create" });
 	if (!name) return;
-	await api("/api/fs/" + kind, { json: { path: currentPath, name: name.trim() } });
+	await api(fsUrl(kind), { json: { path: currentPath, name: name.trim() } });
 	await loadFiles(currentPath);
 }
 
@@ -877,8 +905,21 @@ async function uploadFiles(files) {
 	const form = new FormData();
 	form.append("path", currentPath);
 	for (const file of files) form.append("files", file);
-	const result = await api("/api/fs/upload", { method: "POST", body: form });
+	const result = await api(fsUrl("upload"), { method: "POST", body: form });
 	toast("Uploaded " + result.count + " file(s)");
+	await loadFiles(currentPath);
+}
+
+async function renameItem(path, name) {
+	const next = await ask({ title: "Rename", value: name, ok: "Rename" });
+	if (!next || next === name) return;
+	await api(fsUrl("rename"), { json: { path, name: next } });
+	await loadFiles(currentPath);
+}
+
+async function deleteItem(path, name) {
+	if (!(await ask({ title: "Delete " + name + "?", message: "This permanently deletes the file or folder.", input: false, ok: "Delete", danger: true }))) return;
+	await api(fsUrl("delete"), { json: { path } });
 	await loadFiles(currentPath);
 }
 
@@ -1048,7 +1089,7 @@ function openTerminal(id, title, autoClose) {
 
 async function openTask(payload) {
 	const data = await api("/api/term", { json: payload });
-	openTerminal(data.id, data.title, payload.kind === "shell");
+	openTerminal(data.id, data.title, payload.kind === "shell" || (payload.kind === "remote_tool" && payload.tool === "shell"));
 	if (terminals[data.id]) showDock();
 }
 

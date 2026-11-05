@@ -181,19 +181,21 @@
   </form>
 </dialog>
 
-<dialog id="dlg-environment">
+<dialog id="dlg-environment" class="newsite environment-dialog" aria-labelledby="environment-title">
   <form method="dialog" id="form-environment">
-    <h2>Change environment</h2>
-    <p id="environment-site"></p>
-    <label>Environment
-      <select name="environment" required>
-        <option>Development</option>
-        <option>Test</option>
-        <option>Staging</option>
-        <option>Production</option>
-      </select>
-    </label>
-    <p class="hint">The service will restart to apply the selected environment.</p>
+    <div class="ns-head">
+      <span class="ns-icon" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 14h6m2-6h6m2 8h6"/></svg></span>
+      <div><h2 id="environment-title">Change environment</h2><p id="environment-site"></p></div>
+    </div>
+    <div class="environment-current">Current environment <span id="environment-current" class="badge"></span></div>
+    <fieldset class="environment-options">
+      <legend>Select the target environment</legend>
+      <label class="type-card environment-option env-development"><input type="radio" name="environment" value="Development" required><span class="tc-title">Development</span><span class="tc-sub">Local development and debugging</span></label>
+      <label class="type-card environment-option env-test"><input type="radio" name="environment" value="Test"><span class="tc-title">Test</span><span class="tc-sub">Testing and quality assurance</span></label>
+      <label class="type-card environment-option env-staging"><input type="radio" name="environment" value="Staging"><span class="tc-title">Staging</span><span class="tc-sub">Pre-release validation</span></label>
+      <label class="type-card environment-option env-production"><input type="radio" name="environment" value="Production"><span class="tc-title">Production</span><span class="tc-sub">Live application configuration</span></label>
+    </fieldset>
+    <p class="environment-notice">The service will restart to apply the selected environment.</p>
     <menu><button type="button" id="environment-cancel">Cancel</button><button type="submit" class="primary">Change environment</button></menu>
   </form>
 </dialog>

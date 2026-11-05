@@ -138,6 +138,11 @@ apache2ctl configtest
 systemctl reload apache2
 echo "Remote production site ${SITE} removed."
 REMOTE
+		_remoteResult=$?
+		if ((_remoteResult != 0)); then
+			echo "Remote production removal failed; local files and production settings have been kept." >&2
+			exit "${_remoteResult}"
+		fi
 	fi
 	if [[ ${_scope} == prod ]]; then
 		# Put the site back to a test-only site so create_prod.sh can be used again
