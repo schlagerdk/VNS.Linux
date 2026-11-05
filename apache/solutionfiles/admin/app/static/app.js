@@ -518,7 +518,7 @@ async function changeBinding(site, scope, env) {
 async function deleteSite(site, scope) {
 	const prod = site.environments.find((e) => e.key === "prod");
 	const remote = prod && prod.mode === "remote";
-	const target = scope === "prod" ? (prod.unit || prod.folder || site.name) : site.name;
+	const target = scope === "prod" ? (prod.binding || prod.unit || prod.folder || site.name) : site.name;
 	const what = {
 		all: remote
 			? `This deletes the site and its remote production site on ${prod.host}: files, services, Apache configs and logs on both servers.`
