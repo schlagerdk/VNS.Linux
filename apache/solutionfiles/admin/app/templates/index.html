@@ -111,7 +111,7 @@
   <form method="dialog" id="form-site">
     <header class="ns-head">
       <span class="ns-icon">＋</span>
-      <div><h2>New site</h2><p>Creates the folder, Apache config, certificate and service.</p></div>
+      <div><h2>New site</h2><p>Creates the folder, Apache config, optional certificate and service.</p></div>
     </header>
     <div class="ns-section">What kind of site?</div>
     <div class="type-cards">
@@ -123,6 +123,7 @@
     <div class="ns-grid">
       <label>Folder name <input name="site" required placeholder="www.example.com" autocomplete="off" spellcheck="false"></label>
       <label>Binding (domain) <input name="binding" required placeholder="www.example.com" autocomplete="off" spellcheck="false"></label>
+      <label>HTTPS certificate <select name="certificate"><option value="y">Create certificate and enforce HTTPS</option><option value="n">HTTP only - issue certificate later</option></select></label>
     </div>
     <div id="csharp-options">
       <div class="ns-section">C# options</div>

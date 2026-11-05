@@ -8,6 +8,7 @@ import hmac
 import json
 import os
 import socket
+import ssl
 import queue
 import re
 import secrets
@@ -227,11 +228,39 @@ def unit_of(name):
     return os.path.isfile(os.path.join(SERVICE_DIR, name + ".service"))
 
 
+HTTPS_STATUS = {}
+
+
+def https_status(unit="", binding=""):
+    if unit:
+        text = read_text(os.path.join(APACHE_SITES, unit + ".conf"))
+        secure = bool(re.search(r"<VirtualHost\s+[^>]*:443>", text))
+        certificate = re.search(r'^\s*SSLCertificateFile\s+"?([^"\s]+)', text, re.M)
+        return {"scheme": "https" if secure else "http",
+                "https": secure and bool(certificate and os.path.isfile(certificate.group(1)))}
+    if not binding:
+        return {"scheme": "https", "https": False}
+    cached = HTTPS_STATUS.get(binding)
+    if cached and time.time() - cached[0] < 300:
+        return cached[1]
+    secure = False
+    try:
+        with socket.create_connection((binding, 443), timeout=2) as connection:
+            with ssl.create_default_context().wrap_socket(connection, server_hostname=binding):
+                secure = True
+    except (OSError, ValueError) as exc:
+        app.logger.warning("Could not verify HTTPS for %s: %s", binding, exc)
+    status = {"scheme": "https", "https": secure}
+    HTTPS_STATUS[binding] = (time.time(), status)
+    return status
+
+
 def environment_info(key, label, unit, binding, port, path, states, **extra):
     service = bool(unit) and unit_of(unit)
     info = {"key": key, "label": label, "unit": unit if service else "", "binding": binding, "port": port, "path": path,
             "state": states.get(unit, "") if service else ""}
     info.update(extra)
+    info.update(https_status(unit=unit))
     return info
 
 
@@ -338,7 +367,8 @@ def site_info(name, states):
         else:
             environments.append({"key": "prod", "label": "Production", "mode": "remote", "unit": "", "state": "", "binding": prod["PROD_BINDING"],
                                  "port": prod["PROD_PORT_HTTP"], "path": "", "host": prod["PROD_IP"], "user": prod["PROD_USER"],
-                                 "ssh_port": prod["PROD_SSH_PORT"], "folder": prod["PROD_FOLDER"], "environment": "Production"})
+                                 "ssh_port": prod["PROD_SSH_PORT"], "folder": prod["PROD_FOLDER"], "environment": "Production",
+                                 **https_status(binding=prod["PROD_BINDING"])})
 
     return {
         "name": name,
@@ -777,7 +807,10 @@ def build_command(data):
             abort(400, "Invalid site name, type or binding")
         if site in site_dirs():
             abort(400, "The site already exists")
-        args = [site, site_type, "", "", "", binding]
+        certificate = data.get("certificate", "y")
+        if certificate not in ("y", "n"):
+            abort(400, "Invalid certificate option")
+        args = [site, site_type, "", "", "", binding, "", "", certificate]
         if site_type == "csharp":
             csharp = data.get("csharp") or "umbraco"
             project = data.get("project") or site
@@ -790,7 +823,7 @@ def build_command(data):
                 abort(400, "Invalid project name or publish folder")
             if csharp == "umbraco" and version and not VERSION_RE.match(version):
                 abort(400, "Invalid Umbraco version")
-            args = [site, site_type, csharp, version if csharp == "umbraco" else "", project, binding, publish, build]
+            args = [site, site_type, csharp, version if csharp == "umbraco" else "", project, binding, publish, build, certificate]
         return "Create: " + site, [bash, os.path.join(APACHE_DIR, "create_site.sh"), *args], APACHE_DIR
     if kind == "change_binding":
         site = site_arg(data)

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding] [publish-folder] [Debug|Release]
+# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding] [publish-folder] [Debug|Release] [y|n certificate]
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
@@ -19,6 +19,13 @@ _projectName=${5:-}
 _binding=${6:-}
 _publishArg=${7:-}
 _buildConfig=${8:-}
+_createCertificate=${9:-}
+ask _createCertificate "Create an HTTPS certificate? (y/n)" y
+case "${_createCertificate,,}" in
+	y | yes) _createCertificate=y ;;
+	n | no) _createCertificate=n ;;
+	*) echo "Certificate option must be y or n." >&2; exit 1 ;;
+esac
 
 ask _site "Enter folder name"
 validate_site_name "${_site}"
@@ -57,7 +64,7 @@ create_html() {
 	echo "Create html"
 	sudo mkdir -p "${_docRoot}"
 	render_to "${_solutionFolder}/html/site/index.html" "${_docRoot}/index.html"
-	issue_certificate
+	[[ ${_createCertificate} == n ]] || issue_certificate
 	install_apache_config "${_solutionFolder}/html/apache.conf.tpl"
 	install_scripts "${_solutionFolder}/common/scripts"
 }
@@ -66,7 +73,7 @@ create_python() {
 	_docRoot="${_siteRoot}/wwwroot"
 	allocate_ports
 	sudo mkdir -p "${_siteRoot}/app" "${_docRoot}" /var/lib/vns-roots/${_site}
-	issue_certificate
+	[[ ${_createCertificate} == n ]] || issue_certificate
 
 	echo "Create python app and virtual environment"
 	for _file in "${_solutionFolder}"/python/app/*; do
@@ -106,7 +113,7 @@ create_csharp() {
 
 	allocate_ports
 	sudo mkdir -p "${_siteRoot}" "${_docRoot}"
-	issue_certificate
+	[[ ${_createCertificate} == n ]] || issue_certificate
 	sudo mkdir -p /var/lib/vns-roots/${_site}
 
 	install_scripts "${_solutionFolder}/common/scripts"
@@ -175,6 +182,9 @@ create_umbraco_project() {
 	echo "Add appsettings.json and web.config"
 	sudo cp -f "${_files}/appsettings.json" "${_publish}/appsettings.json"
 	sudo sed -i "s|FolderName|${_binding}|g; s|UUID|$(uuidgen)|g" "${_publish}/appsettings.json"
+	if [[ ${_createCertificate} == n ]]; then
+		configure_umbraco_https "${_publish}/appsettings.json" "${_binding}" n
+	fi
 	sudo cp -f "${_files}/web.config" "${_publish}/web.config"
 	sudo sed -i "s|UmbracoCoreProjectName|${_projectName}|g" "${_publish}/web.config"
 
@@ -190,7 +200,9 @@ case "${_type}" in
 esac
 
 release_port_reservation
-echo "Site created: https://${_binding}/ (folder: ${_site})"
+_scheme=http
+[[ ${_createCertificate} == n ]] || _scheme=https
+echo "Site created: ${_scheme}://${_binding}/ (folder: ${_site})"
 if [[ ${_type} == csharp ]]; then
 	echo "Run ${_siteRoot}/scripts/create_prod.sh when you want a production target for this site."
 fi

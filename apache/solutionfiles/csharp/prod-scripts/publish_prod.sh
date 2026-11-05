@@ -352,6 +352,7 @@ file=${dir}/appsettings.json
 if [[ -f ${file} ]] && grep -q "UmbracoApplicationUrl" "${file}"; then
 	echo "Set UmbracoApplicationUrl to https://${BINDING}"
 	sed -i -E "s|(\"UmbracoApplicationUrl\"[[:space:]]*:[[:space:]]*\")[^\"]*|\1https://${BINDING}|" "${file}"
+	sed -i -E 's/("UseHttps"[[:space:]]*:[[:space:]]*)false/\1true/' "${file}"
 fi
 chown -R www-data:www-data "${dir}"
 systemctl start "${SITE}"

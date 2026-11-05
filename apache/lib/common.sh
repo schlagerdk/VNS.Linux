@@ -250,9 +250,74 @@ issue_certificate() {
 
 install_apache_config() {
 	echo "Create Apache config"
-	render_to "$1" "${_configPath}"
+	if [[ ${_createCertificate:-y} == n ]]; then
+		render "$1" | awk '
+			/<VirtualHost \*:443>/ { active=1; sub(":443", ":80") }
+			active && !/^[[:space:]]*SSL/ {
+				if (/^[[:space:]]*ProxyPass \/.well-known\/acme-challenge\/ !/) next
+				gsub("X-Forwarded-Proto \"https\"", "X-Forwarded-Proto \"http\"")
+				gsub("-443-error.log", "-80-error.log")
+				print
+				if (/ProxyRequests Off/) print "  ProxyPass /.well-known/acme-challenge/ !"
+			}
+			/<\/VirtualHost>/ { active=0 }
+		' | sudo tee "${_configPath}" >/dev/null
+	else
+		render_to "$1" "${_configPath}"
+	fi
 	sudo apache2ctl configtest
 	[[ -e "/etc/apache2/sites-enabled/${_site}.conf" ]] || sudo a2ensite "${_site}.conf"
+	sudo systemctl reload apache2
+}
+
+configure_umbraco_https() {
+	sudo python3 - "$1" "$2" "$3" <<'PY'
+import json
+import sys
+path, binding, enabled = sys.argv[1:]
+with open(path) as stream:
+    settings = json.load(stream)
+cms = settings.get("Umbraco", {}).get("CMS")
+if cms is not None:
+    secure = enabled == "y"
+    cms.setdefault("Global", {})["UseHttps"] = secure
+    cms.setdefault("WebRouting", {})["UmbracoApplicationUrl"] = ("https://" if secure else "http://") + binding
+    with open(path, "w") as stream:
+        json.dump(settings, stream, indent=2)
+        stream.write("\n")
+PY
+}
+
+enable_https_config() {
+	if grep -q '<VirtualHost \*:443>' "${_configPath}"; then
+		return
+	fi
+	sudo a2enmod ssl
+	local _updated
+	_updated=$(mktemp)
+	{
+		printf '<VirtualHost *:80>\n  ServerName %s\n  RewriteEngine On\n  RewriteCond %%{REQUEST_URI} !^/.well-known/acme-challenge/\n  RewriteRule ^ https://%%{HTTP_HOST}%%{REQUEST_URI} [R=301,L]\n</VirtualHost>\n\n' "${_binding}"
+		awk -v cert="${_certificateFile}" -v key="${_keyFile}" '
+			{
+				gsub("<VirtualHost \\*:80>", "<VirtualHost *:443>")
+				gsub("X-Forwarded-Proto \"http\"", "X-Forwarded-Proto \"https\"")
+				if (/<\/VirtualHost>/) {
+					print "  SSLEngine On"
+					print "  SSLCertificateFile " cert
+					print "  SSLCertificateKeyFile " key
+				}
+				print
+			}
+		' "${_configPath}"
+	} >"${_updated}"
+	sudo cp "${_configPath}" "${_updated}.backup"
+	sudo cp "${_updated}" "${_configPath}"
+	if ! sudo apache2ctl configtest; then
+		sudo cp "${_updated}.backup" "${_configPath}"
+		sudo rm -f "${_updated}" "${_updated}.backup"
+		return 1
+	fi
+	sudo rm -f "${_updated}" "${_updated}.backup"
 	sudo systemctl reload apache2
 }
 

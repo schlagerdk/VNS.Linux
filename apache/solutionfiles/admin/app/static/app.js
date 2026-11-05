@@ -171,6 +171,8 @@ function matches(site) {
 // ------------------------------------------------------------------ button icons
 // Inline SVG (Lucide-style, 24x24 stroke icons); the CSP does not allow external images
 const iconPaths = {
+	lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
+	unlock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 7.5-2",
 	terminal: "M4 17l6-6-6-6M12 19h8",
 	folder: "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z",
 	upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
@@ -264,6 +266,11 @@ function kindBadges(site) {
 	return badges;
 }
 
+function httpsLock(secure) {
+	const label = secure ? "HTTPS enabled" : "HTTPS not verified or not enabled";
+	return el("span", { className: "https-lock " + (secure ? "secure" : "insecure"), title: label, ariaLabel: label }, svgIcon(secure ? "lock" : "unlock"));
+}
+
 function siteCard(site) {
 	const state = siteState(site);
 	const actions = el("div", { className: "actions site-links" });
@@ -272,11 +279,14 @@ function siteCard(site) {
 		const production = env.key === "prod";
 		const prefix = production ? "Prod " : "";
 		const group = el("div", { className: "site-link-group" + (production ? " production" : ""), role: "group", ariaLabel: production ? "Production links" : "Site links" });
-		const frontend = openLink(prefix + "Frontend", "https://" + env.binding + "/", "", true);
+		const scheme = env.scheme || "https";
+		const frontend = openLink(prefix + "Frontend", scheme + "://" + env.binding + "/", "", true);
+		frontend.prepend(httpsLock(env.https));
 		frontend.classList.add("frontend");
 		group.append(frontend);
 		if (site.kind === "umbraco") {
-			const backend = openLink(prefix + "Backend", "https://" + env.binding + "/umbraco", "Umbraco backoffice: " + env.binding, true);
+			const backend = openLink(prefix + "Backend", scheme + "://" + env.binding + "/umbraco", "Umbraco backoffice: " + env.binding, true);
+			backend.prepend(httpsLock(env.https));
 			backend.classList.add("backend");
 			group.append(backend);
 		}
@@ -427,9 +437,11 @@ function envPanel(site, env) {
 		el("span", { className: "dot " + dot }), ...(env.environment && env.environment.toLowerCase() === env.label.toLowerCase() ? [] : [el("h3", { textContent: env.label })]),
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
 	if (env.environment) heading.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment }));
+	heading.append(httpsLock(env.https));
 
-	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, bindingLink(env.binding)));
-	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, backofficeLink(env.binding)));
+	const scheme = env.scheme || "https";
+	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, env.binding ? openLink(env.binding, scheme + "://" + env.binding + "/") : bindingLink("")));
+	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(env.binding + "/umbraco", scheme + "://" + env.binding + "/umbraco")));
 	if (env.port) meta.append(el("dt", { textContent: "Port" }), el("dd", { textContent: env.port }));
 	if (env.mode === "remote") {
 		meta.append(el("dt", { textContent: "Server" }), el("dd", { textContent: `${env.user || "?"}@${env.host || "?"}:${env.ssh_port || 22}` }));

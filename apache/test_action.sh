@@ -31,6 +31,12 @@ case "${_action}" in
 		sudo mkdir -p "${_certificateDirectory}"
 		sudo "${_acme}" --install-cert -d "${_binding}" --key-file "${_keyFile}" \
 			--fullchain-file "${_certificateFile}" --reloadcmd "systemctl reload apache2"
+		enable_https_config
+		_working=$(sed -n 's/^WorkingDirectory=//p' "${_servicePath}" 2>/dev/null || true)
+		if [[ -n ${_working} && -f ${_working}/appsettings.json ]]; then
+			configure_umbraco_https "${_working}/appsettings.json" "${_binding}" y
+			sudo systemctl restart "${_site}"
+		fi
 		echo "Certificate installed in ${_certificateDirectory}"
 		;;
 	change_env)
