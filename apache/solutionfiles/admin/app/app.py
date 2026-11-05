@@ -353,6 +353,12 @@ def own_like_parent(path):
 
 # ----------------------------------------------------------------- sites API
 
+def default_umbraco_version():
+    """The Umbraco version create_site.sh installs when none is given."""
+    match = re.search(r"^_defaultUmbracoVersion=([0-9][0-9A-Za-z.\-]*)", read_text(os.path.join(APACHE_DIR, "create_site.sh")) or "", re.M)
+    return match.group(1) if match else ""
+
+
 @app.route("/api/sites")
 def api_sites():
     names = site_dirs()
@@ -360,7 +366,7 @@ def api_sites():
     for n in names:
         units.extend(site_units(n))
     states = service_states(units)
-    return jsonify(sites=[site_info(n, states) for n in names])
+    return jsonify(sites=[site_info(n, states) for n in names], defaults={"umbraco_version": default_umbraco_version()})
 
 
 @app.route("/api/sites/<name>/service", methods=["POST"])
@@ -439,6 +445,14 @@ SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
 BUFFER_MAX = 400 * 1024
 MAX_SESSIONS = 12
+def dotnet_root_dir():
+    """Where .NET is installed. Login shells get DOTNET_ROOT from /etc/profile.d, tasks started by the service do not."""
+    if os.environ.get("DOTNET_ROOT"):
+        return os.environ["DOTNET_ROOT"]
+    exe = shutil.which("dotnet")
+    return os.path.dirname(os.path.realpath(exe)) if exe else ""
+
+
 DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
@@ -459,6 +473,9 @@ class TermSession:
             "SHELL": "/bin/bash",
             "PATH": os.environ.get("PATH", DEFAULT_PATH),
         }
+        dotnet_root = dotnet_root_dir()
+        if dotnet_root:
+            env["DOTNET_ROOT"] = dotnet_root
         self.proc = ptyprocess.PtyProcess.spawn(argv, cwd=cwd, env=env, dimensions=(30, 120))
         threading.Thread(target=self._read, daemon=True).start()
 

@@ -10,6 +10,12 @@ then
     exit 1
 fi
 
+# dotnet-outdated is an apphost that needs DOTNET_ROOT when .NET is not in /usr/share/dotnet
+if [[ -z ${DOTNET_ROOT:-} ]]; then
+    DOTNET_ROOT=$(dirname "$(readlink -f "$(command -v dotnet)")")
+    export DOTNET_ROOT
+fi
+
 echo "Running dotnet outdated..."
 dotnet outdated
 

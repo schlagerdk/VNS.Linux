@@ -178,8 +178,8 @@ body.login { display: grid; place-items: center; min-height: 100vh; background: 
 .dock-bar { display: flex; align-items: center; gap: 6px; background: var(--panel); padding: 6px 10px; border-bottom: 1px solid var(--line); }
 .dock-bar .ghost { color: var(--text); }
 #dock #tabs { display: flex; gap: 4px; overflow-x: auto; margin: 0; flex-wrap: nowrap; }
-#dock #panes { flex: 1; min-height: 0; }
-#dock #panes .pane { height: 100%; min-height: 0; padding: 6px 10px; border: 0; border-radius: 0; }
+#dock #panes { flex: 1; min-height: 0; position: relative; }
+#dock #panes .pane { position: absolute; inset: 0; height: auto; min-height: 0; padding: 6px 10px; border: 0; border-radius: 0; overflow: hidden; }
 
 dialog.editor { width: min(1100px, 94vw); height: min(780px, 90vh); padding: 14px 18px; flex-direction: column; }
 dialog.editor[open] { display: flex; }
@@ -241,3 +241,6 @@ dialog .type-card { position: relative; display: flex; flex-direction: column; g
 dialog.newsite .hint { margin: 2px 0 0; font-size: 12px; }
 dialog.newsite menu { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 @media (max-width: 560px) { .type-cards, .ns-grid { grid-template-columns: 1fr; } }
+dialog.newsite input:not([type=radio]), dialog.newsite select { height: 38px; padding: 0 12px; font-size: 14px; line-height: 1.2; }
+dialog.newsite select { appearance: none; -webkit-appearance: none; padding-right: 34px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+dialog.newsite select option { background: var(--panel2); color: var(--text); }

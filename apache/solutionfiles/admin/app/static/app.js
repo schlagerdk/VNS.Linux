@@ -112,8 +112,11 @@ let query = "";
 
 const kindLabel = { umbraco: "Umbraco", csharp: "C# / .NET", python: "Python", html: "HTML" };
 
+let defaultUmbracoVersion = "";
 async function loadSites() {
-	allSites = (await api("/api/sites")).sites;
+	const data = await api("/api/sites");
+	allSites = data.sites;
+	defaultUmbracoVersion = (data.defaults || {}).umbraco_version || "";
 	renderSites();
 	if (currentView === "site") renderSite(decodeURIComponent(location.hash.slice(6)));
 }
@@ -322,7 +325,7 @@ function renderSite(name) {
 }
 
 // Scripts that have their own button and are therefore left out of the "Run script…" list
-const buttonScripts = new Set(["publish.sh", "publish_local.sh", "publish_prod.sh", "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh", "issue_certificat.sh", "change_env.sh", "restart_service.sh", "check_service.sh", "edit_service.sh", "edit_conf.sh", "restart_apache.sh", "outdated.sh"]);
+const buttonScripts = new Set(["publish.sh", "publish_local.sh", "publish_prod.sh", "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh", "issue_certificat.sh", "change_env.sh", "restart_service.sh", "check_service.sh", "edit_service.sh", "edit_conf.sh", "restart_apache.sh", "outdated.sh", "set_password.sh"]);
 
 // [script candidates or null, button label, confirmation text (null = none; the script asks itself), prod_action name]
 function quickActions(env) {
@@ -513,7 +516,7 @@ function syncSiteForm() {
 siteForm.addEventListener("change", (event) => { if (event.target.name === "type") syncSiteForm(); });
 siteForm.site.oninput = () => { if (!siteForm.binding.dataset.edited) siteForm.binding.value = siteForm.site.value; };
 siteForm.binding.oninput = () => { siteForm.binding.dataset.edited = "1"; };
-$("#btn-new-site").onclick = () => { siteForm.reset(); delete siteForm.binding.dataset.edited; syncSiteForm(); dialog.showModal(); siteForm.site.focus(); };
+$("#btn-new-site").onclick = () => { siteForm.reset(); siteForm.version.value = defaultUmbracoVersion; delete siteForm.binding.dataset.edited; syncSiteForm(); dialog.showModal(); siteForm.site.focus(); };
 $("#site-cancel").onclick = () => dialog.close();
 siteForm.onsubmit = () => {
 	const data = Object.fromEntries(new FormData(siteForm));
@@ -710,8 +713,14 @@ $("#dock-size").onclick = () => { $("#dock").classList.toggle("max"); fitActive(
 
 function fitActive() {
 	const t = terminals[activeTerminal];
-	if (t) { try { t.fit.fit(); } catch (_) { /* hidden while measuring */ } t.term.focus(); }
+	if (!t) return;
+	const fitNow = () => { try { t.fit.fit(); } catch (_) { /* hidden while measuring */ } };
+	fitNow();
+	// Layout may not be final yet when the dock was just shown
+	requestAnimationFrame(() => { fitNow(); requestAnimationFrame(fitNow); });
+	t.term.focus();
 }
+window.addEventListener("resize", () => { if (!$("#dock").hidden) fitActive(); });
 
 function activate(id) {
 	activeTerminal = id;
@@ -765,7 +774,7 @@ function openTerminal(id, title, autoClose) {
 
 	term.onData((data) => t.ws && t.ws.readyState === 1 && t.ws.send(JSON.stringify({ t: "i", d: data })));
 	term.onResize(({ rows, cols }) => t.ws && t.ws.readyState === 1 && t.ws.send(JSON.stringify({ t: "r", rows, cols })));
-	new ResizeObserver(() => { if (!pane.hidden) { try { fit.fit(); } catch (_) { /* ignore */ } } }).observe(pane);
+	new ResizeObserver(() => { if (!pane.hidden && pane.clientHeight > 0) { try { fit.fit(); } catch (_) { /* ignore */ } } }).observe($("#panes"));
 	setInterval(() => t.ws && t.ws.readyState === 1 && t.ws.send(JSON.stringify({ t: "p" })), 30000);
 
 	t.remove = async () => {
