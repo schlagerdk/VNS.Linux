@@ -535,7 +535,7 @@ siteForm.addEventListener("change", (event) => { if (event.target.name === "type
 siteForm.site.oninput = () => { if (!siteForm.binding.dataset.edited) siteForm.binding.value = siteForm.site.value; };
 siteForm.binding.oninput = () => { siteForm.binding.dataset.edited = "1"; };
 $("#btn-new-site").onclick = () => { siteForm.reset(); siteForm.version.value = defaultUmbracoVersion; delete siteForm.binding.dataset.edited; syncSiteForm(); dialog.showModal(); siteForm.site.focus(); };
-$("#site-cancel").onclick = () => dialog.close();
+$("#site-cancel").onclick = (e) => { e.preventDefault(); dialog.close(); };
 siteForm.onsubmit = () => {
 	const data = Object.fromEntries(new FormData(siteForm));
 	data.kind = "create_site";
