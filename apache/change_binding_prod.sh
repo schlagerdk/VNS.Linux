@@ -6,6 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
+source lib/prod.sh
 
 _site=${1:-}
 _newBinding=${2:-}
@@ -13,21 +14,7 @@ ask _site "Enter folder name"
 validate_site_name "${_site}"
 set_site_vars
 
-_prodScript="${_siteRoot}/scripts/publish_prod.sh"
-if [[ ! -f ${_prodScript} ]]; then
-	echo "This site has no production site (missing ${_prodScript})." >&2
-	exit 1
-fi
-
-# Only the PROD_* assignments are read; the rest of the script is not executed
-PROD_LOCAL_PATH="" PROD_IP="" PROD_USER="" PROD_PASSWORD="" PROD_SSH_PORT=22
-PROD_FOLDER="" PROD_BINDING="" PROD_PORT_HTTP="" PROD_ADMIN_MAIL=""
-# shellcheck disable=SC1090
-source <(grep -E '^PROD_[A-Z_]+=' "${_prodScript}")
-if [[ -z ${PROD_FOLDER} || -z ${PROD_BINDING} ]]; then
-	echo "PROD_FOLDER and PROD_BINDING must be set in ${_prodScript}" >&2
-	exit 1
-fi
+load_prod_settings
 
 _oldBinding=${PROD_BINDING,,}
 ask _newBinding "Enter new production binding" "${_oldBinding}"
@@ -38,35 +25,13 @@ if [[ ${_newBinding} == "${_oldBinding}" ]]; then
 	exit 0
 fi
 
-if [[ -n ${PROD_LOCAL_PATH} ]]; then
-	_target="this server"
-	_root=${PROD_LOCAL_PATH%/}
-else
-	_target="${PROD_USER}@${PROD_IP}:${PROD_SSH_PORT}"
-	_root=/var/www/${PROD_FOLDER}
-fi
-
 echo "The new domain must resolve to ${_target} and be reachable on HTTP/port 80."
 read -r -p "Change production binding ${_oldBinding} to ${_newBinding} on ${_target}, issue a new certificate, and remove the old one if unused? [y/N]: " _confirm
 [[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
 
 _vars="SITE='${PROD_FOLDER}' OLD='${_oldBinding}' NEW='${_newBinding}' ROOT='${_root}' ACME_SERVER='${_acmeServer}'"
 
-if [[ -n ${PROD_LOCAL_PATH} ]]; then
-	_run() { sudo bash -c "env ${_vars} bash -s"; }
-else
-	_ssh=(ssh -p "${PROD_SSH_PORT}" -o StrictHostKeyChecking=accept-new)
-	if [[ -n ${PROD_PASSWORD} ]]; then
-		command -v sshpass >/dev/null || { echo "sshpass is required for password login: sudo apt install sshpass" >&2; exit 1; }
-		export SSHPASS=${PROD_PASSWORD}
-		_ssh=(sshpass -e "${_ssh[@]}")
-	fi
-	_sudo=""
-	[[ ${PROD_USER} == root ]] || _sudo="sudo -n"
-	_run() { "${_ssh[@]}" "${PROD_USER}@${PROD_IP}" "${_sudo} env ${_vars} bash -s"; }
-fi
-
-_run <<'REMOTE'
+prod_run "${_vars}" <<'REMOTE'
 set -euo pipefail
 conf=/etc/apache2/sites-available/${SITE}.conf
 acme=/etc/acmesh/acme.sh

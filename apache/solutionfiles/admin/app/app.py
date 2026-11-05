@@ -561,6 +561,14 @@ def build_command(data):
                 abort(400, "This site has no production site")
             return "Prod binding: " + site, [bash, os.path.join(APACHE_DIR, "change_binding_prod.sh"), site, binding], APACHE_DIR
         return "Binding: " + site, [bash, os.path.join(APACHE_DIR, "change_binding.sh"), site, binding], APACHE_DIR
+    if kind == "prod_action":
+        site = site_arg(data)
+        action = data.get("action", "")
+        if action not in ("issue_certificate", "change_env"):
+            abort(400, "Unknown action")
+        if not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
+            abort(400, "This site has no production site")
+        return "Prod %s: %s" % (action.replace("_", " "), site), [bash, os.path.join(APACHE_DIR, "prod_action.sh"), site, action], APACHE_DIR
     if kind == "delete_site":
         site = site_arg(data)
         if site == ADMIN_SITE:

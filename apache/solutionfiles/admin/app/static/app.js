@@ -212,7 +212,7 @@ function scriptSelect(site, className) {
 	const select = el("select", { className: className || "", title: "Run a script from the site's scripts folder" }, el("option", { textContent: "Run script…", value: "" }));
 	const groups = [["Production", (f) => f.includes("_prod")], ["Site", (f) => !f.includes("_prod")]];
 	for (const [label, test] of groups) {
-		const files = site.scripts.filter(test);
+		const files = site.scripts.filter((f) => test(f) && !buttonScripts.has(f));
 		if (!files.length) continue;
 		const group = el("optgroup", { label });
 		for (const file of files) group.append(el("option", { textContent: scriptLabel(file), value: file, title: file }));
@@ -240,20 +240,29 @@ function renderSite(name) {
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: className || "", onclick: () => run(handler) }));
 	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
 	add("Files", () => go(filesLink(site.name)));
-	if (site.scripts.length) actions.append(scriptSelect(site));
+	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
 	if (!hasProd(site)) add("Change binding", () => changeBinding(site, "test"));
+	if (hasProd(site) && site.scripts.includes("sync_prod.sh")) {
+		actions.append(el("button", { textContent: "Sync to prod", title: "sync_prod.sh", onclick: () => run(async () => {
+			if (await ask({ title: "Sync to prod?", message: `Sync content to production (${site.name}).`, input: false, ok: "Sync to prod" })) await openTask({ kind: "script", site: site.name, script: "sync_prod.sh" });
+		}) }));
+	}
 	if (!site.admin) add(hasProd(site) ? "Delete everything" : "Delete site", () => deleteSite(site, "all"), "danger");
 	head.append(el("div", { className: "detail-title" }, el("h2", { textContent: site.name }), kindBadges(site)), actions);
 	for (const env of site.environments) envs.append(envPanel(site, env));
 }
 
-// [script candidates, button label, confirmation text (null = none; the script asks itself)]
+// Scripts that have their own button and are therefore left out of the "Run script…" list
+const buttonScripts = new Set(["publish.sh", "publish_local.sh", "publish_prod.sh", "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh", "issue_certificat.sh", "change_env.sh"]);
+
+// [script candidates or null, button label, confirmation text (null = none; the script asks itself), prod_action name]
 function quickActions(env) {
 	if (env.key === "prod") {
 		return [
 			[["publish_prod.sh"], "Publish", "Build and publish this site to production. The service is restarted."],
-			[["sync_prod.sh"], "Sync to prod", "Sync content to production."],
 			[["clear_logs_prod.sh"], "Clear logs", "Delete the production logs."],
+			[null, "Issue certificate", "Issue a new certificate for the production binding.", "issue_certificate"],
+			[null, "Change environment", null, "change_env"],
 		];
 	}
 	return [
@@ -294,12 +303,13 @@ function envPanel(site, env) {
 	}
 
 	const quick = el("div", { className: "actions quick" });
-	for (const [files, label, confirm] of quickActions(env)) {
-		const file = files.find((f) => site.scripts.includes(f));
-		if (!file) continue;
-		quick.append(el("button", { textContent: label, className: "small", title: file, onclick: () => run(async () => {
+	for (const [files, label, confirm, action] of quickActions(env)) {
+		const file = files && files.find((f) => site.scripts.includes(f));
+		if (!action && !file) continue;
+		if (action && env.mode === "remote" && !env.host) continue;
+		quick.append(el("button", { textContent: label, className: "small", title: file || action, onclick: () => run(async () => {
 			if (confirm && !(await ask({ title: `${label}?`, message: `${confirm} (${env.label.toLowerCase()} · ${site.name})`, input: false, ok: label }))) return;
-			await openTask({ kind: "script", site: site.name, script: file });
+			await openTask(action ? { kind: "prod_action", site: site.name, action } : { kind: "script", site: site.name, script: file });
 		}) }));
 	}
 	if (hasProd(site) && !site.admin) add("Change binding", () => changeBinding(site, env.key === "prod" ? "prod" : "test", env));
