@@ -289,32 +289,38 @@ function remoteIcon(env) {
 
 function siteCard(site) {
 	const state = siteState(site);
-	const actions = el("div", { className: "actions site-links" });
+	const actions = el("div", { className: "site-links" });
 	for (const env of site.environments) {
-		if (!env.binding) continue;
 		const production = env.key === "prod";
-		const prefix = production ? "Prod " : "";
-		const group = el("div", { className: "site-link-group" + (production ? " production" : ""), role: "group", ariaLabel: production ? "Production links" : "Site links" });
-		if (env.mode === "remote") group.append(remoteIcon(env));
+		const environment = site.kind === "python" ? "Live" : env.environment || (site.kind === "csharp" || site.kind === "umbraco" ? "Unknown" : env.label);
+		const group = el("div", { className: "site-link-group" + (production ? " production" : ""), role: "group", ariaLabel: environment + " · " + (env.binding || site.name) });
+		const heading = el("div", { className: "site-environment-head" },
+			el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
+		if (env.mode === "remote") heading.append(remoteIcon(env));
+		group.append(heading);
+		const links = el("div", { className: "site-environment-links" });
 		const scheme = env.scheme || "https";
-		const frontend = openLink(prefix + "Frontend", scheme + "://" + env.binding + "/", "", true);
+		if (!env.binding) {
+			group.append(el("span", { className: "muted", textContent: "No binding configured" }));
+			actions.append(group);
+			continue;
+		}
+		const frontend = openLink("Frontend", scheme + "://" + env.binding + "/", environment + ": " + env.binding, true);
 		frontend.prepend(httpsLock(env.https));
 		frontend.classList.add("frontend");
-		group.append(frontend);
+		links.append(frontend);
 		if (site.kind === "umbraco") {
-			const backend = openLink(prefix + "Backend", scheme + "://" + env.binding + "/umbraco", "Umbraco backoffice: " + env.binding, true);
+			const backend = openLink("Backend", scheme + "://" + env.binding + "/umbraco", environment + " backoffice: " + env.binding, true);
 			backend.prepend(httpsLock(env.https));
 			backend.classList.add("backend");
-			group.append(backend);
+			links.append(backend);
 		}
+		group.append(links);
 		actions.append(group);
 	}
 
 	const badges = kindBadges(site);
-	for (const env of site.environments) {
-		if (env.unit && env.environment) badges.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment, title: env.label }));
-	}
-	return el("article", { className: "site " + state + (site.admin ? " is-admin" : ""), onclick: () => go(siteLink(site.name)) },
+	return el("article", { className: "site " + state + (hasProd(site) ? " with-production" : "") + (site.admin ? " is-admin" : ""), onclick: () => go(siteLink(site.name)) },
 		el("div", { className: "site-head" },
 			el("span", { className: "site-emblem" }, svgIcon("globe")),
 			el("h3", { className: "site-title", textContent: site.name }),
@@ -455,7 +461,8 @@ function envPanel(site, env) {
 	const heading = el("div", { className: "env-head" },
 		el("span", { className: "dot " + dot }), ...(env.environment && env.environment.toLowerCase() === env.label.toLowerCase() ? [] : [el("h3", { textContent: env.label })]),
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
-	if (env.environment) heading.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment }));
+	const environment = site.kind === "python" ? "Live" : env.environment;
+	if (environment) heading.append(el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 	heading.append(httpsLock(env.https));
 	if (env.mode === "remote") heading.append(remoteIcon(env));
 
@@ -1090,7 +1097,16 @@ function openTerminal(id, title, autoClose) {
 async function openTask(payload) {
 	const data = await api("/api/term", { json: payload });
 	openTerminal(data.id, data.title, payload.kind === "shell" || (payload.kind === "remote_tool" && payload.tool === "shell"));
-	if (terminals[data.id]) showDock();
+	if (terminals[data.id]) {
+		showDock();
+		for (const dialog of document.querySelectorAll("dialog[open]")) {
+			dialog.addEventListener("close", () => {
+				if (activeTerminal === data.id && !document.querySelector("dialog[open]")) {
+					requestAnimationFrame(fitActive);
+				}
+			}, { once: true });
+		}
+	}
 }
 
 async function restoreTerminals() {
