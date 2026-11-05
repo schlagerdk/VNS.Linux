@@ -235,7 +235,7 @@ const bindingLink = (binding) => binding
 	? el("a", { className: "link", textContent: binding, href: "https://" + binding + "/", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() })
 	: el("span", { className: "muted", textContent: "no binding" });
 
-const backofficeLink = (binding) => el("a", { className: "link", textContent: binding + "/umbraco", href: "https://" + binding + "/umbraco", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() });
+const backofficeLink = (binding, text) => el("a", { className: "link", textContent: text || binding + "/umbraco", href: "https://" + binding + "/umbraco", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() });
 
 const versionColors = 8; // majors 18, 19, 20 … get different colours (see .badge.version[data-major] in style.css)
 
@@ -258,8 +258,9 @@ function siteCard(site) {
 		const dot = env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "";
 		rows.append(el("div", { className: "env-row" },
 			el("span", { className: "dot " + dot }),
-			el("span", { className: "env-label", textContent: "Url" }),
-			bindingLink(env.binding),
+			el("span", { className: "env-label", textContent: env.environment || env.label }),
+			el("span", { className: "env-binding" }, el("span", { className: "muted", textContent: "Binding" }), bindingLink(env.binding),
+				...(site.kind === "umbraco" && env.binding ? [el("span", { className: "muted", textContent: "·" }), backofficeLink(env.binding, "Backoffice")] : [])),
 			env.mode === "remote" ? el("span", { className: "muted", textContent: "on " + (env.host || "remote") }) : el("span")));
 	}
 	const actions = el("div", { className: "actions" });
