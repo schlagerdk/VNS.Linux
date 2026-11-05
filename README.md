@@ -82,7 +82,7 @@ Fetches the latest version from GitHub and synchronizes it to `/vns`. Local file
 - Buttons have icons and colour tones; Delete buttons are always alone at the far right.
 - Files open in a Monaco editor (syntax colouring, Ctrl+S to save).
 - Typing `exit` in a shell closes its terminal tab, and the modal closes when no tabs remain (script output tabs stay open).
-- The ⚙ Settings menu in the header has server-wide actions: Restart Apache and Test Apache config.
+- The ⚙ Settings menu in the header has server-wide actions: Restart Apache, Test Apache config, and a link to the admin site itself. The overview hides the admin site and the Apache default site (`/var/www/html`).
 - Umbraco sites show the installed Umbraco version (read from the `.csproj`) as a badge; the colour depends on the major version.
 - Terminals open in a modal window (button or Ctrl+`), and files open in an editor modal (Esc asks before discarding changes). The user icon opens the profile, where the username and password can be changed, and log out.
 - Sites overview with start/stop/restart, binding and port; run `create_site.sh`, `change_binding.sh` (per environment) and `delete_site.sh`; run the scripts in a site's `scripts/` folder; open a shell in a site (e.g. `dotnet add package ...`). Everything runs in interactive terminals that survive a browser reload.

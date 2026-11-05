@@ -107,15 +107,21 @@ const filesLink = (path) => "#files/" + path.split("/").map(encodeURIComponent).
 // ------------------------------------------------------------------ sites
 
 let allSites = [];
+// The overview leaves out the Apache default site (/var/www/html) and the admin site itself (reached via Settings)
+const isListed = (s) => !s.admin && s.name !== "html";
+const listedSites = () => allSites.filter(isListed);
 let filter = "all";
 let query = "";
 
 const kindLabel = { umbraco: "Umbraco", csharp: "C# / .NET", python: "Python", html: "HTML" };
 
 let defaultUmbracoVersion = "";
+let sitesLoaded = false;
 async function loadSites() {
 	const data = await api("/api/sites");
 	allSites = data.sites;
+	sitesLoaded = true;
+	$("#settings-admin-site").hidden = !allSites.some((s) => s.admin);
 	defaultUmbracoVersion = (data.defaults || {}).umbraco_version || "";
 	renderSites();
 	if (currentView === "site") renderSite(decodeURIComponent(location.hash.slice(6)));
@@ -130,9 +136,9 @@ function siteState(site) {
 const hasProd = (site) => site.environments.some((e) => e.key === "prod");
 
 function renderStats() {
-	const count = (test) => allSites.filter(test).length;
+	const count = (test) => listedSites().filter(test).length;
 	const chips = [
-		["all", "All", allSites.length],
+		["all", "All", listedSites().length],
 		["running", "Running", count((s) => siteState(s) === "active")],
 		["stopped", "Stopped", count((s) => siteState(s) === "inactive")],
 		["prod", "With prod", count(hasProd)],
@@ -191,7 +197,7 @@ const buttonStyles = {
 	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
 	"Stop": ["stop", "red"], "Clear logs": ["eraser", "gray"], "Logs": ["file", "gray"],
 	"Issue certificate": ["shield", "teal"], "Change environment": ["sliders", "purple"], "Change binding": ["globe", "blue"],
-	"Check service": ["activity", "teal"], "Test Apache config": ["activity", "teal"],
+	"Check service": ["activity", "teal"], "Test Apache config": ["activity", "teal"], "Admin site": ["manage", "gray"],
 	"Edit service": ["pencil", "amber"], "Edit config": ["pencil", "amber"], "Delete*": ["trash", "red"],
 };
 
@@ -219,7 +225,7 @@ function renderSites() {
 	renderStats();
 	const box = $("#sites");
 	box.replaceChildren();
-	const visible = allSites.filter(matches);
+	const visible = listedSites().filter(matches);
 	$("#no-sites").hidden = visible.length > 0;
 	for (const site of visible) box.append(siteCard(site));
 	decorate(box);
@@ -299,6 +305,7 @@ function renderSite(name) {
 	const envs = $("#envs");
 	head.replaceChildren();
 	envs.replaceChildren();
+	if (!site && sitesLoaded) { go("#sites"); return; }
 	if (!site) {
 		head.append(el("p", { className: "empty", textContent: allSites.length ? "Site not found." : "Loading…" }));
 		return;
@@ -825,6 +832,7 @@ document.addEventListener("click", () => { settingsMenu.hidden = true; });
 $("#settings-restart-apache").onclick = () => run(async () => {
 	if (await ask({ title: "Restart Apache?", message: "All sites on this server are briefly unavailable.", input: false, ok: "Restart", danger: true })) await openTask({ kind: "apache", tool: "restart" });
 });
+$("#settings-admin-site").onclick = () => { const admin = allSites.find((s) => s.admin); if (admin) go(siteLink(admin.name)); };
 $("#settings-apache-test").onclick = () => run(() => openTask({ kind: "apache", tool: "configtest" }));
 
 decorate($("#settings-menu"));
