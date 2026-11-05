@@ -18,6 +18,7 @@ import threading
 import time
 import tempfile
 import uuid
+import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
 
 import ptyprocess
@@ -260,6 +261,30 @@ def umbraco_version(root, projects):
     return ""
 
 
+def package_references(projects):
+    packages = {}
+    errors = []
+    for path in projects:
+        try:
+            project = ET.parse(path).getroot()
+        except ET.ParseError as exc:
+            errors.append("%s: %s" % (os.path.basename(path), exc))
+            continue
+        for element in project.iter():
+            if element.tag.rsplit("}", 1)[-1] != "PackageReference":
+                continue
+            name = element.attrib.get("Include") or element.attrib.get("Update")
+            if not name:
+                continue
+            version = element.attrib.get("Version", "")
+            if not version:
+                version_node = next((child for child in element if child.tag.rsplit("}", 1)[-1] == "Version"), None)
+                version = (version_node.text or "").strip() if version_node is not None else ""
+            if name not in packages or version:
+                packages[name] = version
+    return [{"name": name, "version": version} for name, version in sorted(packages.items(), key=lambda item: item[0].lower())], errors
+
+
 def site_info(name, states):
     root = os.path.join(WEB_ROOT, name)
     conf = os.path.join(APACHE_SITES, name + ".conf")
@@ -278,8 +303,11 @@ def site_info(name, states):
 
     projects = glob.glob(os.path.join(root, "*.csproj"))
     umbraco = ""
+    packages = []
+    package_errors = []
     if projects:
         kind = "umbraco" if any("Umbraco.Cms" in read_text(p) for p in projects) else "csharp"
+        packages, package_errors = package_references(projects)
         if kind == "umbraco":
             umbraco = umbraco_version(root, projects)
     elif os.path.isfile(os.path.join(root, "app", "app.py")):
@@ -316,6 +344,8 @@ def site_info(name, states):
         "name": name,
         "kind": kind,
         "umbraco_version": umbraco,
+        "packages": packages,
+        "package_errors": package_errors,
         "scripts": scripts,
         "admin": name == ADMIN_SITE,
         "environments": environments,

@@ -318,8 +318,11 @@ function renderSite(name) {
 	const site = allSites.find((s) => s.name === name);
 	const head = $("#site-head");
 	const envs = $("#envs");
+	const packagesPanel = $("#site-packages");
 	head.replaceChildren();
 	envs.replaceChildren();
+	packagesPanel.replaceChildren();
+	packagesPanel.hidden = true;
 	if (!site && sitesLoaded) { go("#sites"); return; }
 	if (!site) {
 		head.append(el("p", { className: "empty", textContent: allSites.length ? "Site not found." : "Loading…" }));
@@ -344,10 +347,6 @@ function renderSite(name) {
 			}
 		}
 	}
-	if (site.kind === "csharp" || site.kind === "umbraco") {
-		add("Add package", () => openPackageDialog(site, "add"));
-		add("Remove package", () => openPackageDialog(site, "remove"));
-	}
 	if (hasProd(site) && site.scripts.includes("sync_prod.sh")) {
 		actions.append(el("button", { textContent: "Sync to prod", title: "sync_prod.sh", onclick: () => run(async () => {
 			if (await ask({ title: "Sync to prod?", message: `Sync content to production (${site.name}).`, input: false, ok: "Sync to prod" })) await openTask({ kind: "script", site: site.name, script: "sync_prod.sh" });
@@ -356,8 +355,28 @@ function renderSite(name) {
 	if (!site.admin) add(hasProd(site) ? "Delete everything" : "Delete site", () => deleteSite(site, "all"), "danger");
 	head.append(el("div", { className: "detail-title" }, el("h2", { textContent: site.name }), kindBadges(site)), actions);
 	for (const env of site.environments) envs.append(envPanel(site, env));
+	if (site.kind === "csharp" || site.kind === "umbraco") {
+		packagesPanel.hidden = false;
+		const packageActions = el("div", { className: "actions" },
+			el("button", { textContent: "Add package", onclick: () => run(() => openPackageDialog(site, "add")) }),
+			el("button", { textContent: "Remove package", onclick: () => run(() => openPackageDialog(site, "remove")) }));
+		const packageList = el("div", { className: "package-list" });
+		for (const item of site.packages || []) {
+			packageList.append(el("div", { className: "package-row" },
+				el("code", { textContent: item.name }),
+				el("span", { className: "muted", textContent: item.version || "Version managed separately" })));
+		}
+		if (!packageList.children.length && !(site.package_errors || []).length) {
+			packageList.append(el("p", { className: "muted", textContent: "No PackageReference entries found in the project files." }));
+		}
+		packagesPanel.append(
+			el("div", { className: "package-head" }, el("h3", { textContent: "NuGet packages" }), packageActions),
+			...(site.package_errors || []).map((message) => el("p", { className: "package-error", textContent: `Could not read package references: ${message}` })),
+			packageList);
+	}
 	decorate(head);
 	decorate(envs);
+	decorate(packagesPanel);
 }
 
 // Scripts that have their own button and are therefore left out of the "Run script…" list
