@@ -3,7 +3,8 @@
 # Asks for the production settings, then:
 #   publish.sh -> publish_local.sh, clear_logs.sh -> clear_logs_local.sh
 #   creates publish_prod.sh, clear_logs_prod.sh and sync_prod.sh (Umbraco) with the answers filled in
-# Production is always a Release build. This script deletes itself when it is done.
+# Publishes production, then syncs content when available. Production is always a Release build.
+# This script deletes itself after the production scripts have been created.
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
@@ -130,6 +131,12 @@ done
 
 echo "Created in ${_scripts}:"
 ls -1 "${_scripts}" | grep -E '_(local|prod)\.sh$' | sed 's/^/  /'
-echo "Next: run publish_prod.sh to publish to production."
-
 rm -f -- "${_self}"
+
+echo "Publish to production"
+bash "${_scripts}/publish_prod.sh"
+if [[ -f ${_scripts}/sync_prod.sh ]]; then
+	echo "Sync content to production"
+	bash "${_scripts}/sync_prod.sh"
+fi
+echo "Production setup complete."

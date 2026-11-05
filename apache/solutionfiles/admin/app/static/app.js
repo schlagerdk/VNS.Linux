@@ -335,7 +335,7 @@ function renderSite(name) {
 	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
 	add("Files", () => go(filesLink(site.name)));
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
-	if (site.scripts.includes("create_prod.sh")) {
+	if (!hasProd(site) && site.scripts.includes("create_prod.sh")) {
 		add("Create production site", () => openCreateProdDialog(site));
 	}
 	if (site.kind !== "csharp" && site.kind !== "umbraco" && site.scripts.includes("outdated.sh")) {
