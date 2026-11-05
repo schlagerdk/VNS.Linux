@@ -70,6 +70,15 @@ Fetches the latest version from GitHub and synchronizes it to `/vns`. Local file
 - `create_db.sh`, `drop_db.sh`, `copy_db.sh`, `restore_db.sh`, `list_dbs.sh`, and `list_backups.sh` are for day-to-day administration. The create, copy, and restore scripts prompt for and confirm a password for the new SQL login; the password is not stored in the SQL template files.
 - `cron/` contains scheduled jobs (backups, log shrinking, etc.), enabled with `sql/cron/add_to_crontab.sh`.
 
+### Admin site
+
+`apache/setup_admin_site.sh` creates a Flask website (served by gunicorn behind Apache with a certificate) for managing every site in `/var/www`. It asks for folder name, binding, username, password (min. 12 characters) and an optional IP/CIDR allowlist (empty = everyone).
+
+- Sites overview with start/stop/restart, binding and port; run `create_site.sh`, `change_binding.sh` and `delete_site.sh`; run the scripts in a site's `scripts/` folder; open a shell in a site (e.g. `dotnet add package ...`). Everything runs in interactive terminals that survive a browser reload.
+- File browser confined to `/var/www`: edit, upload, download, create, rename, delete.
+- Security: **the site runs as root.** Login is rate limited per IP, sessions are HttpOnly/Secure/SameSite=Strict with a 2 hour idle timeout, and all POSTs require a CSRF token. Use a long password and preferably the IP allowlist.
+- Change the password with `scripts/set_password.sh` in the admin site (this also signs out all sessions). The xterm.js assets are downloaded from jsdelivr when the site is created.
+
 ## Requirements
 
 - Ubuntu/Debian with `apt`

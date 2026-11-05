@@ -115,6 +115,7 @@ render() {
 		-e "s|@ENVIRONMENT@|${_environment:-Test}|g" \
 		-e "s|@APACHE_DIR@|${_apacheDir}|g" \
 		-e "s|@CSHARP_KIND@|${_csharpKind:-}|g" \
+		-e "s|@ACCESS_RULES@|${_accessRules:-Require all granted}|g" \
 		"$1"
 }
 

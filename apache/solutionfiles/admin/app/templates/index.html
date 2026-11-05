@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="csrf" content="{{ csrf }}">
+<meta name="admin-site" content="{{ admin_site }}">
+<title>Server admin</title>
+<link rel="stylesheet" href="/static/vendor/xterm.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>Server admin</h1>
+  <nav>
+    <button data-view="sites" class="active">Sites</button>
+    <button data-view="files">Files</button>
+    <button data-view="terminals">Terminals <span id="term-count"></span></button>
+  </nav>
+  <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Log out</button></form>
+</header>
+<main>
+  <section id="view-sites">
+    <div class="toolbar">
+      <button id="btn-new-site">New site</button>
+      <button id="btn-server-shell">Server shell</button>
+      <button id="btn-refresh">Refresh</button>
+    </div>
+    <table id="sites"><thead><tr><th>Site</th><th>Binding</th><th>Type</th><th>Port</th><th>State</th><th>Actions</th></tr></thead><tbody></tbody></table>
+  </section>
+  <section id="view-files" hidden>
+    <div class="toolbar">
+      <span id="crumbs"></span>
+      <span class="spacer"></span>
+      <button id="btn-new-file">New file</button>
+      <button id="btn-new-folder">New folder</button>
+      <button id="btn-upload">Upload</button>
+      <input type="file" id="upload-input" multiple hidden>
+    </div>
+    <div class="split">
+      <table id="files"><thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead><tbody></tbody></table>
+      <div id="editor" hidden>
+        <div class="toolbar">
+          <strong id="editor-path"></strong>
+          <span class="spacer"></span>
+          <span id="editor-status"></span>
+          <button id="editor-save">Save (Ctrl+S)</button>
+          <button id="editor-close">Close</button>
+        </div>
+        <textarea id="editor-text" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </section>
+  <section id="view-terminals" hidden>
+    <div id="tabs"></div>
+    <div id="panes"></div>
+    <p id="no-terminals">No terminals open. Open a shell or run a script from the Sites view.</p>
+  </section>
+</main>
+
+<dialog id="dlg-site">
+  <form method="dialog" id="form-site">
+    <h2>New site</h2>
+    <label>Folder name <input name="site" required placeholder="www.example.com"></label>
+    <label>Binding (domain) <input name="binding" required placeholder="www.example.com"></label>
+    <label>Type
+      <select name="type"><option>html</option><option>python</option><option selected>csharp</option></select>
+    </label>
+    <fieldset id="csharp-options">
+      <label>Kind <select name="csharp"><option>umbraco</option><option>empty</option></select></label>
+      <label>Umbraco version <input name="version" placeholder="default"></label>
+      <label>C# project name <input name="project" placeholder="folder name"></label>
+      <label>Local publish folder <input name="publish" value="_publish"></label>
+      <label>Build <select name="build"><option>Debug</option><option>Release</option></select></label>
+    </fieldset>
+    <p class="hint">The script runs in a terminal, so you can answer any extra prompt there.</p>
+    <menu><button type="button" id="site-cancel">Cancel</button><button type="submit" value="ok">Create</button></menu>
+  </form>
+</dialog>
+
+<script src="/static/vendor/xterm.js"></script>
+<script src="/static/vendor/xterm-addon-fit.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

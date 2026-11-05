@@ -63,3 +63,9 @@ echo "Installed runtimes:"
 dotnet --list-runtimes
 echo "Installed SDKs:"
 dotnet --list-sdks
+
+echo
+read -r -p "Set up the admin site now (web UI for managing all sites)? [y/N]: " _setupAdmin
+if [[ ${_setupAdmin,,} == y* ]]; then
+	sudo "$(pwd)/setup_admin_site.sh"
+fi
