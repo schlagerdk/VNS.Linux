@@ -668,7 +668,10 @@ async function deleteSite(site, scope) {
 	const certificateMessage = remote && scope !== "test"
 		? "Also revoke and remove the certificate(s) for the site being deleted? The remote certificate is kept if another enabled site uses the domain."
 		: "Also revoke and remove the certificate(s) for the site being deleted?";
-	certificates = (await ask({ title: "Certificate", message: certificateMessage, input: false, ok: "Remove certificate(s)" })) === true;
+	const deletedEnvironments = site.environments.filter((env) => scope === "all" || (scope === "prod" ? env.key === "prod" : env.key !== "prod"));
+	if (deletedEnvironments.some((env) => env.https !== false)) {
+		certificates = (await ask({ title: "Certificate", message: certificateMessage, input: false, ok: "Remove certificate(s)" })) === true;
+	}
 	await openTask({ kind: "delete_site", site: site.name, certificates, scope });
 }
 
