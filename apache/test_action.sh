@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: test_action.sh <site> <issue_certificate|change_env> [environment]
+# Usage: test_action.sh <site> <issue_certificate|change_env> [environment|--yes]
 # Actions on the test (main) environment of a site, using the Apache config and service of the site.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -18,8 +18,11 @@ case "${_action}" in
 		_binding=$(awk '$1 == "ServerName" { print $2; exit }' "${_configPath}")
 		[[ -n ${_binding} ]] || { echo "Could not determine ServerName in ${_configPath}" >&2; exit 1; }
 		_binding=${_binding,,}
-		read -r -p "Issue a new certificate for ${_binding}? [y/N]: " _confirm
-		[[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
+		_confirm=y
+		if [[ ${3:-} != --yes ]]; then
+			read -r -p "Issue a new certificate for ${_binding}? [y/N]: " _confirm
+		fi
+		[[ ${_confirm} == [yY] || ${_confirm} == [yY][eE][sS] ]] || { echo "Aborted"; exit 1; }
 		require_acme
 		echo "Issue certificate for ${_binding}"
 		_status=0

@@ -846,6 +846,8 @@ def build_command(data):
             if environment not in ("Development", "Test", "Staging", "Production"):
                 abort(400, "Invalid environment")
             args.append(environment)
+        else:
+            args.append("--yes")
         if data.get("scope") == "test":
             if not os.path.isdir(os.path.join(WEB_ROOT, site)):
                 abort(404, "Unknown site")

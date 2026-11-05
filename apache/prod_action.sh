@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: prod_action.sh <site> <issue_certificate|change_env> [environment]
+# Usage: prod_action.sh <site> <issue_certificate|change_env> [environment|--yes]
 # Actions on the production environment of a site (settings in <site>/scripts/publish_prod.sh),
 # on this server or over SSH on the remote one.
 set -euo pipefail
@@ -17,8 +17,11 @@ load_prod_settings
 
 case "${_action}" in
 	issue_certificate)
-		read -r -p "Issue a new certificate for ${PROD_BINDING} on ${_target}? [y/N]: " _confirm
-		[[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
+		_confirm=y
+		if [[ ${3:-} != --yes ]]; then
+			read -r -p "Issue a new certificate for ${PROD_BINDING} on ${_target}? [y/N]: " _confirm
+		fi
+		[[ ${_confirm} == [yY] || ${_confirm} == [yY][eE][sS] ]] || { echo "Aborted"; exit 1; }
 		prod_run "SITE='${PROD_FOLDER}' BINDING='${PROD_BINDING,,}' ACME_SERVER='${_acmeServer}'" <<'REMOTE'
 set -euo pipefail
 acme=/etc/acmesh/acme.sh
