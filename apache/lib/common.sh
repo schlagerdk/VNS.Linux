@@ -127,6 +127,23 @@ require_acme() {
 	fi
 }
 
+# Remove leftover acme.sh state (e.g. a domain key from an earlier site) so a fresh certificate can be issued.
+# Skipped when another enabled site still uses the domain.
+clean_stale_acme() {
+	local _domain=$1 _conf
+	for _conf in /etc/apache2/sites-enabled/*.conf; do
+		[[ -e ${_conf} && ${_conf} != "/etc/apache2/sites-enabled/${_site}.conf" ]] || continue
+		if awk -v d="${_domain}" '($1 == "ServerName" || $1 == "ServerAlias") { for (i = 2; i <= NF; i++) if (tolower($i) == tolower(d)) f = 1 } END { exit !f }' "${_conf}"; then
+			return 0
+		fi
+	done
+	if [[ -d /etc/ssl/certs/${_domain} || -d /etc/ssl/certs/${_domain}_ecc ]]; then
+		echo "Remove leftover certificate data for ${_domain}"
+		sudo "${_acme}" --remove -d "${_domain}" >/dev/null 2>&1 || true
+		sudo rm -rf "/etc/ssl/certs/${_domain}" "/etc/ssl/certs/${_domain}_ecc"
+	fi
+}
+
 # Temporary HTTP-only vhost, then issue and install the certificate. Requires _docRoot to exist.
 issue_certificate() {
 	require_acme
@@ -139,6 +156,7 @@ issue_certificate() {
 	[[ -e "/etc/apache2/sites-enabled/${_site}.conf" ]] || sudo a2ensite "${_site}.conf"
 	sudo systemctl reload apache2
 
+	clean_stale_acme "${_binding}"
 	echo "Issue certificate"
 	# acme.sh returns 2 when a still-valid certificate is skipped
 	sudo "${_acme}" --issue --apache --server "${_acmeServer}" -d "${_binding}" || {
