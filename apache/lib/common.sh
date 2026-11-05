@@ -159,7 +159,7 @@ issue_certificate() {
 	clean_stale_acme "${_binding}"
 	echo "Issue certificate"
 	# acme.sh returns 2 when a still-valid certificate is skipped
-	sudo "${_acme}" --issue --apache --server "${_acmeServer}" -d "${_binding}" || {
+	sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" -d "${_binding}" || {
 		local _status=$?
 		[[ ${_status} -eq 2 ]] || return "${_status}"
 	}

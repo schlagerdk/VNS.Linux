@@ -106,7 +106,7 @@ fi
 
 echo "Issue certificate for ${_newBinding}"
 clean_stale_acme "${_newBinding}"
-if sudo "${_acme}" --issue --apache --server "${_acmeServer}" -d "${_newBinding}"; then
+if sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" -d "${_newBinding}"; then
 	:
 else
 	_status=$?
