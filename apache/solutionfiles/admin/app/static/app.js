@@ -263,7 +263,7 @@ function siteCard(site) {
 	const actions = el("div", { className: "actions" });
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: "small " + (className || ""), onclick: (event) => { event.stopPropagation(); run(handler); } }));
 	add("Manage", () => go(siteLink(site.name)), "primary");
-	add("Shell", () => openTask({ kind: "shell", site: site.name }));
+	add("Shell", () => openTask({ kind: "shell", site: site.name }), "push-right");
 	add("Files", () => go(filesLink(site.name)));
 
 	return el("article", { className: "site " + state + (site.admin ? " is-admin" : ""), onclick: () => go(siteLink(site.name)) },
