@@ -39,6 +39,11 @@ main() {
         --exclude '_portnumber.txt' \
         "$src"/ "$TARGET"/
 
+    # Templates hold no local data, so remove templates that no longer exist in the repository
+    if [ -d "$src/apache/solutionfiles" ]; then
+        rsync -a --delete "$src/apache/solutionfiles"/ "$TARGET/apache/solutionfiles"/
+    fi
+
     if [ -n "$sa_quoted" ]; then
         source "$TARGET/sql/lib/sa_password.sh"
         sa_apply_quoted "$TARGET/sql" "$sa_quoted"
