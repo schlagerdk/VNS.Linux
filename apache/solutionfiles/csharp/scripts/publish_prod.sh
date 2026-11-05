@@ -210,7 +210,8 @@ remote "${_sudo} env ${_vars} bash -s" <<'REMOTE'
 set -euo pipefail
 dir=/var/www/${SITE}
 file=${dir}/appsettings.json
-if [[ ${UMBRACO} == 1 && -f ${file} ]]; then
+if [[ -f ${file} ]] && grep -q "UmbracoApplicationUrl" "${file}"; then
+	echo "Set UmbracoApplicationUrl to https://${BINDING}"
 	sed -i -E "s|(\"UmbracoApplicationUrl\"[[:space:]]*:[[:space:]]*\")[^\"]*|\1https://${BINDING}|" "${file}"
 fi
 chown -R www-data:www-data "${dir}"
