@@ -16,6 +16,7 @@ import signal
 import subprocess
 import threading
 import time
+import tempfile
 import uuid
 from urllib.parse import urlparse
 
@@ -457,7 +458,7 @@ DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
 class TermSession:
-    def __init__(self, title, argv, cwd):
+    def __init__(self, title, argv, cwd, extra_env=None):
         self.id = uuid.uuid4().hex[:12]
         self.title = title
         self.created = time.time()
@@ -476,6 +477,7 @@ class TermSession:
         dotnet_root = dotnet_root_dir()
         if dotnet_root:
             env["DOTNET_ROOT"] = dotnet_root
+        env.update(extra_env or {})
         self.proc = ptyprocess.PtyProcess.spawn(argv, cwd=cwd, env=env, dimensions=(30, 120))
         threading.Thread(target=self._read, daemon=True).start()
 
@@ -544,6 +546,120 @@ def site_arg(data):
     return site
 
 
+def production_setup_env(data, site):
+    """Validate modal input for create_prod.sh and keep credentials out of argv."""
+    folder = data.get("folder", "")
+    binding = data.get("binding", "")
+    target = data.get("target", "")
+    if not isinstance(folder, str) or not isinstance(binding, str):
+        abort(400, "Invalid production site name or binding")
+    binding = binding.lower()
+    if not NAME_RE.match(folder) or not BINDING_RE.match(binding):
+        abort(400, "Invalid production site name or binding")
+    if target not in ("local", "remote"):
+        abort(400, "Invalid production target")
+    if os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
+        abort(400, "This site already has a production target")
+    if not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "create_prod.sh")):
+        abort(400, "This site cannot create a production target")
+
+    values = {
+        "VNS_PROD_MODAL": "1",
+        "VNS_PROD_TARGET": target,
+        "VNS_PROD_FOLDER": folder,
+        "VNS_PROD_BINDING": binding,
+        "VNS_PROD_LOCAL_PATH": "",
+        "VNS_PROD_IP": "",
+        "VNS_PROD_USER": "",
+        "VNS_PROD_PASSWORD": "",
+        "VNS_PROD_SSH_PORT": "",
+    }
+    test_binding = conf_binding(site).lower()
+    if target == "local":
+        local_path = data.get("local_path", "")
+        if not isinstance(local_path, str):
+            abort(400, "Invalid local production folder")
+        site_root = os.path.realpath(os.path.join(WEB_ROOT, site))
+        target_path = os.path.realpath(local_path) if os.path.isabs(local_path) else ""
+        try:
+            within_site = os.path.commonpath((site_root, target_path)) == site_root
+        except ValueError:
+            within_site = False
+        if not within_site or target_path == site_root:
+            abort(400, "Local production files must be stored in a subfolder of this site's folder")
+        if folder == site or binding == test_binding:
+            abort(400, "A local production site needs a different name and binding than the test site")
+        values["VNS_PROD_LOCAL_PATH"] = target_path
+    else:
+        host = data.get("host", "")
+        user = data.get("user", "")
+        password = data.get("password", "")
+        port = str(data.get("ssh_port", ""))
+        if not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+            abort(400, "Invalid remote host")
+        if not isinstance(user, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}", user):
+            abort(400, "Invalid SSH username")
+        if not isinstance(password, str) or len(password) > 4096:
+            abort(400, "Invalid SSH password")
+        if not port.isdecimal() or not 1 <= int(port) <= 65535:
+            abort(400, "Invalid SSH port")
+        values.update({
+            "VNS_PROD_IP": host,
+            "VNS_PROD_USER": user,
+            "VNS_PROD_PASSWORD": password,
+            "VNS_PROD_SSH_PORT": port,
+        })
+    return values
+
+
+def render_create_prod_script(site):
+    """Render the current create_prod template from this site's installed metadata."""
+    root = os.path.realpath(os.path.join(WEB_ROOT, site))
+    projects = sorted(glob.glob(os.path.join(root, "*.csproj")))
+    if not projects:
+        abort(400, "Could not find this site's C# project")
+    binding = conf_binding(site)
+    if not binding:
+        abort(400, "Could not find this site's Apache binding")
+    service_text = read_text(os.path.join(SERVICE_DIR, site + ".service"))
+    working = re.search(r"^WorkingDirectory=(\S+)", service_text, re.M)
+    publish_folder = os.path.basename(working.group(1).rstrip("/")) if working else ""
+    if not FOLDER_RE.match(publish_folder):
+        abort(400, "Could not determine this site's publish folder")
+    project_text = read_text(projects[0])
+    admin_match = re.search(r"^\s*ServerAdmin\s+(\S+)", read_text(os.path.join(APACHE_SITES, site + ".conf")), re.M)
+    admin_mail = admin_match.group(1) if admin_match else ""
+    if not re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+", admin_mail):
+        abort(400, "Could not determine this site's administrator email")
+    umbraco = "umbraco" if "Umbraco.Cms" in project_text else "empty"
+
+    template = os.path.join(APACHE_DIR, "solutionfiles", "csharp", "scripts", "create_prod.sh")
+    text = read_text(template)
+    if not text:
+        abort(500, "Production setup template is missing")
+    replacements = {
+        "@APACHE_DIR@": APACHE_DIR,
+        "@SITE@": site,
+        "@BINDING@": binding,
+        "@PROJECT_NAME@": os.path.splitext(os.path.basename(projects[0]))[0],
+        "@SITE_ROOT@": root,
+        "@PUBLISH_FOLDER@": publish_folder,
+        "@ADMIN_MAIL@": admin_mail,
+        "@CSHARP_KIND@": umbraco,
+    }
+    for token, value in replacements.items():
+        text = text.replace(token, value)
+    fd, path = tempfile.mkstemp(prefix="vns-create-prod-", suffix=".sh")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as script:
+            script.write(text)
+        os.chmod(path, 0o700)
+    except Exception:
+        os.unlink(path)
+        raise
+    return path
+
+
 def build_command(data):
     """Validate a terminal request and return (title, argv, cwd). Nothing is passed through a shell."""
     kind = data.get("kind")
@@ -569,6 +685,12 @@ def build_command(data):
         if not SCRIPT_RE.match(script) or os.path.dirname(path) != os.path.realpath(folder) or not os.path.isfile(path):
             abort(400, "Unknown script")
         return "%s: %s" % (site, script), [bash, path], folder
+    if kind == "create_prod":
+        site = site_arg(data)
+        path = os.path.join(WEB_ROOT, site, "scripts", "create_prod.sh")
+        if not os.path.isfile(path):
+            abort(400, "This site cannot create a production target")
+        return "Create production site: " + site, [bash, path], os.path.dirname(path)
     if kind == "unit_tool":
         site = site_arg(data)
         unit = data.get("unit", "")
@@ -660,11 +782,22 @@ def api_term():
         prune_sessions()
         with SESSIONS_LOCK:
             return jsonify(sessions=[describe(s) for s in SESSIONS.values()])
-    title, argv, cwd = build_command(request.get_json(silent=True) or {})
+    payload = request.get_json(silent=True) or {}
+    title, argv, cwd = build_command(payload)
+    extra_env = production_setup_env(payload, payload.get("site", "")) if payload.get("kind") == "create_prod" else None
+    if extra_env is not None:
+        argv = ["/bin/bash", render_create_prod_script(payload["site"])]
     with SESSIONS_LOCK:
         if sum(1 for s in SESSIONS.values() if s.running) >= MAX_SESSIONS:
+            if extra_env is not None:
+                os.unlink(argv[1])
             return error("Too many running terminals. Close some first.")
-        session_obj = TermSession(title, argv, cwd)
+        try:
+            session_obj = TermSession(title, argv, cwd, extra_env)
+        except Exception:
+            if extra_env is not None:
+                os.unlink(argv[1])
+            raise
         SESSIONS[session_obj.id] = session_obj
     return jsonify(describe(session_obj))
 

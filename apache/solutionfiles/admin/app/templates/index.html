@@ -130,6 +130,37 @@
   </form>
 </dialog>
 
+<dialog id="dlg-prod" class="newsite">
+  <form method="dialog" id="form-prod">
+    <header class="ns-head">
+      <span class="ns-icon">↗</span>
+      <div><h2>Create production site</h2><p>Configure where this site's production deployment will run.</p></div>
+    </header>
+    <div class="ns-section">Production target</div>
+    <div class="ns-grid">
+      <label>Target <select name="target"><option value="remote">Remote server</option><option value="local">Local folder on this server</option></select></label>
+      <label>Production folder / service name <input name="folder" required autocomplete="off" spellcheck="false"></label>
+      <label>Production binding (domain) <input name="binding" required autocomplete="off" spellcheck="false"></label>
+    </div>
+    <div id="prod-remote-options">
+      <div class="ns-section">SSH connection</div>
+      <div class="ns-grid">
+        <label>Server host <input name="host" required autocomplete="url" spellcheck="false" placeholder="prod.example.com"></label>
+        <label>SSH username <input name="user" required autocomplete="username" value="root"></label>
+        <label>SSH port <input name="ssh_port" type="number" min="1" max="65535" value="22" required></label>
+        <label>SSH password <input name="password" type="password" autocomplete="new-password" placeholder="Leave empty to use an SSH key"></label>
+      </div>
+      <p class="hint">A password is optional when SSH keys are configured. If provided, it is saved in this site's root-only production script.</p>
+    </div>
+    <div id="prod-local-options" hidden>
+      <div class="ns-section">Local production folder</div>
+      <label>Absolute folder path <input name="local_path" required autocomplete="off" spellcheck="false"></label>
+      <p class="hint">The folder must be inside this site's directory.</p>
+    </div>
+    <menu><button type="button" id="prod-cancel">Cancel</button><button type="submit" value="ok" class="primary">Create production site</button></menu>
+  </form>
+</dialog>
+
 <dialog id="dlg-profile">
   <form method="dialog" id="form-profile">
     <h2>Profile</h2>

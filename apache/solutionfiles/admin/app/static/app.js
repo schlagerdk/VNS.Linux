@@ -196,6 +196,7 @@ const iconPaths = {
 const buttonStyles = {
 	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
 	"Publish": ["upload", "green"], "Sync to prod": ["sync", "green"], "Start": ["play", "green"],
+	"Fix permissions": ["shield", "teal"], "Update Python packages": ["sync", "blue"],
 	"Create production site": ["server", "purple"],
 	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
 	"Stop": ["stop", "red"], "Clear logs": ["eraser", "gray"], "Logs": ["file", "gray"],
@@ -329,11 +330,18 @@ function renderSite(name) {
 	add("Files", () => go(filesLink(site.name)));
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
 	if (site.scripts.includes("create_prod.sh")) {
-		add("Create production site", () => openTask({ kind: "script", site: site.name, script: "create_prod.sh" }));
+		add("Create production site", () => openCreateProdDialog(site));
 	}
 	if (!hasProd(site)) add("Change binding", () => changeBinding(site, "test"));
 	if (site.scripts.includes("outdated.sh")) {
 		actions.append(el("button", { textContent: "Check outdated", title: "outdated.sh", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));
+	}
+	if (site.kind === "python") {
+		for (const [script, label] of [["fix_permissions.sh", "Fix permissions"], ["update_packages.sh", "Update Python packages"]]) {
+			if (site.scripts.includes(script)) {
+				add(label, () => openTask({ kind: "script", site: site.name, script }));
+			}
+		}
 	}
 	if (hasProd(site) && site.scripts.includes("sync_prod.sh")) {
 		actions.append(el("button", { textContent: "Sync to prod", title: "sync_prod.sh", onclick: () => run(async () => {
@@ -348,7 +356,7 @@ function renderSite(name) {
 }
 
 // Scripts that have their own button and are therefore left out of the "Run script…" list
-const buttonScripts = new Set(["publish.sh", "publish_local.sh", "publish_prod.sh", "create_prod.sh", "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh", "issue_certificat.sh", "change_env.sh", "restart_service.sh", "check_service.sh", "edit_service.sh", "edit_conf.sh", "restart_apache.sh", "outdated.sh", "set_password.sh"]);
+const buttonScripts = new Set(["publish.sh", "publish_local.sh", "publish_prod.sh", "create_prod.sh", "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh", "issue_certificat.sh", "change_env.sh", "restart_service.sh", "check_service.sh", "edit_service.sh", "edit_conf.sh", "restart_apache.sh", "outdated.sh", "set_password.sh", "fix_permissions.sh", "update_packages.sh"]);
 
 // [script candidates or null, button label, confirmation text (null = none; the script asks itself), prod_action name]
 function quickActions(env) {
@@ -545,6 +553,61 @@ siteForm.onsubmit = () => {
 	const data = Object.fromEntries(new FormData(siteForm));
 	data.kind = "create_site";
 	run(() => openTask(data));
+};
+
+const prodDialog = $("#dlg-prod");
+const prodForm = $("#form-prod");
+function syncProdForm() {
+	const target = prodForm.elements.target.value;
+	const local = target === "local";
+	$("#prod-local-options").hidden = !local;
+	$("#prod-remote-options").hidden = local;
+	prodForm.local_path.required = local;
+	prodForm.host.required = !local;
+	prodForm.user.required = !local;
+	prodForm.ssh_port.required = !local;
+	const previous = prodForm.dataset.target;
+	if (previous && previous !== target) {
+		const previousDefaults = previous === "local"
+			? { folder: prodForm.dataset.localFolder, binding: prodForm.dataset.localBinding }
+			: { folder: prodForm.dataset.remoteFolder, binding: prodForm.dataset.remoteBinding };
+		const nextDefaults = local
+			? { folder: prodForm.dataset.localFolder, binding: prodForm.dataset.localBinding }
+			: { folder: prodForm.dataset.remoteFolder, binding: prodForm.dataset.remoteBinding };
+		if (prodForm.folder.value === previousDefaults.folder) prodForm.folder.value = nextDefaults.folder;
+		if (prodForm.binding.value === previousDefaults.binding) prodForm.binding.value = nextDefaults.binding;
+	}
+	prodForm.dataset.target = target;
+}
+function openCreateProdDialog(site) {
+	prodForm.reset();
+	const binding = site.environments.find((env) => env.key === "test")?.binding || site.name;
+	prodForm.folder.value = site.name;
+	prodForm.binding.value = binding;
+	prodForm.local_path.value = `/var/www/${site.name}/_prod`;
+	prodForm.dataset.remoteFolder = site.name;
+	prodForm.dataset.remoteBinding = binding;
+	prodForm.dataset.localFolder = `${site.name}-prod`;
+	prodForm.dataset.localBinding = `${site.name}-prod`;
+	prodForm.elements.target.value = "remote";
+	delete prodForm.dataset.target;
+	syncProdForm();
+	prodForm.dataset.site = site.name;
+	prodDialog.showModal();
+	prodForm.elements.target.focus();
+}
+prodForm.elements.target.onchange = syncProdForm;
+$("#prod-cancel").onclick = () => prodDialog.close();
+prodForm.onsubmit = (event) => {
+	event.preventDefault();
+	const data = Object.fromEntries(new FormData(prodForm));
+	data.kind = "create_prod";
+	data.site = prodForm.dataset.site;
+	run(async () => {
+		await openTask(data);
+		prodForm.reset();
+		prodDialog.close();
+	});
 };
 
 // ------------------------------------------------------------------ files
