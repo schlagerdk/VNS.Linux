@@ -161,6 +161,16 @@
   </form>
 </dialog>
 
+<dialog id="dlg-package">
+  <form method="dialog" id="form-package">
+    <h2 id="package-title">Add package</h2>
+    <p id="package-description">Add a NuGet package to this site's project.</p>
+    <label>Package name <input name="package" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autocomplete="off" spellcheck="false" placeholder="Package.Name"></label>
+    <label id="package-version-row">Version (optional) <input name="version" maxlength="128" pattern="[0-9][0-9A-Za-z.+-]*" autocomplete="off" spellcheck="false" placeholder="1.2.3"></label>
+    <menu><button type="button" id="package-cancel">Cancel</button><button type="submit" id="package-submit" class="primary">Add package</button></menu>
+  </form>
+</dialog>
+
 <dialog id="dlg-profile">
   <form method="dialog" id="form-profile">
     <h2>Profile</h2>

@@ -54,6 +54,7 @@ BINDING_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9](
 PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 FOLDER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]*$")
 VERSION_RE = re.compile(r"^[0-9][0-9A-Za-z.+-]*$")
+PACKAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SCRIPT_RE = re.compile(r"^[A-Za-z0-9_.-]+\.sh$")
 
 
@@ -685,6 +686,29 @@ def build_command(data):
         if not SCRIPT_RE.match(script) or os.path.dirname(path) != os.path.realpath(folder) or not os.path.isfile(path):
             abort(400, "Unknown script")
         return "%s: %s" % (site, script), [bash, path], folder
+    if kind == "dotnet_package":
+        site = site_arg(data)
+        if site_info(site, {})["kind"] not in ("csharp", "umbraco"):
+            abort(400, "NuGet packages can only be managed for C# sites")
+        action = data.get("action", "")
+        package = data.get("package", "")
+        if action not in ("add", "remove") or not isinstance(package, str) or not PACKAGE_RE.fullmatch(package):
+            abort(400, "Invalid package action or name")
+        projects = sorted(glob.glob(os.path.join(WEB_ROOT, site, "*.csproj")))
+        if len(projects) != 1:
+            abort(400, "Expected exactly one C# project in this site")
+        version = data.get("version", "")
+        if action == "add":
+            if not isinstance(version, str) or len(version) > 128 or (version and not VERSION_RE.fullmatch(version)):
+                abort(400, "Invalid package version")
+            argv = ["dotnet", "add", "package", package]
+            if version:
+                argv.extend(["--version", version])
+            title = "Add NuGet package: " + package
+        else:
+            argv = ["dotnet", "remove", "package", package]
+            title = "Remove NuGet package: " + package
+        return title + " (" + site + ")", argv, os.path.dirname(projects[0])
     if kind == "create_prod":
         site = site_arg(data)
         path = os.path.join(WEB_ROOT, site, "scripts", "create_prod.sh")

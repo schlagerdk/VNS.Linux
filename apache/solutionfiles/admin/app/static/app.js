@@ -196,6 +196,7 @@ const iconPaths = {
 const buttonStyles = {
 	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
 	"Publish": ["upload", "green"], "Sync to prod": ["sync", "green"], "Start": ["play", "green"],
+	"Add package": ["download", "green"], "Remove package": ["trash", "red"],
 	"Fix permissions": ["shield", "teal"], "Update Python packages": ["sync", "blue"],
 	"Create production site": ["server", "purple"],
 	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
@@ -343,6 +344,10 @@ function renderSite(name) {
 			}
 		}
 	}
+	if (site.kind === "csharp" || site.kind === "umbraco") {
+		add("Add package", () => openPackageDialog(site, "add"));
+		add("Remove package", () => openPackageDialog(site, "remove"));
+	}
 	if (hasProd(site) && site.scripts.includes("sync_prod.sh")) {
 		actions.append(el("button", { textContent: "Sync to prod", title: "sync_prod.sh", onclick: () => run(async () => {
 			if (await ask({ title: "Sync to prod?", message: `Sync content to production (${site.name}).`, input: false, ok: "Sync to prod" })) await openTask({ kind: "script", site: site.name, script: "sync_prod.sh" });
@@ -475,10 +480,12 @@ async function deleteSite(site, scope) {
 	const remote = prod && prod.mode === "remote";
 	const target = scope === "prod" ? (prod.unit || prod.folder || site.name) : site.name;
 	const what = {
-		all: `This deletes the site and its production site on this server: files, services, Apache configs and logs.`,
+		all: remote
+			? `This deletes the site and its remote production site on ${prod.host}: files, services, Apache configs and logs on both servers.`
+			: `This deletes the site and its production site on this server: files, services, Apache configs and logs.`,
 		test: `This deletes the site's own files, service and Apache config. The production site is kept.`,
 		prod: remote
-			? `The production site runs on ${prod.host}, which is not touched. This only removes the production scripts from this site.`
+			? `This deletes the production site on ${prod.host}: its files, service, Apache config and logs. The test site is kept.`
 			: `This deletes the production site: its files, service, Apache config and logs. The test site is kept.`,
 	}[scope];
 	const typed = await ask({
@@ -487,9 +494,10 @@ async function deleteSite(site, scope) {
 	});
 	if (typed === null) return;
 	let certificates = false;
-	if (!(scope === "prod" && remote)) {
-		certificates = (await ask({ title: "Certificate", message: "Also revoke and remove the certificate?", input: false, ok: "Remove certificate" })) === true;
-	}
+	const certificateMessage = remote && scope !== "test"
+		? "Also revoke and remove the certificate(s) for the site being deleted? The remote certificate is kept if another enabled site uses the domain."
+		: "Also revoke and remove the certificate(s) for the site being deleted?";
+	certificates = (await ask({ title: "Certificate", message: certificateMessage, input: false, ok: "Remove certificate(s)" })) === true;
 	await openTask({ kind: "delete_site", site: site.name, certificates, scope });
 }
 
@@ -607,6 +615,35 @@ prodForm.onsubmit = (event) => {
 		await openTask(data);
 		prodForm.reset();
 		prodDialog.close();
+	});
+};
+
+const packageDialog = $("#dlg-package");
+const packageForm = $("#form-package");
+function openPackageDialog(site, action) {
+	packageForm.reset();
+	packageForm.dataset.site = site.name;
+	packageForm.dataset.action = action;
+	const adding = action === "add";
+	$("#package-title").textContent = adding ? "Add package" : "Remove package";
+	$("#package-description").textContent = adding
+		? "Add a NuGet package to this site's project."
+		: "Remove a NuGet package from this site's project.";
+	$("#package-version-row").hidden = !adding;
+	$("#package-submit").textContent = adding ? "Add package" : "Remove package";
+	packageDialog.showModal();
+	packageForm.elements.namedItem("package").focus();
+}
+$("#package-cancel").onclick = () => packageDialog.close();
+packageForm.onsubmit = (event) => {
+	event.preventDefault();
+	const data = Object.fromEntries(new FormData(packageForm));
+	data.kind = "dotnet_package";
+	data.site = packageForm.dataset.site;
+	data.action = packageForm.dataset.action;
+	run(async () => {
+		await openTask(data);
+		packageDialog.close();
 	});
 };
 

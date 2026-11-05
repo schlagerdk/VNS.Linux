@@ -1,8 +1,8 @@
 #!/bin/bash
 # Usage: delete_site.sh [site] [y|n (delete certificates)] [all|test|prod]
-#   all  = the site and its production site on this server (default)
+#   all  = the site and its production site (default)
 #   test = only the site itself (a production folder inside the site folder is kept)
-#   prod = only the production site; a remote production server is never touched
+#   prod = only the production site, including a remote production target
 cd "$(dirname "$0")"
 source lib/common.sh
 clear
@@ -88,7 +88,56 @@ if [[ ${_scope} != test && ${_hasProd} -eq 1 ]]; then
 		sudo rm -rf "${_prodLocalPath:?}"
 		[[ -z ${_prodBinding} ]] || remove_certificate "${_prodBinding}" "/etc/ssl/certs/${_prodBinding}_ecc"
 	else
-		echo "The production site runs on another server (${_prodFolder}); it is not touched. Only the link to it is removed."
+		echo "Delete the remote production site (${_prodFolder})"
+		# Use the saved production connection settings. Do not execute publish_prod.sh.
+		source lib/prod.sh
+		load_prod_settings
+		[[ -z ${PROD_LOCAL_PATH} ]] || { echo "Production target settings are inconsistent." >&2; exit 1; }
+		validate_site_name "${PROD_FOLDER}" || exit 1
+		validate_binding "${PROD_BINDING}" || exit 1
+		[[ ${PROD_IP} =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]] || { echo "Invalid production host." >&2; exit 1; }
+		[[ ${PROD_USER} =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,63}$ ]] || { echo "Invalid production SSH user." >&2; exit 1; }
+		[[ ${PROD_SSH_PORT} =~ ^[0-9]+$ && ${PROD_SSH_PORT} -ge 1 && ${PROD_SSH_PORT} -le 65535 ]] || { echo "Invalid production SSH port." >&2; exit 1; }
+		printf -v _remoteVars 'SITE=%q BINDING=%q DELETE_CERTIFICATE=%q' "${PROD_FOLDER}" "${PROD_BINDING}" "${_deleteCertificate}"
+		prod_run "${_remoteVars}" <<'REMOTE'
+set -euo pipefail
+[[ ${SITE} =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$ ]] || { echo "Invalid remote site name." >&2; exit 1; }
+[[ ${BINDING} =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]] || { echo "Invalid remote binding." >&2; exit 1; }
+root="/var/www/${SITE}"
+[[ ${root} == "/var/www/${SITE}" && ${root} != /var/www ]] || { echo "Unsafe remote site path." >&2; exit 1; }
+if [[ -f /etc/systemd/system/${SITE}.service ]]; then
+	systemctl stop "${SITE}.service"
+	systemctl disable "${SITE}.service"
+fi
+rm -f -- "/etc/systemd/system/${SITE}.service"
+rm -f -- "/etc/apache2/sites-available/${SITE}.conf" "/etc/apache2/sites-enabled/${SITE}.conf"
+rm -f -- "/var/log/apache2/${SITE}-80-error.log" "/var/log/apache2/${SITE}-443-error.log" "/var/log/apache2/${SITE}-rewrite-error.log"
+rm -rf -- "/var/lib/vns-roots/${SITE}"
+rm -rf -- "${root:?}"
+if [[ ${DELETE_CERTIFICATE} =~ ^([yY]|[yY][eE][sS])$ ]]; then
+	domain_in_use=0
+	for conf in /etc/apache2/sites-enabled/*.conf; do
+		[[ -e ${conf} ]] || continue
+		if awk -v d="${BINDING}" '($1 == "ServerName" || $1 == "ServerAlias") { for (i = 2; i <= NF; i++) if (tolower($i) == tolower(d)) f = 1 } END { exit !f }' "${conf}"; then
+			domain_in_use=1
+			break
+		fi
+	done
+	if ((domain_in_use)); then
+		echo "Keep certificate for ${BINDING}; another enabled site uses it."
+	else
+		if [[ -x /etc/acmesh/acme.sh ]]; then
+			/etc/acmesh/acme.sh --revoke -d "${BINDING}" || true
+			/etc/acmesh/acme.sh --remove -d "${BINDING}" || true
+		fi
+		rm -rf -- "/etc/ssl/certs/${BINDING}" "/etc/ssl/certs/${BINDING}_ecc"
+	fi
+fi
+systemctl daemon-reload
+apache2ctl configtest
+systemctl reload apache2
+echo "Remote production site ${SITE} removed."
+REMOTE
 	fi
 	if [[ ${_scope} == prod ]]; then
 		# Put the site back to a test-only site so create_prod.sh can be used again
