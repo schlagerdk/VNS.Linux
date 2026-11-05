@@ -99,6 +99,7 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 					status = error.message;
 				}
 				if (!dlg.open || !copy.isConnected) return;
+				if (input) field.focus({ preventScroll: true });
 				clearTimeout(copyStatusTimer);
 				copyStatus.textContent = status;
 				copyStatus.title = status;
