@@ -180,6 +180,23 @@
   </form>
 </dialog>
 
+<dialog id="dlg-environment">
+  <form method="dialog" id="form-environment">
+    <h2>Change environment</h2>
+    <p id="environment-site"></p>
+    <label>Environment
+      <select name="environment" required>
+        <option>Development</option>
+        <option>Test</option>
+        <option>Staging</option>
+        <option>Production</option>
+      </select>
+    </label>
+    <p class="hint">The service will restart to apply the selected environment.</p>
+    <menu><button type="button" id="environment-cancel">Cancel</button><button type="submit" class="primary">Change environment</button></menu>
+  </form>
+</dialog>
+
 <dialog id="dlg-profile">
   <form method="dialog" id="form-profile">
     <h2>Profile</h2>

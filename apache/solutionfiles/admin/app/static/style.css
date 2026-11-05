@@ -51,12 +51,17 @@ main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
 .chip span { color: var(--muted); font-size: 12px; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
-.site { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); display: flex; flex-direction: column; gap: 10px; position: relative; }
+.site { background: linear-gradient(135deg, rgba(88, 166, 255, .05), transparent 60%), var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; box-shadow: 0 4px 16px rgba(0, 0, 0, .2); display: flex; flex-direction: column; gap: 14px; position: relative; cursor: pointer; transition: transform .2s, border-color .2s, box-shadow .2s; }
+.site:hover { transform: translateY(-3px); border-color: rgba(88, 166, 255, .5); box-shadow: 0 10px 28px rgba(0, 0, 0, .3), 0 0 20px rgba(88, 166, 255, .07); }
 .site::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; border-radius: 12px 12px 0 0; background: var(--line); }
 .site.active::before { background: linear-gradient(90deg, #3fb950, #2ea043); }
 .site.failed::before { background: var(--red); }
 .site.is-admin { border-color: rgba(163, 113, 247, .5); }
-.site-head { display: flex; align-items: center; gap: 8px; }
+.site-head { display: flex; align-items: center; gap: 14px; }
+.site-emblem { display: grid; place-items: center; flex: none; width: 48px; height: 48px; border: 1px solid rgba(163, 113, 247, .35); border-radius: 14px; background: linear-gradient(135deg, rgba(88, 166, 255, .2), rgba(163, 113, 247, .25)); color: #b9d8ff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 4px 14px rgba(88, 166, 255, .12); }
+.site-emblem .ico { width: 26px; height: 26px; filter: drop-shadow(0 0 5px rgba(88, 166, 255, .4)); }
+.site-head > .dot { margin-left: auto; }
+@media (prefers-reduced-motion: reduce) { .site { transition: none; } .site:hover { transform: none; } }
 .site-title { font-size: 16px; font-weight: 600; margin: 0; overflow-wrap: anywhere; flex: 1; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); }

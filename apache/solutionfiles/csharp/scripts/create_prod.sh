@@ -70,7 +70,7 @@ else
 		local)
 			ask _localPath "Local production folder (absolute path)" "${_siteRoot}/_prod"
 			[[ ${_localPath} == /* ]] || { echo "The path must be absolute." >&2; exit 1; }
-			_defaultFolder=${_site}-prod
+			_defaultFolder=prod-${_site}
 			;;
 		*)
 			echo "Target must be remote or local." >&2

@@ -807,13 +807,19 @@ def build_command(data):
         action = data.get("action", "")
         if action not in ("issue_certificate", "change_env"):
             abort(400, "Unknown action")
+        args = []
+        if action == "change_env":
+            environment = data.get("environment", "")
+            if environment not in ("Development", "Test", "Staging", "Production"):
+                abort(400, "Invalid environment")
+            args.append(environment)
         if data.get("scope") == "test":
             if not os.path.isdir(os.path.join(WEB_ROOT, site)):
                 abort(404, "Unknown site")
-            return "Test %s: %s" % (action.replace("_", " "), site), [bash, os.path.join(APACHE_DIR, "test_action.sh"), site, action], APACHE_DIR
+            return "Test %s: %s" % (action.replace("_", " "), site), [bash, os.path.join(APACHE_DIR, "test_action.sh"), site, action, *args], APACHE_DIR
         if not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
             abort(400, "This site has no production site")
-        return "Prod %s: %s" % (action.replace("_", " "), site), [bash, os.path.join(APACHE_DIR, "prod_action.sh"), site, action], APACHE_DIR
+        return "Prod %s: %s" % (action.replace("_", " "), site), [bash, os.path.join(APACHE_DIR, "prod_action.sh"), site, action, *args], APACHE_DIR
     if kind == "delete_site":
         site = site_arg(data)
         if site == ADMIN_SITE:

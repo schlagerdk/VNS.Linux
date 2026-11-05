@@ -266,26 +266,26 @@ function kindBadges(site) {
 
 function siteCard(site) {
 	const state = siteState(site);
-	const rows = el("div", { className: "env-rows" });
-	for (const env of site.environments) {
-		const tags = el("span", { className: "env-tags" });
-		if (env.mode === "remote") tags.append(el("span", { className: "muted", textContent: "on " + (env.host || "remote") }));
-		if (site.kind === "umbraco" && env.binding) tags.append(backofficeLink(env.binding, true));
-		rows.append(el("div", { className: "env-row" }, bindingLink(env.binding, true), tags));
-	}
 	const actions = el("div", { className: "actions" });
-	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: "small " + (className || ""), onclick: (event) => { event.stopPropagation(); run(handler); } }));
-	add("Manage", () => go(siteLink(site.name)), "primary");
-	add("Shell", () => openTask({ kind: "shell", site: site.name }), "push-right");
-	add("Files", () => go(filesLink(site.name)));
+	for (const env of site.environments) {
+		if (!env.binding) continue;
+		const prefix = env.key === "prod" ? "Prod " : "";
+		actions.append(openLink(prefix + "Frontend", "https://" + env.binding + "/", "", true));
+		if (site.kind === "umbraco") {
+			actions.append(openLink(prefix + "Backend", "https://" + env.binding + "/umbraco", "Umbraco backoffice: " + env.binding, true));
+		}
+	}
 
 	const badges = kindBadges(site);
 	for (const env of site.environments) {
 		if (env.unit && env.environment) badges.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment, title: env.label }));
 	}
 	return el("article", { className: "site " + state + (site.admin ? " is-admin" : ""), onclick: () => go(siteLink(site.name)) },
-		el("div", { className: "site-head" }, el("span", { className: "dot " + state }), el("h3", { className: "site-title", textContent: site.name })),
-		badges, rows, actions);
+		el("div", { className: "site-head" },
+			el("span", { className: "site-emblem" }, svgIcon("globe")),
+			el("h3", { className: "site-title", textContent: site.name }),
+			el("span", { className: "dot " + state, title: state || "Static site" })),
+		badges, actions);
 }
 
 const scriptNames = {
@@ -459,6 +459,7 @@ function envPanel(site, env) {
 		if (action && env.mode === "remote" && !env.host) continue;
 		if (action && env.key !== "prod" && (!env.unit || site.admin) && action === "change_env") continue;
 		(action ? settings : quick).append(el("button", { textContent: label, className: "small", title: file || action, onclick: () => run(async () => {
+			if (action === "change_env") { openEnvironmentDialog(site, env); return; }
 			if (confirm && !(await ask({ title: `${label}?`, message: `${confirm} (${site.name})`, input: false, ok: label }))) return;
 			await openTask(action ? { kind: "prod_action", site: site.name, action, scope: env.key === "prod" ? "prod" : "test" } : { kind: "script", site: site.name, script: file });
 		}) }));
@@ -622,20 +623,21 @@ function syncProdForm() {
 			? { folder: prodForm.dataset.localFolder, binding: prodForm.dataset.localBinding }
 			: { folder: prodForm.dataset.remoteFolder, binding: prodForm.dataset.remoteBinding };
 		if (prodForm.folder.value === previousDefaults.folder) prodForm.folder.value = nextDefaults.folder;
-		if (prodForm.binding.value === previousDefaults.binding) prodForm.binding.value = nextDefaults.binding;
+		if (!prodForm.binding.dataset.edited && prodForm.binding.value === previousDefaults.binding) prodForm.binding.value = nextDefaults.binding;
 	}
 	prodForm.dataset.target = target;
 }
 function openCreateProdDialog(site) {
 	prodForm.reset();
+	delete prodForm.binding.dataset.edited;
 	const binding = site.environments.find((env) => env.key === "test")?.binding || site.name;
 	prodForm.folder.value = site.name;
 	prodForm.binding.value = binding;
 	prodForm.local_path.value = `/var/www/${site.name}/_prod`;
 	prodForm.dataset.remoteFolder = site.name;
 	prodForm.dataset.remoteBinding = binding;
-	prodForm.dataset.localFolder = `${site.name}-prod`;
-	prodForm.dataset.localBinding = `${site.name}-prod`;
+	prodForm.dataset.localFolder = `prod-${site.name}`;
+	prodForm.dataset.localBinding = `prod-${site.name}`;
 	prodForm.elements.target.value = "remote";
 	delete prodForm.dataset.target;
 	syncProdForm();
@@ -644,6 +646,10 @@ function openCreateProdDialog(site) {
 	prodForm.elements.target.focus();
 }
 prodForm.elements.target.onchange = syncProdForm;
+prodForm.folder.oninput = () => {
+	if (!prodForm.binding.dataset.edited) prodForm.binding.value = prodForm.folder.value;
+};
+prodForm.binding.oninput = () => { prodForm.binding.dataset.edited = "1"; };
 $("#prod-cancel").onclick = () => prodDialog.close();
 prodForm.onsubmit = (event) => {
 	event.preventDefault();
@@ -654,6 +660,31 @@ prodForm.onsubmit = (event) => {
 		await openTask(data);
 		prodForm.reset();
 		prodDialog.close();
+	});
+};
+
+const environmentDialog = $("#dlg-environment");
+const environmentForm = $("#form-environment");
+function openEnvironmentDialog(site, env) {
+	environmentForm.reset();
+	environmentForm.dataset.site = site.name;
+	environmentForm.dataset.scope = env.key === "prod" ? "prod" : "test";
+	environmentForm.elements.environment.value = env.environment || (env.key === "prod" ? "Production" : "Test");
+	$("#environment-site").textContent = env.binding || site.name;
+	environmentDialog.showModal();
+	environmentForm.elements.environment.focus();
+}
+$("#environment-cancel").onclick = () => environmentDialog.close();
+environmentForm.onsubmit = (event) => {
+	event.preventDefault();
+	const data = {
+		kind: "prod_action", action: "change_env",
+		site: environmentForm.dataset.site, scope: environmentForm.dataset.scope,
+		environment: environmentForm.elements.environment.value,
+	};
+	run(async () => {
+		await openTask(data);
+		environmentDialog.close();
 	});
 };
 
