@@ -192,3 +192,31 @@ dialog.wide { width: min(1000px, 94vw); }
 .list { position: relative; overflow-x: auto; }
 .env .actions.quick { margin-top: 12px; }
 .env .actions.quick button { background: var(--accent-soft, transparent); }
+.badge.version { text-transform: none; color: #fff; background: #57606a; }
+.badge.version[data-major="0"] { background: #8250df; }
+.badge.version[data-major="1"] { background: #0969da; }
+.badge.version[data-major="2"] { background: #1a7f37; }
+.badge.version[data-major="3"] { background: #bf8700; }
+.badge.version[data-major="4"] { background: #cf222e; }
+.badge.version[data-major="5"] { background: #bf3989; }
+.badge.version[data-major="6"] { background: #0a7f8f; }
+.badge.version[data-major="7"] { background: #953800; }
+
+/* Button icons and tones */
+button .ico { width: 1.1em; height: 1.1em; margin: -2px 6px -2px -2px; vertical-align: middle; }
+button[data-tone] { --tone: var(--muted); color: var(--tone); border-color: color-mix(in srgb, var(--tone) 35%, var(--line)); background: color-mix(in srgb, var(--tone) 9%, var(--panel2)); }
+button[data-tone]:hover { background: color-mix(in srgb, var(--tone) 20%, var(--panel2)); border-color: var(--tone); }
+button[data-tone="blue"] { --tone: var(--blue); }
+button[data-tone="green"] { --tone: var(--green); }
+button[data-tone="red"] { --tone: var(--red); }
+button[data-tone="amber"] { --tone: #d29922; }
+button[data-tone="teal"] { --tone: #39c5cf; }
+button[data-tone="purple"] { --tone: var(--purple); }
+button[data-tone="gray"] { --tone: #9da7b3; }
+.menu button[data-tone] { background: transparent; border-color: transparent; color: var(--text); }
+.menu button[data-tone] .ico { color: var(--tone); }
+.menu button[data-tone]:hover { background: var(--hover); border-color: transparent; }
+button.primary[data-tone] { background: #238636; border-color: #2ea043; color: #fff; }
+/* Delete buttons stand alone at the far right of their row */
+.actions > button.danger, #site-head .actions > button.danger { margin-left: auto; }
+dialog.editor #editor-box { flex: 1; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }

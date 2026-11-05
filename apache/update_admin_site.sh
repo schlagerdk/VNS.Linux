@@ -5,6 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
+source lib/admin_vendor.sh
 
 _site=${1:-}
 
@@ -42,6 +43,8 @@ sudo rsync -a --delete \
 	"${_solutionFolder}/admin/app/" "${_siteRoot}/app/"
 sudo chown -R root:root "${_siteRoot}/app"
 sudo chmod 700 "${_siteRoot}/app"
+
+download_admin_vendor "${_siteRoot}/app"
 
 echo "Update the Python packages"
 sudo "${_siteRoot}/venv/bin/pip" install --quiet -r "${_siteRoot}/app/requirements.txt"

@@ -7,13 +7,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
+source lib/admin_vendor.sh
 
 trap 'echo "FAILED at ${BASH_SOURCE[0]}:${LINENO} (exit $?): ${BASH_COMMAND}" >&2; echo "Admin site is incomplete - run ./delete_site.sh ${_site:-<site>} n to clean up" >&2' ERR
 set -o errtrace
 
-_xtermVersion=5.3.0
-_xtermFitVersion=0.8.0
-_cdn=https://cdn.jsdelivr.net/npm
 
 _site=${1:-}
 _binding=${2:-}
@@ -77,10 +75,7 @@ issue_certificate
 echo "Copy the admin app"
 sudo cp -R "${_solutionFolder}/admin/app/." "${_siteRoot}/app/"
 
-echo "Download the terminal library (xterm.js ${_xtermVersion})"
-sudo curl -fsSL -o "${_siteRoot}/app/static/vendor/xterm.js" "${_cdn}/xterm@${_xtermVersion}/lib/xterm.js"
-sudo curl -fsSL -o "${_siteRoot}/app/static/vendor/xterm.css" "${_cdn}/xterm@${_xtermVersion}/css/xterm.css"
-sudo curl -fsSL -o "${_siteRoot}/app/static/vendor/xterm-addon-fit.js" "${_cdn}/xterm-addon-fit@${_xtermFitVersion}/lib/xterm-addon-fit.js"
+download_admin_vendor "${_siteRoot}/app"
 
 echo "Create virtual environment"
 sudo python3 -m venv "${_siteRoot}/venv"

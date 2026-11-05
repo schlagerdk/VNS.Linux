@@ -119,7 +119,8 @@ def headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'"
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; "
+        "worker-src 'self' blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'"
     )
     if not request.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-store"
@@ -240,6 +241,23 @@ def site_units(name):
     return units
 
 
+def umbraco_version(root, projects):
+    """Version of the Umbraco.Cms package from the csproj (or Directory.Packages.props)."""
+    files = projects + [os.path.join(root, "Directory.Packages.props"), os.path.join(root, "Directory.Build.props")]
+    for path in files:
+        text = read_text(path)
+        for tag in re.findall(r"<PackageReference\b[^>]*>|<PackageVersion\b[^>]*>", text):
+            if not re.search(r'(?:Include|Update)\s*=\s*"Umbraco\.Cms"', tag):
+                continue
+            match = re.search(r'Version\s*=\s*"([^"]+)"', tag)
+            if match:
+                return match.group(1)
+        match = re.search(r'Include\s*=\s*"Umbraco\.Cms"[^>]*>\s*<Version>([^<]+)</Version>', text)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
 def site_info(name, states):
     root = os.path.join(WEB_ROOT, name)
     conf = os.path.join(APACHE_SITES, name + ".conf")
@@ -257,8 +275,11 @@ def site_info(name, states):
     aspnet = re.search(r"ASPNETCORE_ENVIRONMENT=(\S+)", service_text)
 
     projects = glob.glob(os.path.join(root, "*.csproj"))
+    umbraco = ""
     if projects:
         kind = "umbraco" if any("Umbraco.Cms" in read_text(p) for p in projects) else "csharp"
+        if kind == "umbraco":
+            umbraco = umbraco_version(root, projects)
     elif os.path.isfile(os.path.join(root, "app", "app.py")):
         kind = "python"
     else:
@@ -292,6 +313,7 @@ def site_info(name, states):
     return {
         "name": name,
         "kind": kind,
+        "umbraco_version": umbraco,
         "scripts": scripts,
         "admin": name == ADMIN_SITE,
         "environments": environments,
@@ -530,6 +552,32 @@ def build_command(data):
         if not SCRIPT_RE.match(script) or os.path.dirname(path) != os.path.realpath(folder) or not os.path.isfile(path):
             abort(400, "Unknown script")
         return "%s: %s" % (site, script), [bash, path], folder
+    if kind == "unit_tool":
+        site = site_arg(data)
+        unit = data.get("unit", "")
+        tool = data.get("tool", "")
+        if unit not in site_units(site):
+            abort(400, "Unknown service")
+        service = "/etc/systemd/system/%s.service" % unit
+        conf = "/etc/apache2/sites-available/%s.conf" % unit
+        if tool == "check_service":
+            return "Service: " + unit, [bash, "-c", 'clear; systemctl status "$1" --no-pager -l', "x", unit], WEB_ROOT
+        if tool == "edit_service":
+            code = ('clear; nano "$1"; read -r -p "Reload daemon and restart service? [Y/n]: " a; '
+                    'if [[ ! $a =~ ^[nN] ]]; then systemctl daemon-reload && systemctl restart "$2"; systemctl status "$2" --no-pager; fi')
+            return "Edit service: " + unit, [bash, "-c", code, "x", service, unit], WEB_ROOT
+        if tool == "edit_conf":
+            code = ('clear; nano "$1"; read -r -p "Test config and reload apache? [Y/n]: " a; '
+                    'if [[ ! $a =~ ^[nN] ]]; then apache2ctl configtest && systemctl reload apache2; fi')
+            return "Edit config: " + unit, [bash, "-c", code, "x", conf], WEB_ROOT
+        abort(400, "Unknown tool")
+    if kind == "apache":
+        tool = data.get("tool", "")
+        if tool == "restart":
+            return "Restart Apache", [bash, "-c", 'clear; apache2ctl configtest && systemctl restart apache2 && echo "Apache restarted" ; systemctl status apache2 --no-pager | head -n 12'], WEB_ROOT
+        if tool == "configtest":
+            return "Apache config test", [bash, "-c", "clear; apache2ctl configtest"], WEB_ROOT
+        abort(400, "Unknown tool")
     if kind == "create_site":
         site, site_type, binding = data.get("site", ""), data.get("type", ""), (data.get("binding") or "").lower()
         if not NAME_RE.match(site) or site_type not in ("html", "python", "csharp") or not BINDING_RE.match(binding):
@@ -566,6 +614,10 @@ def build_command(data):
         action = data.get("action", "")
         if action not in ("issue_certificate", "change_env"):
             abort(400, "Unknown action")
+        if data.get("scope") == "test":
+            if not os.path.isdir(os.path.join(WEB_ROOT, site)):
+                abort(404, "Unknown site")
+            return "Test %s: %s" % (action.replace("_", " "), site), [bash, os.path.join(APACHE_DIR, "test_action.sh"), site, action], APACHE_DIR
         if not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
             abort(400, "This site has no production site")
         return "Prod %s: %s" % (action.replace("_", " "), site), [bash, os.path.join(APACHE_DIR, "prod_action.sh"), site, action], APACHE_DIR

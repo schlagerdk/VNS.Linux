@@ -157,6 +157,61 @@ function matches(site) {
 	return !text || haystack.toLowerCase().includes(text);
 }
 
+
+// ------------------------------------------------------------------ button icons
+// Inline SVG (Lucide-style, 24x24 stroke icons); the CSP does not allow external images
+const iconPaths = {
+	terminal: "M4 17l6-6-6-6M12 19h8",
+	folder: "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z",
+	upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
+	download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
+	sync: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5",
+	restart: "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8M21 3v5h-5",
+	trash: "M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2",
+	play: "M6 3l14 9-14 9z",
+	stop: "M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z",
+	file: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7ZM14 2v4a2 2 0 0 0 2 2h4M8 13h8M8 17h8",
+	globe: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z",
+	shield: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1zM9 12l2 2 4-4",
+	sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4",
+	activity: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
+	pencil: "M21.17 6.81a2.12 2.12 0 0 0-3-3L3.84 17.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5zM15 5l4 4",
+	eraser: "M7 21l-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21M22 21H7M5 11l9 9",
+	manage: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
+	key: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4",
+};
+
+// label (exact, or a prefix ending in "*") -> [icon, tone]
+const buttonStyles = {
+	"Shell": ["terminal", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
+	"Publish": ["upload", "green"], "Sync to prod": ["sync", "green"], "Start": ["play", "green"],
+	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
+	"Stop": ["stop", "red"], "Clear logs": ["eraser", "gray"], "Logs": ["file", "gray"],
+	"Issue certificate": ["shield", "teal"], "Change environment": ["sliders", "purple"], "Change binding": ["globe", "blue"],
+	"Check service": ["activity", "teal"], "Test Apache config": ["activity", "teal"],
+	"Edit service": ["pencil", "amber"], "Edit config": ["pencil", "amber"], "Delete*": ["trash", "red"],
+};
+
+function svgIcon(name) {
+	const ns = "http://www.w3.org/2000/svg";
+	const svg = document.createElementNS(ns, "svg");
+	for (const [key, value] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", class: "ico", "aria-hidden": "true" })) svg.setAttribute(key, value);
+	const path = document.createElementNS(ns, "path");
+	path.setAttribute("d", iconPaths[name]);
+	svg.append(path);
+	return svg;
+}
+
+function decorate(root) {
+	for (const button of root.querySelectorAll("button:not([data-tone])")) {
+		const label = button.textContent.trim();
+		const style = buttonStyles[label] || (label.startsWith("Delete") ? buttonStyles["Delete*"] : null);
+		if (!style) continue;
+		button.dataset.tone = style[1];
+		button.prepend(svgIcon(style[0]));
+	}
+}
+
 function renderSites() {
 	renderStats();
 	const box = $("#sites");
@@ -164,14 +219,23 @@ function renderSites() {
 	const visible = allSites.filter(matches);
 	$("#no-sites").hidden = visible.length > 0;
 	for (const site of visible) box.append(siteCard(site));
+	decorate(box);
 }
 
 const bindingLink = (binding) => binding
 	? el("a", { className: "link", textContent: binding, href: "https://" + binding + "/", target: "_blank", rel: "noopener noreferrer", onclick: (event) => event.stopPropagation() })
 	: el("span", { className: "muted", textContent: "no binding" });
 
+const versionColors = 8; // majors 18, 19, 20 … get different colours (see .badge.version[data-major] in style.css)
+
 function kindBadges(site) {
 	const badges = el("div", { className: "badges" }, el("span", { className: "badge " + site.kind, textContent: kindLabel[site.kind] || site.kind }));
+	if (site.umbraco_version) {
+		const major = parseInt(site.umbraco_version, 10);
+		const badge = el("span", { className: "badge version", textContent: "v" + site.umbraco_version, title: "Umbraco " + site.umbraco_version });
+		if (Number.isFinite(major)) badge.dataset.major = String(major % versionColors);
+		badges.append(badge);
+	}
 	if (site.admin) badges.append(el("span", { className: "badge admin", textContent: "this admin site" }));
 	return badges;
 }
@@ -242,6 +306,9 @@ function renderSite(name) {
 	add("Files", () => go(filesLink(site.name)));
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
 	if (!hasProd(site)) add("Change binding", () => changeBinding(site, "test"));
+	if (site.scripts.includes("outdated.sh")) {
+		actions.append(el("button", { textContent: "Check outdated", title: "outdated.sh", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));
+	}
 	if (hasProd(site) && site.scripts.includes("sync_prod.sh")) {
 		actions.append(el("button", { textContent: "Sync to prod", title: "sync_prod.sh", onclick: () => run(async () => {
 			if (await ask({ title: "Sync to prod?", message: `Sync content to production (${site.name}).`, input: false, ok: "Sync to prod" })) await openTask({ kind: "script", site: site.name, script: "sync_prod.sh" });
@@ -250,10 +317,12 @@ function renderSite(name) {
 	if (!site.admin) add(hasProd(site) ? "Delete everything" : "Delete site", () => deleteSite(site, "all"), "danger");
 	head.append(el("div", { className: "detail-title" }, el("h2", { textContent: site.name }), kindBadges(site)), actions);
 	for (const env of site.environments) envs.append(envPanel(site, env));
+	decorate(head);
+	decorate(envs);
 }
 
 // Scripts that have their own button and are therefore left out of the "Run script…" list
-const buttonScripts = new Set(["publish.sh", "publish_local.sh", "publish_prod.sh", "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh", "issue_certificat.sh", "change_env.sh"]);
+const buttonScripts = new Set(["publish.sh", "publish_local.sh", "publish_prod.sh", "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh", "issue_certificat.sh", "change_env.sh", "restart_service.sh", "check_service.sh", "edit_service.sh", "edit_conf.sh", "restart_apache.sh", "outdated.sh"]);
 
 // [script candidates or null, button label, confirmation text (null = none; the script asks itself), prod_action name]
 function quickActions(env) {
@@ -268,8 +337,8 @@ function quickActions(env) {
 	return [
 		[["publish_local.sh", "publish.sh"], "Publish", "Build and publish the test site. The service is restarted."],
 		[["clear_logs_local.sh", "clear_logs.sh"], "Clear logs", "Delete the test site logs."],
-		[["issue_certificat.sh"], "Issue certificate", "Issue a new certificate for the test site binding."],
-		[["change_env.sh"], "Change environment", null],
+		[null, "Issue certificate", "Issue a new certificate for the test site binding.", "issue_certificate"],
+		[null, "Change environment", null, "change_env"],
 	];
 }
 
@@ -303,14 +372,24 @@ function envPanel(site, env) {
 	}
 
 	const quick = el("div", { className: "actions quick" });
+	let extraTools = null;
 	for (const [files, label, confirm, action] of quickActions(env)) {
-		const file = files && files.find((f) => site.scripts.includes(f));
+		let file = files && files.find((f) => site.scripts.includes(f));
+		if (!file && label === "Publish" && env.key !== "prod") file = site.scripts.find((f) => /^publish.*\.sh$/.test(f) && f !== "publish_prod.sh");
 		if (!action && !file) continue;
 		if (action && env.mode === "remote" && !env.host) continue;
+		if (action && env.key !== "prod" && (!env.unit || site.admin) && action === "change_env") continue;
 		quick.append(el("button", { textContent: label, className: "small", title: file || action, onclick: () => run(async () => {
 			if (confirm && !(await ask({ title: `${label}?`, message: `${confirm} (${env.label.toLowerCase()} · ${site.name})`, input: false, ok: label }))) return;
-			await openTask(action ? { kind: "prod_action", site: site.name, action } : { kind: "script", site: site.name, script: file });
+			await openTask(action ? { kind: "prod_action", site: site.name, action, scope: env.key === "prod" ? "prod" : "test" } : { kind: "script", site: site.name, script: file });
 		}) }));
+	}
+	if (env.unit && env.mode !== "remote") {
+		const tools = el("div", { className: "actions quick" });
+		for (const [tool, label] of [["check_service", "Check service"], ["edit_service", "Edit service"], ["edit_conf", "Edit config"]]) {
+			tools.append(el("button", { textContent: label, className: "small", onclick: () => run(() => openTask({ kind: "unit_tool", site: site.name, unit: env.unit, tool })) }));
+		}
+		extraTools = tools;
 	}
 	if (hasProd(site) && !site.admin) add("Change binding", () => changeBinding(site, env.key === "prod" ? "prod" : "test", env));
 	if (hasProd(site) && !site.admin) add(env.key === "prod" ? "Delete production site" : "Delete test site", () => deleteSite(site, env.key === "prod" ? "prod" : "test"), "danger");
@@ -319,6 +398,7 @@ function envPanel(site, env) {
 	if (env.exists === false) panel.append(el("p", { className: "muted", textContent: "Nothing published here yet." }));
 	if (env.mode === "remote") panel.append(el("p", { className: "muted", textContent: "Runs on another server. Use publish_prod.sh and sync_prod.sh from “Run script…” to deploy." }));
 	if (quick.children.length) panel.append(quick);
+	if (extraTools) panel.append(extraTools);
 	panel.append(actions);
 	return panel;
 }
@@ -495,68 +575,81 @@ async function loadFiles(path) {
 	if (!data.items.length) body.append(el("tr", {}, el("td", { colSpan: 4, className: "empty", textContent: "This folder is empty." })));
 }
 
+// Monaco is downloaded into static/vendor by install/update_admin_site.sh; without it a plain textarea is used
+let monacoPromise = null;
+let monacoEditor = null;
+function loadMonaco() {
+	if (monacoPromise) return monacoPromise;
+	monacoPromise = new Promise((resolve, reject) => {
+		const base = location.origin + "/static/vendor/monaco/";
+		const workerUrl = URL.createObjectURL(new Blob([`self.MonacoEnvironment={baseUrl:'${base}'};importScripts('${base}vs/base/worker/workerMain.js');`], { type: "text/javascript" }));
+		window.MonacoEnvironment = { getWorkerUrl: () => workerUrl };
+		document.head.append(el("script", {
+			src: "/static/vendor/monaco/vs/loader.js",
+			onload: () => {
+				window.require.config({ paths: { vs: "/static/vendor/monaco/vs" } });
+				window.require(["vs/editor/editor.main"], () => resolve(window.monaco), reject);
+			},
+			onerror: () => reject(new Error("Monaco is not installed")),
+		}));
+	});
+	return monacoPromise;
+}
+
+const languageByExtension = { conf: "ini", service: "ini", cshtml: "razor", csproj: "xml", props: "xml", config: "xml", sh: "shell", env: "ini", cs: "csharp", yml: "yaml" };
+function languageFor(path) {
+	const name = path.split("/").pop().toLowerCase();
+	return languageByExtension[name.includes(".") ? name.split(".").pop() : ""];
+}
+
+let loadingContent = false;
+async function showInEditor(path, content) {
+	let monaco = null;
+	try { monaco = await loadMonaco(); } catch (_) { monaco = null; }
+	const box = $("#editor-box");
+	const area = $("#editor-text");
+	if (!monaco) {
+		box.hidden = true;
+		area.hidden = false;
+		area.value = content;
+		return;
+	}
+	area.hidden = true;
+	box.hidden = false;
+	if (!monacoEditor) {
+		monacoEditor = monaco.editor.create(box, { theme: "vs-dark", automaticLayout: true, fontSize: 13, minimap: { enabled: true }, scrollBeyondLastLine: false, renderWhitespace: "selection", tabSize: 4, detectIndentation: true });
+		monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => run(saveFile));
+	}
+	const previous = monacoEditor.getModel();
+	loadingContent = true;
+	const model = monaco.editor.createModel(content, languageFor(path), monaco.Uri.file("/" + path));
+	monacoEditor.setModel(model);
+	model.onDidChangeContent(() => { if (!loadingContent) setDirty(true); });
+	if (previous) previous.dispose();
+	loadingContent = false;
+	monacoEditor.focus();
+}
+
+const editorValue = () => (monacoEditor && !$("#editor-box").hidden ? monacoEditor.getValue() : $("#editor-text").value);
+
 async function editFile(path) {
 	if (!(await discardOk())) return;
 	const data = await api("/api/fs/read?path=" + encodeURIComponent(path));
 	openFile = path;
 	if (!editorDialog.open) editorDialog.showModal();
 	$("#editor-path").textContent = path;
-	$("#editor-text").value = data.content;
 	$("#editor-status").textContent = "";
+	await showInEditor(path, data.content);
 	setDirty(false);
 }
 
 async function saveFile() {
 	if (openFile === null) return;
-	await api("/api/fs/save", { json: { path: openFile, content: $("#editor-text").value } });
+	await api("/api/fs/save", { json: { path: openFile, content: editorValue() } });
 	setDirty(false);
 	$("#editor-status").textContent = "Saved " + new Date().toLocaleTimeString();
 }
 
-async function renameItem(path, name) {
-	const next = await ask({ title: "Rename", value: name, ok: "Rename" });
-	if (next && next !== name) {
-		await api("/api/fs/rename", { json: { path, name: next } });
-		await loadFiles(currentPath);
-	}
-}
-
-async function deleteItem(path, name) {
-	if ((await ask({ title: "Delete", message: `Delete ${name}? This cannot be undone.`, input: false, ok: "Delete", danger: true })) !== true) return;
-	await api("/api/fs/delete", { json: { path } });
-	if (openFile === path) { openFile = null; setDirty(false); }
-	await loadFiles(currentPath);
-}
-
-async function createItem(kind, title) {
-	const name = await ask({ title, ok: "Create" });
-	if (name) {
-		await api("/api/fs/" + kind, { json: { path: currentPath, name } });
-		await loadFiles(currentPath);
-	}
-}
-
-async function uploadFiles(files) {
-	if (!files.length) return;
-	const form = new FormData();
-	form.append("path", currentPath);
-	for (const file of files) form.append("files", file);
-	const result = await api("/api/fs/upload", { method: "POST", body: form });
-	toast(`Uploaded ${result.count} file(s)`, "ok");
-	await loadFiles(currentPath);
-}
-
-$("#btn-new-file").onclick = () => run(() => createItem("newfile", "New file"));
-$("#btn-new-folder").onclick = () => run(() => createItem("mkdir", "New folder"));
-$("#btn-upload").onclick = () => $("#upload-input").click();
-$("#upload-input").onchange = (event) => {
-	const files = [...event.target.files];
-	event.target.value = "";
-	run(() => uploadFiles(files));
-};
-const drop = $("#drop");
-drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("dragging"); });
-drop.addEventListener("dragleave", (event) => { if (event.target === drop || !drop.contains(event.relatedTarget)) drop.classList.remove("dragging"); });
 drop.addEventListener("drop", (event) => {
 	event.preventDefault();
 	drop.classList.remove("dragging");
@@ -572,7 +665,7 @@ async function closeEditor() {
 $("#editor-close").onclick = closeEditor;
 editorDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeEditor(); });
 editorDialog.addEventListener("keydown", (event) => {
-	if (event.key === "Escape" && !$("#dlg-prompt").open) { event.preventDefault(); closeEditor(); }
+	if (event.key === "Escape" && !$("#dlg-prompt").open && !(event.target.closest && event.target.closest(".monaco-editor") && document.querySelector(".suggest-widget.visible, .find-widget.visible"))) { event.preventDefault(); closeEditor(); }
 });
 $("#editor-text").oninput = () => setDirty(true);
 $("#editor-text").onkeydown = (event) => {
@@ -608,7 +701,11 @@ function toggleDock() {
 	showDock();
 }
 $("#btn-dock").onclick = toggleDock;
-$("#dock-close").onclick = () => { $("#dock").hidden = true; };
+// Closing the window also removes the terminals whose process has finished; running ones keep going
+$("#dock-close").onclick = async () => {
+	for (const t of Object.values(terminals).filter((x) => x.exited)) await t.remove();
+	$("#dock").hidden = true;
+};
 $("#dock-size").onclick = () => { $("#dock").classList.toggle("max"); fitActive(); };
 
 function fitActive() {
@@ -638,6 +735,8 @@ function connectTerminal(t) {
 		if (message.o !== undefined) t.term.write(message.o);
 		if (message.x !== undefined) {
 			t.exited = true;
+			// A shell that ends (e.g. "exit") closes its tab, and the modal closes with the last tab
+			if (t.autoClose && t.remove) { t.remove(); loadSites().catch(() => {}); return; }
 			t.term.write(`\r\n\x1b[33m[Process exited with code ${message.x}]\x1b[0m\r\n`);
 			t.title.textContent += " ✓";
 			loadSites().catch(() => {});
@@ -648,7 +747,7 @@ function connectTerminal(t) {
 	};
 }
 
-function openTerminal(id, title) {
+function openTerminal(id, title, autoClose) {
 	if (terminals[id]) return activate(id);
 	const pane = el("div", { className: "pane", hidden: true });
 	const titleNode = el("span", { textContent: title });
@@ -661,7 +760,7 @@ function openTerminal(id, title) {
 	const fit = new FitAddon.FitAddon();
 	term.loadAddon(fit);
 	term.open(pane);
-	const t = { id, term, fit, pane, tab, title: titleNode, exited: false, ws: null };
+	const t = { id, term, fit, pane, tab, title: titleNode, exited: false, ws: null, autoClose: !!autoClose, remove: null };
 	terminals[id] = t;
 
 	term.onData((data) => t.ws && t.ws.readyState === 1 && t.ws.send(JSON.stringify({ t: "i", d: data })));
@@ -669,16 +768,20 @@ function openTerminal(id, title) {
 	new ResizeObserver(() => { if (!pane.hidden) { try { fit.fit(); } catch (_) { /* ignore */ } } }).observe(pane);
 	setInterval(() => t.ws && t.ws.readyState === 1 && t.ws.send(JSON.stringify({ t: "p" })), 30000);
 
-	close.onclick = async (event) => {
-		event.stopPropagation();
-		if (!t.exited && !(await ask({ title: "Close terminal", message: "The process is still running. Close and stop it?", input: false, ok: "Stop and close", danger: true }))) return;
+	t.remove = async () => {
 		await run(() => api(`/api/term/${id}/close`, { json: {} }));
-		t.ws && (t.exited = true, t.ws.close());
+		t.exited = true;
+		if (t.ws) t.ws.close();
 		term.dispose(); tab.remove(); pane.remove();
 		delete terminals[id];
 		activeTerminal = Object.keys(terminals)[0] || null;
 		if (activeTerminal) activate(activeTerminal);
 		updateTerminalState();
+	};
+	close.onclick = async (event) => {
+		event.stopPropagation();
+		if (!t.exited && !(await ask({ title: "Close terminal", message: "The process is still running. Close and stop it?", input: false, ok: "Stop and close", danger: true }))) return;
+		await t.remove();
 	};
 	connectTerminal(t);
 	updateTerminalState();
@@ -687,13 +790,13 @@ function openTerminal(id, title) {
 
 async function openTask(payload) {
 	const data = await api("/api/term", { json: payload });
-	openTerminal(data.id, data.title);
-	showDock();
+	openTerminal(data.id, data.title, payload.kind === "shell");
+	if (terminals[data.id]) showDock();
 }
 
 async function restoreTerminals() {
 	const { sessions } = await api("/api/term");
-	for (const s of sessions) openTerminal(s.id, s.title + (s.running ? "" : " ✓"));
+	for (const s of sessions) openTerminal(s.id, s.title + (s.running ? "" : " ✓"), s.title.startsWith("Shell"));
 	if (sessions.length) { for (const t of Object.values(terminals)) t.pane.hidden = true; activate(sessions[0].id); }
 }
 
@@ -704,3 +807,15 @@ run(async () => {
 	await restoreTerminals();
 	updateTerminalState();
 });
+
+
+// ------------------------------------------------------------------ settings menu
+const settingsMenu = $("#settings-menu");
+$("#btn-settings").onclick = (event) => { event.stopPropagation(); settingsMenu.hidden = !settingsMenu.hidden; };
+document.addEventListener("click", () => { settingsMenu.hidden = true; });
+$("#settings-restart-apache").onclick = () => run(async () => {
+	if (await ask({ title: "Restart Apache?", message: "All sites on this server are briefly unavailable.", input: false, ok: "Restart", danger: true })) await openTask({ kind: "apache", tool: "restart" });
+});
+$("#settings-apache-test").onclick = () => run(() => openTask({ kind: "apache", tool: "configtest" }));
+
+decorate($("#settings-menu"));
