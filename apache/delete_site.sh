@@ -50,5 +50,7 @@ if [[ ${_deleteCertificate} =~ ^([yY]|[yY][eE][sS])$ ]]; then
 	sudo "${_acme}" --revoke -d "${_binding}"
 	sudo "${_acme}" --remove -d "${_binding}"
 	sudo rm -rf "${_certificateDirectory}"
+	# acme.sh keeps its files in a folder named after the binding, and --remove does not delete them
+	clean_stale_acme "${_binding}"
 	echo "All is removed!"
 fi

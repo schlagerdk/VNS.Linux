@@ -153,6 +153,7 @@ else
 	echo "Revoke and remove certificate for ${_oldBinding}"
 	sudo "${_acme}" --revoke -d "${_oldBinding}"
 	sudo "${_acme}" --remove -d "${_oldBinding}"
+	clean_stale_acme "${_oldBinding}"
 fi
 
 echo "Binding updated: https://${_newBinding}/ (folder: ${_site})"
