@@ -97,9 +97,9 @@ render_to() {
 	render "$1" | sudo tee "$2" >/dev/null
 }
 
-# Copy a folder of script templates into "<siteRoot>/VNS Scripts" (later calls overwrite earlier ones)
+# Copy script templates into "<siteRoot>/scripts" (later calls overwrite earlier ones)
 install_scripts() {
-	local _src=$1 _dest="${_siteRoot}/VNS Scripts" _file
+	local _src=$1 _dest="${_siteRoot}/scripts" _file
 	[[ -d ${_src} ]] || return 0
 	sudo mkdir -p "${_dest}"
 	for _file in "${_src}"/*; do
