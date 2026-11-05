@@ -8,7 +8,7 @@ trap 'echo "FAILED at ${BASH_SOURCE[0]}:${LINENO} (exit $?): ${BASH_COMMAND}" >&
 trap 'release_port_reservation' EXIT
 set -o errtrace
 
-_defaultUmbracoVersion=18.3.0
+_defaultUmbracoVersion=18.3.1
 _dotNetVersion=net10.0
 
 _site=${1:-}
