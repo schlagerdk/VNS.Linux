@@ -323,9 +323,9 @@ function siteCard(site) {
 	return el("article", { className: "site " + state + (hasProd(site) ? " with-production" : "") + (site.admin ? " is-admin" : ""), onclick: () => go(siteLink(site.name)) },
 		el("div", { className: "site-head" },
 			el("span", { className: "site-emblem" }, svgIcon("globe")),
-			el("h3", { className: "site-title", textContent: site.name }),
+			el("div", { className: "site-identity" }, el("h3", { className: "site-title", textContent: site.name }), badges),
 			el("span", { className: "dot " + state, title: state || "Static site" })),
-		badges, actions);
+		actions);
 }
 
 const scriptNames = {
