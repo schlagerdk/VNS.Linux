@@ -7,6 +7,7 @@ import base64
 import glob
 import hmac
 import io
+import importlib.util
 import json
 import os
 import socket
@@ -17,12 +18,14 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 import tempfile
 import uuid
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.parse import urlparse
 
 import ptyprocess
@@ -38,6 +41,10 @@ with open(CONFIG_PATH) as _f:
 
 WEB_ROOT = os.path.realpath(cfg.get("web_root", "/var/www"))
 APACHE_DIR = cfg["apache_dir"]
+_files_spec = importlib.util.spec_from_file_location("vns_remote_files", os.path.join(APACHE_DIR, "lib", "remote_files.py"))
+_files_module = importlib.util.module_from_spec(_files_spec)
+_files_spec.loader.exec_module(_files_module)
+editable_file = _files_module.editable_file
 ADMIN_SITE = cfg.get("admin_site", "")
 APACHE_SITES = "/etc/apache2/sites-available"
 APACHE_ENABLED = "/etc/apache2/sites-enabled"
@@ -254,6 +261,13 @@ def remote_command(site, action, timeout=60, **kwargs):
         message = result.stderr or result.stdout
         if isinstance(message, bytes):
             message = message.decode("utf-8", errors="replace")
+        if action == "config" and result.stdout:
+            try:
+                details = json.loads(result.stdout)
+                if isinstance(details, dict) and isinstance(details.get("error"), str):
+                    message = details["error"]
+            except ValueError:
+                pass
         app.logger.error("Remote %s failed for %s: %s", action, site, message)
         abort(502, message.strip() or "Remote action failed")
     return result
@@ -1022,6 +1036,48 @@ def ws_term(ws, sid):
 MAX_EDIT_BYTES = 2 * 1024 * 1024
 
 
+@app.route("/api/sites/<site>/config/<kind>", methods=["GET", "POST"])
+def managed_config(site, kind):
+    if site not in site_dirs() or kind not in ("service", "conf"):
+        abort(400, "Unknown site or configuration type")
+    data = (request.get_json(silent=True) or {}) if request.method == "POST" else {}
+    if not isinstance(data, dict):
+        abort(400, "Expected a configuration object")
+    action = data.get("action") if request.method == "POST" else "read"
+    if action not in ("read", "save", "apply"):
+        abort(400, "Unknown configuration action")
+    payload = {"kind": kind, "action": action, "content": data.get("content")}
+    scope = request.args.get("scope", "local")
+    if scope not in ("local", "remote"):
+        abort(400, "Unknown configuration scope")
+    if scope == "remote":
+        remote_site(site)
+        result = remote_command(site, "config", timeout=150, text=True, input=json.dumps(payload))
+    else:
+        unit = request.args.get("unit") or site
+        if unit not in site_units(site):
+            abort(400, "Unknown service")
+        try:
+            result = subprocess.run(
+                [sys.executable, os.path.join(APACHE_DIR, "lib", "managed_config.py")],
+                input=json.dumps(payload), text=True, capture_output=True, timeout=150,
+                env={**os.environ, "SITE": unit})
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            app.logger.error("Configuration %s failed for %s: %s", action, unit, exc)
+            abort(502, "Configuration operation failed")
+    try:
+        response = json.loads(result.stdout)
+    except ValueError:
+        app.logger.error("Invalid configuration response for %s: %s", site, result.stderr)
+        abort(502, "Invalid configuration response")
+    if result.returncode:
+        app.logger.error("Configuration %s failed for %s: %s", action, site, response)
+        abort(502, response.get("error", "Configuration operation failed"))
+    if action == "apply":
+        REMOTE_STATUS.pop(site, None)
+    return jsonify(response)
+
+
 @app.route("/api/remote-fs/<site>/<action>", methods=["GET", "POST"])
 def remote_fs(site, action):
     remote_site(site)
@@ -1064,7 +1120,13 @@ def fs_list():
         except OSError:
             continue
         is_dir = entry.is_dir(follow_symlinks=False)
-        items.append({"name": entry.name, "dir": is_dir, "size": 0 if is_dir else info.st_size, "modified": int(info.st_mtime)})
+        try:
+            editable = not is_dir and not entry.is_symlink() and entry.is_file() and editable_file(Path(entry.path), info.st_size)
+        except OSError as exc:
+            app.logger.warning("Could not check file editability for %s: %s", entry.path, exc)
+            editable = False
+        items.append({"name": entry.name, "dir": is_dir, "size": 0 if is_dir else info.st_size,
+                      "modified": int(info.st_mtime), "editable": editable})
     items.sort(key=lambda i: (not i["dir"], i["name"].lower()))
     return jsonify(path=rel(full), items=items)
 

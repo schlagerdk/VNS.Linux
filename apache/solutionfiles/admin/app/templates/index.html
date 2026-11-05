@@ -67,11 +67,19 @@
     <section id="site-packages" class="panel package-panel" hidden></section>
   </section>
 
-  <section id="view-files" hidden>
+ </main>
+
+<dialog id="dlg-files" class="wide files-dialog" aria-labelledby="files-title">
+  <section id="view-files">
+    <div class="toolbar files-heading">
+      <h2 id="files-title">Files</h2>
+      <span class="spacer"></span>
+      <button id="files-close" type="button">Close</button>
+    </div>
     <div class="toolbar">
-      <a id="files-back" class="link back" href="#sites">← All sites</a>
       <div id="crumbs" class="crumbs"></div>
       <span class="spacer"></span>
+      <button id="files-filter" type="button" aria-pressed="false">Hide non-editable files</button>
       <button id="btn-new-file">New file</button>
       <button id="btn-new-folder">New folder</button>
       <button id="btn-upload">Upload</button>
@@ -82,7 +90,7 @@
       <div class="drop-hint">Drop files here to upload</div>
     </div>
   </section>
-</main>
+</dialog>
 
 <section id="dock" hidden>
   <div class="dock-window">
@@ -102,9 +110,8 @@
   <form method="dialog" id="form-prompt">
     <h2 id="prompt-title"></h2>
     <p id="prompt-message"></p>
-    <p id="prompt-copy-status" class="hint" role="status" hidden></p>
     <input id="prompt-input" autocomplete="off" spellcheck="false">
-    <menu><button type="button" id="prompt-cancel">Cancel</button><button type="submit" id="prompt-ok" class="primary">OK</button></menu>
+    <menu><li id="prompt-copy-status" class="hint" role="status"></li><li><button type="button" id="prompt-cancel">Cancel</button></li><li><button type="submit" id="prompt-ok" class="primary">OK</button></li></menu>
   </form>
 </dialog>
 

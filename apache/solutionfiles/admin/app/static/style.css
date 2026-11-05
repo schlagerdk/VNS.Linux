@@ -100,6 +100,8 @@ a.link:hover { text-decoration: underline; }
 .package-version { max-width: 100%; padding: 5px 12px; border: 1px solid rgba(88, 166, 255, .5); border-radius: 6px; background: rgba(88, 166, 255, .15); color: var(--blue); font: 600 14px ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
 .package-error { margin: 12px 20px; color: var(--orange); font-size: 12px; }
 #files td:first-child { white-space: nowrap; }
+.file-uneditable { color: var(--muted); opacity: .65; cursor: default; }
+#files-filter[aria-pressed=true] { border-color: var(--blue); color: var(--blue); }
 .list.dragging { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue); }
 .drop-hint { display: none; position: absolute; inset: 0; background: rgba(13, 17, 23, .85); align-items: center; justify-content: center; font-size: 18px; color: var(--blue); }
 .list.dragging .drop-hint { display: flex; }
@@ -208,6 +210,11 @@ dialog.editor[open] { display: flex; }
 dialog.editor .toolbar { margin-bottom: 10px; }
 dialog.editor textarea { flex: 1; min-height: 0; width: 100%; resize: none; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; tab-size: 4; }
 dialog.wide { width: min(1000px, 94vw); }
+dialog.files-dialog { width: min(1100px, 94vw); height: min(740px, 86vh); padding: 18px; }
+.files-dialog #view-files { display: flex; flex-direction: column; height: 100%; }
+.files-heading h2 { margin: 0; font-size: 18px; }
+.files-dialog #crumbs { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.files-dialog #drop { flex: 1; min-height: 0; overflow: auto; }
 #logs-text { max-height: 60vh; overflow: auto; background: #000; padding: 10px; border-radius: 6px; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; }
 @media (max-width: 800px) { .page-header #search { min-width: 0; flex: 1; } .brand h1, .brand .host { display: none; } .envs { grid-template-columns: 1fr; } }
 
@@ -303,6 +310,8 @@ a.btn-link .ico { width: 13px; height: 13px; flex: none; }
 .https-lock { display: inline-flex; align-items: center; flex: none; }
 .confirmation-copy { display: inline; padding: 0; border: 0; border-radius: 2px; background: transparent; color: inherit; font: inherit; overflow-wrap: anywhere; }
 .confirmation-copy:hover { background: transparent; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; }
+#form-prompt menu { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; list-style: none; }
+#prompt-copy-status { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .clipboard-transfer { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .https-lock.secure { color: #e3b341; }
 .https-lock.insecure { color: var(--red); }

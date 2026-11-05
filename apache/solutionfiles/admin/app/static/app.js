@@ -71,6 +71,8 @@ async function copyText(text, container) {
 	}
 }
 
+let copyStatusTimer = null;
+
 // Replaces prompt()/confirm(). Resolves to the entered text (or true without an input), or null when cancelled.
 function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null }) {
 	const dlg = $("#dlg-prompt");
@@ -79,8 +81,9 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	$("#prompt-title").textContent = title;
 	const messageBox = $("#prompt-message");
 	const copyStatus = $("#prompt-copy-status");
+	clearTimeout(copyStatusTimer);
 	copyStatus.textContent = "";
-	copyStatus.hidden = true;
+	copyStatus.title = "";
 	messageBox.textContent = message;
 	const matchIndex = match ? message.indexOf(match) : -1;
 	if (matchIndex >= 0) {
@@ -88,13 +91,21 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 			type: "button", className: "confirmation-copy", textContent: match,
 			title: "Copy confirmation text", ariaLabel: "Copy confirmation text: " + match,
 			onclick: async () => {
+				let status;
 				try {
 					await copyText(match, dlg);
-					copyStatus.textContent = "Copied to clipboard.";
+					status = "Copied to clipboard.";
 				} catch (error) {
-					copyStatus.textContent = error.message;
+					status = error.message;
 				}
-				copyStatus.hidden = false;
+				if (!dlg.open || !copy.isConnected) return;
+				clearTimeout(copyStatusTimer);
+				copyStatus.textContent = status;
+				copyStatus.title = status;
+				copyStatusTimer = setTimeout(() => {
+					copyStatus.textContent = "";
+					copyStatus.title = "";
+				}, 2500);
 			},
 		});
 		messageBox.replaceChildren(message.slice(0, matchIndex), copy, message.slice(matchIndex + match.length));
@@ -119,10 +130,9 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 
 // ------------------------------------------------------------------ views
 
-let filesLoaded = false;
 let remoteFilesSite = "";
 let currentView = "sites";
-const views = ["sites", "site", "files"];
+const views = ["sites", "site"];
 
 function showView(name) {
 	currentView = name;
@@ -136,8 +146,8 @@ async function route() {
 	const slash = hash.indexOf("/");
 	const view = slash < 0 ? hash : hash.slice(0, slash);
 	const arg = slash < 0 ? "" : hash.slice(slash + 1);
-	if (currentView === "files" && (view !== "files" || arg !== currentPath) && !(await discardOk())) {
-		history.replaceState(null, "", activeFilesLink(currentPath));
+	if (editorDialog.open && !(await discardOk())) {
+		history.replaceState(null, "", currentView === "site" ? siteLink($("#site-head h2").textContent) : "#sites");
 		return;
 	}
 	if (editorDialog.open) {
@@ -147,23 +157,22 @@ async function route() {
 	}
 	if (view === "files" || view === "remote-files") {
 		const parts = arg.split("/");
-		remoteFilesSite = view === "remote-files" ? parts.shift() : "";
-		showView("files");
-		await run(() => loadFiles(view === "remote-files" ? parts.join("/") : arg));
+		const remote = view === "remote-files" ? parts.shift() : "";
+		history.replaceState(null, "", "#sites");
+		showView("sites");
+		await run(() => openFiles(view === "remote-files" ? parts.join("/") : arg, remote));
 	} else if (view === "site" && arg) {
+		if (filesDialog.open) filesDialog.close();
 		showView("site");
 		renderSite(arg);
 	} else {
+		if (filesDialog.open) filesDialog.close();
 		showView("sites");
 	}
 }
 window.addEventListener("hashchange", route);
 const go = (hash) => { location.hash = hash; };
 const siteLink = (name) => "#site/" + encodeURIComponent(name);
-const filesLink = (path) => "#files/" + path.split("/").map(encodeURIComponent).join("/");
-const activeFilesLink = (path) => remoteFilesSite
-	? "#remote-files/" + encodeURIComponent(remoteFilesSite) + "/" + path.split("/").map(encodeURIComponent).join("/")
-	: filesLink(path);
 const fsUrl = (action) => remoteFilesSite ? "/api/remote-fs/" + encodeURIComponent(remoteFilesSite) + "/" + action : "/api/fs/" + action;
 
 // ------------------------------------------------------------------ sites
@@ -337,12 +346,16 @@ function remoteIcon(env) {
 	return el("span", { className: "remote-icon", title: "Remote server: " + env.host, ariaLabel: "Remote server: " + env.host }, svgIcon("server"));
 }
 
+function environmentLabel(site, env) {
+	return site.kind === "python" ? "Live" : env.environment || (site.kind === "csharp" || site.kind === "umbraco" ? "Unknown" : env.label);
+}
+
 function siteCard(site) {
 	const state = siteState(site);
 	const actions = el("div", { className: "site-links" });
 	for (const env of site.environments) {
 		const production = env.key === "prod";
-		const environment = site.kind === "python" ? "Live" : env.environment || (site.kind === "csharp" || site.kind === "umbraco" ? "Unknown" : env.label);
+		const environment = environmentLabel(site, env);
 		const group = el("div", { className: "site-link-group" + (production ? " production" : ""), role: "group", ariaLabel: environment + " · " + (env.binding || site.name) });
 		const heading = el("div", { className: "site-environment-head" },
 			el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
@@ -423,7 +436,7 @@ function renderSite(name) {
 	const actions = el("div", { className: "actions" });
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: className || "", onclick: () => run(handler) }));
 	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
-	add("Files", () => go(filesLink(site.name)));
+	add("Files", () => openFiles(site.name));
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
 	if (!hasProd(site) && site.scripts.includes("create_prod.sh")) {
 		add("Create production site", () => openCreateProdDialog(site));
@@ -537,7 +550,7 @@ function envPanel(site, env) {
 	}
 	if (env.mode === "remote") {
 		add("Shell", () => openTask({ kind: "remote_tool", site: site.name, tool: "shell" }));
-		add("Files", () => go("#remote-files/" + encodeURIComponent(site.name) + "/"));
+		add("Files", () => openFiles("", site.name));
 	}
 
 	const quick = el("div", { className: "actions quick" });
@@ -563,11 +576,13 @@ function envPanel(site, env) {
 	if (env.unit || env.mode === "remote") {
 		const tools = el("div", { className: "actions quick" });
 		for (const [tool, label] of [["check_service", "Check service"], ["edit_service", "Edit service"], ["edit_conf", "Edit config"]]) {
-			tools.append(el("button", { textContent: label, className: "small", onclick: () => run(() => openTask({ kind: env.mode === "remote" ? "remote_tool" : "unit_tool", site: site.name, unit: env.unit, tool })) }));
+			tools.append(el("button", { textContent: label, className: "small", onclick: () => run(() => tool === "check_service"
+				? openTask({ kind: env.mode === "remote" ? "remote_tool" : "unit_tool", site: site.name, unit: env.unit, tool })
+				: editConfiguration(site, env, tool === "edit_service" ? "service" : "conf")) }));
 		}
 		extraTools = tools;
 	}
-	if (hasProd(site) && !site.admin) add(env.key === "prod" ? "Delete production site" : "Delete test site", () => deleteSite(site, env.key === "prod" ? "prod" : "test"), "danger");
+	if (hasProd(site) && !site.admin) add(`Delete ${environmentLabel(site, env)} site`, () => deleteSite(site, env.key === "prod" ? "prod" : "test"), "danger");
 
 	const panel = el("section", { className: "env " + (env.key === "prod" ? "prod" : "") }, heading, meta);
 	if (env.exists === false) panel.append(el("p", { className: "muted", textContent: "Nothing published here yet." }));
@@ -614,19 +629,24 @@ async function changeBinding(site, scope, env) {
 
 async function deleteSite(site, scope) {
 	const prod = site.environments.find((e) => e.key === "prod");
+	const main = site.environments.find((e) => e.key === "main");
+	const mainEnvironment = environmentLabel(site, main);
+	const prodEnvironment = prod ? environmentLabel(site, prod) : "";
 	const remote = prod && prod.mode === "remote";
 	const target = scope === "prod" ? (prod.binding || prod.unit || prod.folder || site.name) : site.name;
 	const what = {
 		all: remote
-			? `This deletes the site and its remote production site on ${prod.host}: files, services, Apache configs and logs on both servers.`
-			: `This deletes the site and its production site on this server: files, services, Apache configs and logs.`,
-		test: `This deletes the site's own files, service and Apache config. The production site is kept.`,
+			? `This deletes the site and its remote ${prodEnvironment} site on ${prod.host}: files, services, Apache configs and logs on both servers.`
+			: prod
+				? `This deletes the site and its ${prodEnvironment} site on this server: files, services, Apache configs and logs.`
+				: `This deletes the site: its files, service, Apache config and logs.`,
+		test: `This deletes the ${mainEnvironment} site's files, service and Apache config. The ${prodEnvironment} site is kept.`,
 		prod: remote
-			? `This deletes the production site on ${prod.host}: its files, service, Apache config and logs. The test site is kept.`
-			: `This deletes the production site: its files, service, Apache config and logs. The test site is kept.`,
+			? `This deletes the ${prodEnvironment} site on ${prod.host}: its files, service, Apache config and logs. The ${mainEnvironment} site is kept.`
+			: `This deletes the ${prodEnvironment} site: its files, service, Apache config and logs. The ${mainEnvironment} site is kept.`,
 	}[scope];
 	const typed = await ask({
-		title: { all: "Delete everything", test: "Delete test site", prod: "Delete production site" }[scope], danger: true, ok: "Delete", match: target, placeholder: target,
+		title: scope === "all" ? "Delete everything" : `Delete ${scope === "prod" ? prodEnvironment : mainEnvironment} site`, danger: true, ok: "Delete", match: target, placeholder: target,
 		message: `${what}\nType "${target}" to confirm.`,
 	});
 	if (typed === null) return;
@@ -644,7 +664,7 @@ $("#search").oninput = (event) => {
 	renderSites();
 };
 $("#btn-server-shell").onclick = () => run(() => openTask({ kind: "shell" }));
-$("#btn-browse").onclick = () => go("files/");
+$("#btn-browse").onclick = () => run(() => openFiles(""));
 document.addEventListener("keydown", (event) => {
 	const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
 	if (event.key === "/" && !typing) { event.preventDefault(); if (currentView !== "sites") go("sites"); $("#search").focus(); }
@@ -653,7 +673,7 @@ document.addEventListener("keydown", (event) => {
 });
 setInterval(() => {
 	const busy = document.activeElement && $("#view-sites").contains(document.activeElement) && document.activeElement.tagName !== "BODY";
-	if (!document.hidden && currentView !== "files" && !busy && !document.querySelector("dialog[open]")) loadSites().catch(() => {});
+	if (!document.hidden && !busy && !document.querySelector("dialog[open]")) loadSites().catch(() => {});
 }, 15000);
 
 // ------------------------------------------------------------------ account
@@ -822,7 +842,15 @@ packageForm.onsubmit = (event) => {
 
 var currentPath = "";
 const editorDialog = $("#dlg-editor");
+const filesDialog = $("#dlg-files");
+$("#files-close").onclick = () => filesDialog.close();
+filesDialog.addEventListener("cancel", (event) => {
+	event.preventDefault();
+	filesDialog.close();
+});
 let openFile = null;
+let configurationEditor = null;
+let savingFile = false;
 let dirty = false;
 
 const sizeText = (n) => (n < 1024 ? n + " B" : n < 1048576 ? Math.round(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB");
@@ -839,14 +867,18 @@ async function discardOk() {
 	return !dirty || (await ask({ title: "Unsaved changes", message: `${openFile} has unsaved changes.`, input: false, ok: "Discard", danger: true })) === true;
 }
 
+let hideNonEditableFiles = false;
+let listedFiles = [];
+$("#files-filter").onclick = () => {
+	hideNonEditableFiles = !hideNonEditableFiles;
+	$("#files-filter").textContent = hideNonEditableFiles ? "Show all files" : "Hide non-editable files";
+	$("#files-filter").setAttribute("aria-pressed", String(hideNonEditableFiles));
+	renderFiles();
+};
+
 async function loadFiles(path) {
 	const data = await api(fsUrl("list") + "?path=" + encodeURIComponent(path));
 	currentPath = data.path;
-	filesLoaded = true;
-	history.replaceState(null, "", activeFilesLink(currentPath));
-	const site = remoteFilesSite || currentPath.split("/")[0];
-	$("#files-back").href = site ? siteLink(site) : "#sites";
-	$("#files-back").textContent = site ? "← " + site : "← All sites";
 	const crumbs = $("#crumbs");
 	crumbs.replaceChildren(el("a", { className: "link", textContent: remoteFilesSite ? "Remote production · " + remoteFilesSite : "/var/www", onclick: () => run(() => loadFiles("")) }));
 	let accumulated = "";
@@ -855,21 +887,40 @@ async function loadFiles(path) {
 		const target = accumulated;
 		crumbs.append(" / ", el("a", { className: "link", textContent: part, onclick: () => run(() => loadFiles(target)) }));
 	}
+	listedFiles = data.items;
+	renderFiles();
+}
+
+function renderFiles() {
+	const items = listedFiles.filter((item) => !hideNonEditableFiles || item.dir || item.editable);
 	const body = $("#files tbody");
 	body.replaceChildren();
 	if (currentPath) {
 		body.append(el("tr", { onclick: () => run(() => loadFiles(parentOf(currentPath))), style: "cursor:pointer" }, el("td", { textContent: "↰ .." }), el("td"), el("td"), el("td")));
 	}
-	for (const item of data.items) {
+	for (const item of items) {
 		const full = join(currentPath, item.name);
-		const link = el("a", { className: "link", textContent: (item.dir ? "📁 " : "📄 ") + item.name, onclick: () => run(() => (item.dir ? loadFiles(full) : editFile(full))) });
+		const canOpen = item.dir || item.editable;
+		const link = el(canOpen ? "a" : "span", {
+			className: canOpen ? "link" : "file-uneditable",
+			textContent: (item.dir ? "📁 " : "📄 ") + item.name,
+			title: canOpen ? item.name : "Not editable. Download this file instead.",
+			...(canOpen ? { onclick: () => run(() => (item.dir ? loadFiles(full) : editFile(full))) } : {}),
+		});
 		const tools = el("td", { className: "tools" });
 		if (!item.dir) tools.append(el("a", { className: "link", textContent: "Download", href: fsUrl("download") + "?path=" + encodeURIComponent(full) }));
 		tools.append(el("a", { className: "link", textContent: "Rename", onclick: () => run(() => renameItem(full, item.name)) }));
 		tools.append(el("a", { className: "link", textContent: "Delete", onclick: () => run(() => deleteItem(full, item.name)) }));
 		body.append(el("tr", {}, el("td", {}, link), el("td", { className: "num muted", textContent: item.dir ? "" : sizeText(item.size) }), el("td", { className: "muted", textContent: new Date(item.modified * 1000).toLocaleString() }), tools));
 	}
-	if (!data.items.length) body.append(el("tr", {}, el("td", { colSpan: 4, className: "empty", textContent: "This folder is empty." })));
+	if (!items.length) body.append(el("tr", {}, el("td", { colSpan: 4, className: "empty", textContent: listedFiles.length ? "No editable files in this folder." : "This folder is empty." })));
+}
+
+async function openFiles(path, remoteSite = "") {
+	remoteFilesSite = remoteSite;
+	await loadFiles(path);
+	$("#files-title").textContent = remoteSite ? "Remote files · " + remoteSite : "Files";
+	if (!filesDialog.open) filesDialog.showModal();
 }
 
 // Monaco is downloaded into static/vendor by install/update_admin_site.sh; without it a plain textarea is used
@@ -935,6 +986,7 @@ async function editFile(path) {
 	const saveUrl = fsUrl("save");
 	const data = await api(fsUrl("read") + "?path=" + encodeURIComponent(path));
 	openFile = path;
+	configurationEditor = null;
 	openFileSaveUrl = saveUrl;
 	if (!editorDialog.open) editorDialog.showModal();
 	$("#editor-path").textContent = path;
@@ -943,11 +995,52 @@ async function editFile(path) {
 	setDirty(false);
 }
 
-async function saveFile() {
-	if (openFile === null) return;
-	await api(openFileSaveUrl, { json: { path: openFile, content: editorValue() } });
+async function editConfiguration(site, env, kind) {
+	if (!(await discardOk())) return;
+	const url = `/api/sites/${encodeURIComponent(site.name)}/config/${kind}?scope=${env.mode === "remote" ? "remote" : "local"}&unit=${encodeURIComponent(env.unit)}`;
+	const data = await api(url);
+	configurationEditor = { url, kind };
+	openFile = data.path;
+	if (!editorDialog.open) editorDialog.showModal();
+	$("#editor-path").textContent = data.path + (env.mode === "remote" ? " · " + env.host : "");
+	$("#editor-status").textContent = "";
+	await showInEditor(data.path, data.content);
 	setDirty(false);
-	$("#editor-status").textContent = "Saved " + new Date().toLocaleTimeString();
+}
+
+async function saveFile() {
+	if (openFile === null || savingFile) return;
+	savingFile = true;
+	$("#editor-save").disabled = true;
+	try {
+		const configuration = configurationEditor;
+		const content = editorValue();
+		await api(configuration ? configuration.url : openFileSaveUrl, {
+			json: { action: "save", path: openFile, content },
+		});
+		setDirty(editorValue() !== content);
+		$("#editor-status").textContent = "Saved " + new Date().toLocaleTimeString();
+		if (configuration) {
+			const service = configuration.kind === "service";
+			const apply = await ask({
+				title: service ? "Reload daemon and restart service?" : "Test config and reload Apache?",
+				message: service ? "The file has been saved. Restart the service to apply the changes."
+					: "The file has been saved. Apache will only reload if the configuration test succeeds.",
+				input: false, ok: service ? "Reload and restart" : "Test and reload",
+			});
+			if (apply) {
+				$("#editor-status").textContent = "Applying changes…";
+				await api(configuration.url, { json: { action: "apply" } });
+				$("#editor-status").textContent = service ? "Saved. Service restarted." : "Saved. Config test passed; Apache reloaded.";
+				await loadSites();
+			}
+		}
+	} catch (error) {
+		$("#editor-status").textContent = error.message;
+	} finally {
+		savingFile = false;
+		$("#editor-save").disabled = false;
+	}
 }
 
 async function createItem(kind, title) {
@@ -998,8 +1091,10 @@ drop.addEventListener("drop", (event) => {
 });
 $("#editor-save").onclick = () => run(saveFile);
 async function closeEditor() {
+	if (savingFile) return;
 	if (!(await discardOk())) return;
 	openFile = null;
+	configurationEditor = null;
 	setDirty(false);
 	editorDialog.close();
 }

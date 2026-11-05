@@ -5,6 +5,7 @@ import io
 import json
 import os
 import shlex
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
@@ -25,6 +26,19 @@ spec.loader.exec_module(remote_files)
 
 
 class RemoteFilesTests(unittest.TestCase):
+    def test_editability_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "folder").mkdir()
+            (root / "app.dll").write_bytes(b"compiled")
+            (root / "settings.json").write_text('{"enabled":true}')
+            (root / "binary").write_bytes(b"\0binary")
+            (root / "large.log").write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+            items = {item["name"]: item for item in remote_files.handle(root, {"action": "list"})["items"]}
+            self.assertTrue(items["settings.json"]["editable"])
+            for name in ("app.dll", "binary", "large.log", "folder"):
+                self.assertFalse(items[name]["editable"])
+
     def test_file_operations_and_confinement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -61,14 +75,16 @@ class RemoteApiTests(unittest.TestCase):
         self.ns = dict(
             app=self.app, os=os, json=json, subprocess=subprocess, time=time, shlex=shlex,
             base64=base64, abort=abort, jsonify=jsonify, request=request,
-            io=io, send_file=send_file,
+            io=io, send_file=send_file, sys=sys, site_units=lambda site: [site, "local-prod.test"],
+            Path=Path, editable_file=remote_files.editable_file,
+            safe_path=lambda path: path, rel=lambda path: path,
             HTTPException=HTTPException, APACHE_DIR=str(APACHE), WEB_ROOT="/var/www",
             REMOTE_STATUS={}, site_dirs=lambda: ["example.test"],
             parse_prod=lambda root: {"PROD_LOCAL_PATH": "", "PROD_FOLDER": "production.test"},
             site_arg=lambda data: "example.test",
         )
         functions = {"error", "remote_command", "remote_status", "remote_site", "api_service", "api_logs", "build_command", "remote_fs",
-                     "service_environment", "environment_info"}
+                     "service_environment", "environment_info", "managed_config", "fs_list"}
         nodes = [node for node in ast.parse(APP_SOURCE.read_text()).body
                  if isinstance(node, ast.FunctionDef) and node.name in functions]
         exec(compile(ast.Module(body=nodes, type_ignores=[]), str(APP_SOURCE), "exec"), self.ns)
@@ -149,6 +165,35 @@ class RemoteApiTests(unittest.TestCase):
         response = self.client.get("/api/remote-fs/example.test/download?path=binary")
         self.assertEqual(response.data, b"\0\1\2")
 
+    def test_config_api_scopes_local_and_remote(self):
+        command = Mock(return_value=Mock(returncode=0, stdout='{"content":"remote config","path":"/etc/test"}'))
+        self.ns["remote_command"] = command
+        response = self.client.get("/api/sites/example.test/config/conf?scope=remote&unit=example.test")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["content"], "remote config")
+        self.assertEqual(command.call_args.args, ("example.test", "config"))
+        with patch("subprocess.run", return_value=Mock(returncode=0, stdout='{"ok":true}')) as run:
+            response = self.client.post("/api/sites/example.test/config/service?unit=local-prod.test",
+                                        json={"action": "save", "content": "[Service]\n"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(run.call_args.kwargs["env"]["SITE"], "local-prod.test")
+        self.assertEqual(json.loads(run.call_args.kwargs["input"])["content"], "[Service]\n")
+        with patch("subprocess.run") as run:
+            self.assertEqual(self.client.get("/api/sites/example.test/config/service?unit=other.test").status_code, 400)
+            self.assertEqual(self.client.get("/api/sites/example.test/config/other").status_code, 400)
+            run.assert_not_called()
+
+    def test_local_file_editability_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "app.dll").write_bytes(b"compiled")
+            (root / "config.json").write_text("{}")
+            response = self.client.get("/api/fs/list", query_string={"path": directory})
+            self.assertEqual(response.status_code, 200)
+            items = {item["name"]: item for item in response.json["items"]}
+            self.assertFalse(items["app.dll"]["editable"])
+            self.assertTrue(items["config.json"]["editable"])
+
 
 class RemoteStatusTests(unittest.TestCase):
     def test_https_is_read_from_remote_configuration(self):
@@ -209,7 +254,7 @@ class RemoteTransportTests(unittest.TestCase):
             (root / "remote_site.sh").write_text((APACHE / "remote_site.sh").read_text())
             (root / "lib/common.sh").write_text((APACHE / "lib/common.sh").read_text()
                                                    + '\n_rootPath="' + str(root / "sites") + '"\n')
-            for name in ("prod.sh", "remote_files.py"):
+            for name in ("prod.sh", "remote_files.py", "managed_config.py"):
                 (root / "lib" / name).write_text((APACHE / "lib" / name).read_text())
             # macOS Bash cannot source a process substitution; test transport with trusted fixture settings.
             with (root / "lib/prod.sh").open("a") as source:
@@ -223,7 +268,7 @@ class RemoteTransportTests(unittest.TestCase):
             env = dict(os.environ, PATH=str(root / "bin") + ":" + os.environ["PATH"],
                        TEST_ARGS=str(root / "args"), TEST_INPUT=str(root / "input"))
             for action in ("status", "start", "stop", "restart", "logs", "check_service",
-                           "edit_service", "edit_conf", "shell", "files"):
+                           "edit_service", "edit_conf", "shell", "files", "config"):
                 result = subprocess.run(["/bin/bash", str(root / "remote_site.sh"), "example.test", action],
                                         input="{}", capture_output=True, text=True, env=env)
                 self.assertEqual(result.returncode, 0, result.stderr)

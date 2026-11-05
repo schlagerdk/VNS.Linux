@@ -7,6 +7,16 @@ import shutil
 import sys
 
 
+def editable_file(path, size):
+    if size > 2 * 1024 * 1024 or path.suffix.lower() in (
+            ".dll", ".exe", ".pdb", ".so", ".dylib", ".zip", ".gz", ".7z",
+            ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".pdf", ".woff", ".woff2", ".ttf"):
+        return False
+    with path.open("rb") as stream:
+        sample = stream.read(8192)
+    return b"\0" not in sample
+
+
 def handle(root, data):
     action = data["action"]
     relative = data.get("path", "")
@@ -22,7 +32,8 @@ def handle(root, data):
             info = entry.lstat()
             is_dir = entry.is_dir() and not entry.is_symlink()
             items.append({"name": entry.name, "dir": is_dir, "size": 0 if is_dir else info.st_size,
-                          "modified": int(info.st_mtime)})
+                          "modified": int(info.st_mtime), "editable": not is_dir and not entry.is_symlink()
+                          and entry.is_file() and editable_file(entry, info.st_size)})
         return {"path": relative, "items": sorted(items, key=lambda item: (not item["dir"], item["name"].lower()))}
     if action in ("read", "download"):
         if action == "read" and path.stat().st_size > 2 * 1024 * 1024:

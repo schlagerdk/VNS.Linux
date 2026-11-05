@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: remote_site.sh <site> <status|start|stop|restart|logs|check_service|edit_service|edit_conf|shell|files>
+# Usage: remote_site.sh <site> <status|start|stop|restart|logs|check_service|edit_service|edit_conf|shell|files|config>
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
@@ -88,8 +88,12 @@ REMOTE
 		printf -v _command 'env TERM=xterm-256color COLORTERM=truecolor %s bash -c %q' "${_vars}" "${_code}"
 		prod_exec "${_command}" tty
 		;;
-	files)
-		_code=$(cat lib/remote_files.py)
+	files|config)
+		if [[ ${_action} == config ]]; then
+			_code=$(cat lib/managed_config.py)
+		else
+			_code=$(cat lib/remote_files.py)
+		fi
 		printf -v _command 'env %s python3 -c %q' "${_vars}" "${_code}"
 		prod_exec "${_command}"
 		;;
