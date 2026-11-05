@@ -1,14 +1,57 @@
 #!/bin/bash
+# Publish this site into its local publish folder and restart the service.
+# Usage: publish.sh [Debug|Release]   (default: @BUILD_CONFIG@)
+# After create_prod.sh has run this script is called publish_local.sh.
+set -euo pipefail
+[[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 cd "$(dirname "$0")"
 cd ..
 
 _site=@SITE@
 _publishFolder=@PUBLISH_FOLDER@
+_configuration=${1:-@BUILD_CONFIG@}
 
+case "${_configuration}" in
+	Debug | Release) ;;
+	*) echo "Usage: $0 [Debug|Release]" >&2; exit 1 ;;
+esac
+
+_stopped=0
+start_service() {
+	if ((_stopped)); then
+		_stopped=0
+		systemctl start "${_site}"
+	fi
+}
+# Always bring the site back up, also if the publish fails
+trap start_service EXIT
+
+echo "Stop ${_site}"
 systemctl stop "${_site}"
-#dotnet publish -c Release -p:PublishDir="${_publishFolder}" /p:EnvironmentName=Production --self-contained false --nologo
-dotnet publish -c Debug -p:PublishDir="${_publishFolder}" /p:EnvironmentName=Test --self-contained false --nologo
+_stopped=1
+
+echo "Publish (${_configuration})"
+dotnet publish -c "${_configuration}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
+
+echo "Delete bin"
 rm -rf bin
+
+if grep -qs "Umbraco.Cms" ./*.csproj; then
+	echo "Delete Umbraco schema files and App_Plugins"
+	rm -f appsettings-schema.json appsettings-schema.usync.json appsettings-schema.Umbraco.Cms.json umbraco-package-schema.json
+	rm -f "${_publishFolder}"/{appsettings-schema.json,appsettings-schema.usync.json,appsettings-schema.Umbraco.Cms.json,umbraco-package-schema.json}
+	rm -rf App_Plugins
+fi
+
 chown -R www-data:www-data "${_publishFolder}"
-systemctl start "${_site}"
-systemctl status "${_site}" --no-pager
+start_service
+
+sleep 2
+systemctl status "${_site}" --no-pager || true
+if systemctl is-active --quiet "${_site}"; then
+	echo "OK: ${_site} is running"
+else
+	echo "FAILED: ${_site} is not running. Last log lines:"
+	journalctl -u "${_site}" -n 20 --no-pager
+	exit 1
+fi

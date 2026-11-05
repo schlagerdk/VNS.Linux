@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding]
+# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding] [publish-folder] [Debug|Release]
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
@@ -16,6 +16,8 @@ _csharpKind=${3:-}
 _umbracoVersion=${4:-}
 _projectName=${5:-}
 _binding=${6:-}
+_publishArg=${7:-}
+_buildConfig=${8:-}
 
 ask _site "Enter folder name"
 validate_site_name "${_site}"
@@ -85,6 +87,15 @@ create_csharp() {
 	local _kindFolder="${_solutionFolder}/csharp"
 	local _project="${_siteRoot}/${_projectName}.csproj"
 	ask _csharpKind "C# site kind (umbraco/empty)" umbraco
+	ask _publishArg "Enter local publish folder" "${_publishFolder}"
+	validate_publish_folder "${_publishArg}"
+	_publishFolder=${_publishArg}
+	ask _buildConfig "Build configuration (Debug/Release)" Debug
+	case "${_buildConfig}" in
+		Debug) _environment=Test ;;
+		Release) _environment=Production ;;
+		*) echo "Build configuration must be Debug or Release" >&2; exit 1 ;;
+	esac
 	_docRoot="${_siteRoot}/${_publishFolder}/wwwroot"
 
 	if [[ ${_csharpKind} == umbraco ]]; then
@@ -108,7 +119,8 @@ create_csharp() {
 	else
 		echo "Create empty ASP.NET Core project"
 		sudo dotnet new web --name "${_projectName}" --output . --force
-		sudo dotnet publish -c Debug -p:PublishDir="${_publishFolder}" --self-contained false --nologo
+		exclude_from_build "${_project}" "${_publishFolder}"
+		sudo dotnet publish -c "${_buildConfig}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
 		sudo rm -rf bin obj
 	fi
 	cd "${_apacheDir}"
@@ -138,6 +150,7 @@ create_umbraco_project() {
 	sudo cp -f "${_files}/Program.cs" "${_siteRoot}/Program.cs"
 	sudo cp -f "${_files}/UmbracoCoreProjectName.csproj" "${_project}"
 	sudo sed -i "s|UmbracoCoreInstallVersion|${_umbracoVersion}|g; s|DotNetVersion|${_dotNetVersion}|g" "${_project}"
+	exclude_from_build "${_project}" "${_publishFolder}"
 
 	# Needed for umbraco version 17+
 	sudo dotnet add package Umbraco.Cms.DevelopmentMode.Backoffice -v "${_umbracoVersion}"
@@ -151,7 +164,7 @@ create_umbraco_project() {
 		appsettings-schema.json appsettings-schema.Umbraco.Cms.json umbraco-package-schema.json
 
 	echo "Publish site"
-	sudo dotnet publish -c Debug -p:PublishDir="${_publishFolder}" --self-contained false --nologo
+	sudo dotnet publish -c "${_buildConfig}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
 
 	echo "Delete bin and schema files"
 	sudo rm -rf bin
@@ -176,3 +189,6 @@ case "${_type}" in
 esac
 
 echo "Site created: https://${_binding}/ (folder: ${_site})"
+if [[ ${_type} == csharp ]]; then
+	echo "Run ${_siteRoot}/scripts/create_prod.sh when you want a production target for this site."
+fi

@@ -19,8 +19,8 @@ StandardError=journal
 SyslogIdentifier=@SITE@
 
 # Variables
-Environment=ASPNETCORE_ENVIRONMENT=Test
-Environment=DOTNET_ENVIRONMENT=Test
+Environment=ASPNETCORE_ENVIRONMENT=@ENVIRONMENT@
+Environment=DOTNET_ENVIRONMENT=@ENVIRONMENT@
 Environment=ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
 
 # Protect: chroot - the site only sees system libraries and its own folder, not /root, /home, /vns or other sites

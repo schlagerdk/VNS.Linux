@@ -62,6 +62,28 @@ validate_project_name() {
 	fi
 }
 
+validate_publish_folder() {
+	if [[ ! $1 =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+		echo "Invalid publish folder. Use a single folder name with letters, numbers, dots, hyphens or underscores." >&2
+		return 1
+	fi
+	case "${1,,}" in
+		bin | obj | wwwroot | views | usync | scripts | properties | umbraco | app_plugins | .)
+			echo "Publish folder name '$1' is reserved." >&2
+			return 1
+			;;
+	esac
+}
+
+# Exclude a publish folder from the project's build globs. Usage: exclude_from_build <csproj> <folder>. Safe to repeat.
+exclude_from_build() {
+	local _csproj=$1 _folder=$2
+	if grep -qF "Compile Remove=\"${_folder}/**\"" "${_csproj}"; then
+		return 0
+	fi
+	sudo perl -0pi -e 's|</Project>\s*$|  <!-- Exclude publish folder from build -->\n  <ItemGroup>\n    <Content Remove="'"${_folder}"'/**" />\n    <Compile Remove="'"${_folder}"'/**" />\n    <None Remove="'"${_folder}"'/**" />\n  </ItemGroup>\n</Project>\n|' "${_csproj}"
+}
+
 # Placeholders available in every template. Call set_site_vars after _site, _binding and ports are known.
 set_site_vars() {
 	_siteRoot="${_rootPath}/${_site}"
@@ -89,6 +111,10 @@ render() {
 		-e "s|@CERT_FILE@|${_certificateFile}|g" \
 		-e "s|@KEY_FILE@|${_keyFile}|g" \
 		-e "s|@ADMIN_MAIL@|${_adminMail}|g" \
+		-e "s|@BUILD_CONFIG@|${_buildConfig:-Debug}|g" \
+		-e "s|@ENVIRONMENT@|${_environment:-Test}|g" \
+		-e "s|@APACHE_DIR@|${_apacheDir}|g" \
+		-e "s|@CSHARP_KIND@|${_csharpKind:-}|g" \
 		"$1"
 }
 

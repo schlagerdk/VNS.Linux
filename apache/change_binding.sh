@@ -54,6 +54,11 @@ if [[ ! -f ${_certificateFile} || ! -f ${_keyFile} ]]; then
 	echo "Current certificate files are missing; refusing to replace the binding." >&2
 	exit 1
 fi
+# The publish folder is chosen per site; read it from the service's working directory
+if [[ -f ${_servicePath} ]]; then
+	_workingDir=$(awk -F= '$1 == "WorkingDirectory" { print $2; exit }' "${_servicePath}")
+	[[ -n ${_workingDir} ]] && _publishFolder=$(basename "${_workingDir}")
+fi
 _appSettings="${_siteRoot}/${_publishFolder}/appsettings.json"
 
 _backupDir=$(mktemp -d)

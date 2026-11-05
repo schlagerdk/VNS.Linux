@@ -10,12 +10,6 @@
     <PackageReference Include="Umbraco.Cms" Version="UmbracoCoreInstallVersion" />
   </ItemGroup>
   
-  <!-- Exclude _Publish from build -->
-  <ItemGroup>
-	<Content Remove="_Publish/**" />
-	<Compile Remove="_Publish/**" />
-  </ItemGroup>
-
   <ItemGroup>
     <!-- Opt-in to app-local ICU to ensure consistent globalization APIs across different platforms -->
     <PackageReference Include="Microsoft.ICU.ICU4C.Runtime" Version="72.1.0.3" />
