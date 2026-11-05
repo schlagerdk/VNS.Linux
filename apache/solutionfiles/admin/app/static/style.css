@@ -78,10 +78,6 @@ a.link:hover { text-decoration: underline; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line); }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
-.split { display: flex; gap: 16px; align-items: flex-start; }
-.split > .list { flex: 1 1 420px; min-width: 0; position: relative; overflow-x: auto; }
-.split:has(#editor:not([hidden])) > .list { flex: 1 1 380px; max-width: 520px; }
-.split:has(#editor:not([hidden])) th:nth-child(3), .split:has(#editor:not([hidden])) td:nth-child(3) { display: none; }
 #files td:first-child { white-space: nowrap; }
 .list.dragging { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue); }
 .drop-hint { display: none; position: absolute; inset: 0; background: rgba(13, 17, 23, .85); align-items: center; justify-content: center; font-size: 18px; color: var(--blue); }
@@ -95,10 +91,7 @@ tbody tr:hover { background: var(--hover); }
 .num { text-align: right; white-space: nowrap; }
 td.tools { white-space: nowrap; text-align: right; }
 td.tools a { margin-left: 10px; font-size: 13px; }
-#editor { flex: 2; display: flex; flex-direction: column; padding: 12px; min-width: 0; }
-#editor .toolbar { margin-bottom: 8px; }
 .dirty { color: var(--orange); font-size: 12px; }
-#editor-text { width: 100%; height: calc(100vh - 230px); min-height: 300px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; resize: none; white-space: pre; tab-size: 4; background: var(--bg); }
 
 #tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 #tabs .tab { display: flex; gap: 8px; align-items: center; padding: 5px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
@@ -139,8 +132,6 @@ body.login { display: grid; place-items: center; min-height: 100vh; background: 
 	main { padding: 12px; }
 	.page-header { padding: 12px; gap: 10px; }
 	.cards { grid-template-columns: 1fr; }
-	.split { flex-direction: column; }
-	.split > * { width: 100%; }
 	#search { min-width: 0; flex: 1; }
 	th:nth-child(3), td:nth-child(3) { display: none; }
 }
@@ -181,15 +172,21 @@ body.login { display: grid; place-items: center; min-height: 100vh; background: 
 .env-head h3 { margin: 0; font-size: 18px; }
 .env .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
 
-#dock { position: fixed; left: 0; right: 0; bottom: 0; height: 38vh; z-index: 15; display: flex; flex-direction: column; background: #000; border-top: 2px solid var(--purple); box-shadow: 0 -8px 24px rgba(0, 0, 0, .5); }
-#dock.tall { height: 75vh; }
-.dock-bar { display: flex; align-items: center; gap: 6px; background: var(--panel); padding: 4px 8px; }
+#dock { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(1, 4, 9, .72); backdrop-filter: blur(3px); }
+.dock-window { display: flex; flex-direction: column; width: min(1200px, 94vw); height: min(720px, 86vh); background: #000; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px rgba(0, 0, 0, .7); }
+#dock.max .dock-window { width: 98vw; height: 96vh; }
+.dock-bar { display: flex; align-items: center; gap: 6px; background: var(--panel); padding: 6px 10px; border-bottom: 1px solid var(--line); }
 .dock-bar .ghost { color: var(--text); }
-#dock #tabs { display: flex; gap: 4px; overflow-x: auto; }
+#dock #tabs { display: flex; gap: 4px; overflow-x: auto; margin: 0; flex-wrap: nowrap; }
 #dock #panes { flex: 1; min-height: 0; }
-#dock .pane { height: 100%; padding: 4px 8px; }
-body.with-dock main { padding-bottom: 42vh; }
+#dock #panes .pane { height: 100%; min-height: 0; padding: 6px 10px; border: 0; border-radius: 0; }
 
+dialog.editor { width: min(1100px, 94vw); height: min(780px, 90vh); padding: 14px 18px; flex-direction: column; }
+dialog.editor[open] { display: flex; }
+dialog.editor .toolbar { margin-bottom: 10px; }
+dialog.editor textarea { flex: 1; min-height: 0; width: 100%; resize: none; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; tab-size: 4; }
 dialog.wide { width: min(1000px, 94vw); }
 #logs-text { max-height: 60vh; overflow: auto; background: #000; padding: 10px; border-radius: 6px; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; }
 @media (max-width: 800px) { .page-header #search { min-width: 0; flex: 1; } .brand h1, .brand .host { display: none; } .envs { grid-template-columns: 1fr; } }
+
+.list { position: relative; overflow-x: auto; }

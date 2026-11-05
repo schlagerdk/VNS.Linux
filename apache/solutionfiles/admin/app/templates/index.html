@@ -60,33 +60,23 @@
       <button id="btn-upload">Upload</button>
       <input type="file" id="upload-input" multiple hidden>
     </div>
-    <div class="split">
-      <div class="panel list" id="drop">
-        <table id="files"><thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th></th></tr></thead><tbody></tbody></table>
-        <div class="drop-hint">Drop files here to upload</div>
-      </div>
-      <div id="editor" class="panel" hidden>
-        <div class="toolbar">
-          <strong id="editor-path"></strong><span id="editor-dirty" class="dirty" hidden>● unsaved</span>
-          <span class="spacer"></span>
-          <span id="editor-status" class="muted"></span>
-          <button id="editor-save" class="primary">Save (Ctrl+S)</button>
-          <button id="editor-close">Close</button>
-        </div>
-        <textarea id="editor-text" spellcheck="false"></textarea>
-      </div>
+    <div class="panel list" id="drop">
+      <table id="files"><thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th></th></tr></thead><tbody></tbody></table>
+      <div class="drop-hint">Drop files here to upload</div>
     </div>
   </section>
 </main>
 
 <section id="dock" hidden>
-  <div class="dock-bar">
-    <div id="tabs"></div>
-    <span class="spacer"></span>
-    <button id="dock-size" class="ghost small" title="Taller / shorter">⤢</button>
-    <button id="dock-close" class="ghost small" title="Hide (processes keep running)">✕</button>
+  <div class="dock-window">
+    <div class="dock-bar">
+      <div id="tabs"></div>
+      <span class="spacer"></span>
+      <button id="dock-size" class="ghost small" title="Maximize / restore">⤢</button>
+      <button id="dock-close" class="ghost small" title="Hide (processes keep running)">✕</button>
+    </div>
+    <div id="panes"></div>
   </div>
-  <div id="panes"></div>
 </section>
 
 <div id="toasts"></div>
@@ -131,6 +121,17 @@
     <p class="hint">Passwords need at least 12 characters. Changing the password signs out all other sessions.</p>
     <menu><button type="button" id="profile-cancel">Cancel</button><button type="submit" value="ok" class="primary">Save</button></menu>
   </form>
+</dialog>
+
+<dialog id="dlg-editor" class="wide editor">
+  <div class="toolbar">
+    <strong id="editor-path"></strong><span id="editor-dirty" class="dirty" hidden>● unsaved</span>
+    <span class="spacer"></span>
+    <span id="editor-status" class="muted"></span>
+    <button id="editor-save" class="primary">Save (Ctrl+S)</button>
+    <button id="editor-close">Close</button>
+  </div>
+  <textarea id="editor-text" spellcheck="false"></textarea>
 </dialog>
 
 <dialog id="dlg-logs" class="wide">

@@ -198,6 +198,34 @@ function siteCard(site) {
 		kindBadges(site), rows, actions);
 }
 
+const scriptNames = {
+	"publish.sh": "Publish", "publish_local.sh": "Publish (test)", "publish_prod.sh": "Publish to production",
+	"sync_prod.sh": "Sync content to production", "clear_logs.sh": "Clear logs", "clear_logs_local.sh": "Clear logs (test)",
+	"clear_logs_prod.sh": "Clear logs (production)", "create_prod.sh": "Create production site", "change_env.sh": "Change environment (Test / Production)",
+	"outdated.sh": "Check outdated packages", "edit_conf.sh": "Edit Apache config", "issue_certificat.sh": "Issue certificate",
+	"restart_apache.sh": "Restart Apache", "set_password.sh": "Change admin password", "fix_permissions.sh": "Fix permissions",
+	"update_packages.sh": "Update Python packages",
+};
+const scriptLabel = (file) => scriptNames[file] || file.replace(/\.sh$/, "").replace(/[_-]+/g, " ").replace(/^./, (c) => c.toUpperCase());
+
+function scriptSelect(site, className) {
+	const select = el("select", { className: className || "", title: "Run a script from the site's scripts folder" }, el("option", { textContent: "Run script…", value: "" }));
+	const groups = [["Production", (f) => f.includes("_prod")], ["Site", (f) => !f.includes("_prod")]];
+	for (const [label, test] of groups) {
+		const files = site.scripts.filter(test);
+		if (!files.length) continue;
+		const group = el("optgroup", { label });
+		for (const file of files) group.append(el("option", { textContent: scriptLabel(file), value: file, title: file }));
+		select.append(group);
+	}
+	select.onchange = () => {
+		const script = select.value;
+		select.value = "";
+		if (script) run(() => openTask({ kind: "script", site: site.name, script }));
+	};
+	return select;
+}
+
 function renderSite(name) {
 	const site = allSites.find((s) => s.name === name);
 	const head = $("#site-head");
@@ -212,18 +240,9 @@ function renderSite(name) {
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: className || "", onclick: () => run(handler) }));
 	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
 	add("Files", () => go(filesLink(site.name)));
-	if (site.scripts.length) {
-		const select = el("select", { title: "Run a script from the site's scripts folder" }, el("option", { textContent: "Run script…", value: "" }));
-		for (const script of site.scripts) select.append(el("option", { textContent: script, value: script }));
-		select.onchange = () => {
-			const script = select.value;
-			select.value = "";
-			if (script) run(() => openTask({ kind: "script", site: site.name, script }));
-		};
-		actions.append(select);
-	}
+	if (site.scripts.length) actions.append(scriptSelect(site));
 	add("Change binding", () => changeBinding(site));
-	if (!site.admin) add("Delete site", () => deleteSite(site), "danger");
+	if (!site.admin) add(hasProd(site) ? "Delete everything" : "Delete site", () => deleteSite(site, "all"), "danger");
 	head.append(el("div", { className: "detail-title" }, el("h2", { textContent: site.name }), kindBadges(site)), actions);
 	for (const env of site.environments) envs.append(envPanel(site, env));
 }
@@ -256,6 +275,8 @@ function envPanel(site, env) {
 		add("Shell", () => openTask({ kind: "shell", site: site.name, path: env.path, label: site.name + " · " + env.label }));
 		add("Files", () => go(filesLink(env.path)));
 	}
+
+	if (hasProd(site) && !site.admin) add(env.key === "prod" ? "Delete production site" : "Delete test site", () => deleteSite(site, env.key === "prod" ? "prod" : "test"), "danger");
 
 	const panel = el("section", { className: "env " + (env.key === "prod" ? "prod" : "") }, heading, meta);
 	if (env.exists === false) panel.append(el("p", { className: "muted", textContent: "Nothing published here yet." }));
@@ -293,14 +314,27 @@ async function changeBinding(site) {
 	if (binding && binding !== site.binding) await openTask({ kind: "change_binding", site: site.name, binding: binding.trim() });
 }
 
-async function deleteSite(site) {
+async function deleteSite(site, scope) {
+	const prod = site.environments.find((e) => e.key === "prod");
+	const remote = prod && prod.mode === "remote";
+	const target = scope === "prod" ? (prod.unit || prod.folder || site.name) : site.name;
+	const what = {
+		all: `This deletes the site and its production site on this server: files, services, Apache configs and logs.`,
+		test: `This deletes the site's own files, service and Apache config. The production site is kept.`,
+		prod: remote
+			? `The production site runs on ${prod.host}, which is not touched. This only removes the production scripts from this site.`
+			: `This deletes the production site: its files, service, Apache config and logs. The test site is kept.`,
+	}[scope];
 	const typed = await ask({
-		title: "Delete site", danger: true, ok: "Delete", match: site.name, placeholder: site.name,
-		message: `This deletes the site, its files, service and Apache config.\nType "${site.name}" to confirm.`,
+		title: { all: "Delete everything", test: "Delete test site", prod: "Delete production site" }[scope], danger: true, ok: "Delete", match: target, placeholder: target,
+		message: `${what}\nType "${target}" to confirm.`,
 	});
 	if (typed === null) return;
-	const certificates = (await ask({ title: "Certificate", message: "Also revoke and remove the certificate?", input: false, ok: "Remove certificate" })) === true;
-	await openTask({ kind: "delete_site", site: site.name, certificates });
+	let certificates = false;
+	if (!(scope === "prod" && remote)) {
+		certificates = (await ask({ title: "Certificate", message: "Also revoke and remove the certificate?", input: false, ok: "Remove certificate" })) === true;
+	}
+	await openTask({ kind: "delete_site", site: site.name, certificates, scope });
 }
 
 $("#search").oninput = (event) => {
@@ -369,6 +403,7 @@ siteForm.onsubmit = () => {
 // ------------------------------------------------------------------ files
 
 var currentPath = "";
+const editorDialog = $("#dlg-editor");
 let openFile = null;
 let dirty = false;
 
@@ -423,7 +458,7 @@ async function editFile(path) {
 	if (!(await discardOk())) return;
 	const data = await api("/api/fs/read?path=" + encodeURIComponent(path));
 	openFile = path;
-	$("#editor").hidden = false;
+	if (!editorDialog.open) editorDialog.showModal();
 	$("#editor-path").textContent = path;
 	$("#editor-text").value = data.content;
 	$("#editor-status").textContent = "";
@@ -448,7 +483,7 @@ async function renameItem(path, name) {
 async function deleteItem(path, name) {
 	if ((await ask({ title: "Delete", message: `Delete ${name}? This cannot be undone.`, input: false, ok: "Delete", danger: true })) !== true) return;
 	await api("/api/fs/delete", { json: { path } });
-	if (openFile === path) { openFile = null; setDirty(false); $("#editor").hidden = true; }
+	if (openFile === path) { openFile = null; setDirty(false); }
 	await loadFiles(currentPath);
 }
 
@@ -487,12 +522,17 @@ drop.addEventListener("drop", (event) => {
 	run(() => uploadFiles([...event.dataTransfer.files]));
 });
 $("#editor-save").onclick = () => run(saveFile);
-$("#editor-close").onclick = async () => {
+async function closeEditor() {
 	if (!(await discardOk())) return;
 	openFile = null;
 	setDirty(false);
-	$("#editor").hidden = true;
-};
+	editorDialog.close();
+}
+$("#editor-close").onclick = closeEditor;
+editorDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeEditor(); });
+editorDialog.addEventListener("keydown", (event) => {
+	if (event.key === "Escape" && !$("#dlg-prompt").open) { event.preventDefault(); closeEditor(); }
+});
 $("#editor-text").oninput = () => setDirty(true);
 $("#editor-text").onkeydown = (event) => {
 	if ((event.ctrlKey || event.metaKey) && event.key === "s") { event.preventDefault(); run(saveFile); }
@@ -518,18 +558,17 @@ function updateTerminalState() {
 
 function showDock() {
 	$("#dock").hidden = false;
-	document.body.classList.add("with-dock");
 	fitActive();
 }
 
 function toggleDock() {
 	if (!$("#dock").hidden) { $("#dock").hidden = true; return; }
-	if (!Object.keys(terminals).length) { toast("No terminals open. Open a shell or run a script from a site.", ""); return; }
+	if (!Object.keys(terminals).length) { toast("No terminals open. Open a shell or run a script from a site."); return; }
 	showDock();
 }
 $("#btn-dock").onclick = toggleDock;
 $("#dock-close").onclick = () => { $("#dock").hidden = true; };
-$("#dock-size").onclick = () => { $("#dock").classList.toggle("tall"); fitActive(); };
+$("#dock-size").onclick = () => { $("#dock").classList.toggle("max"); fitActive(); };
 
 function fitActive() {
 	const t = terminals[activeTerminal];
@@ -560,6 +599,7 @@ function connectTerminal(t) {
 			t.exited = true;
 			t.term.write(`\r\n\x1b[33m[Process exited with code ${message.x}]\x1b[0m\r\n`);
 			t.title.textContent += " ✓";
+			loadSites().catch(() => {});
 		}
 	};
 	ws.onclose = () => {

@@ -562,7 +562,10 @@ def build_command(data):
         if site == ADMIN_SITE:
             abort(400, "The admin site cannot delete itself")
         certificates = "y" if data.get("certificates") else "n"
-        return "Delete: " + site, [bash, os.path.join(APACHE_DIR, "delete_site.sh"), site, certificates], APACHE_DIR
+        scope = data.get("scope") or "all"
+        if scope not in ("all", "test", "prod"):
+            abort(400, "Invalid scope")
+        return "Delete " + scope + ": " + site, [bash, os.path.join(APACHE_DIR, "delete_site.sh"), site, certificates, scope], APACHE_DIR
     abort(400, "Unknown task")
 
 
