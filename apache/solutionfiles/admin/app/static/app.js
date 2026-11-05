@@ -138,7 +138,7 @@ const views = ["sites", "site"];
 function showView(name) {
 	currentView = name;
 	for (const view of views) $("#view-" + view).hidden = view !== name;
-	if (name === "sites") $("#search").focus({ preventScroll: true });
+	if (name === "sites" && $("#dock").hidden) $("#search").focus({ preventScroll: true });
 }
 
 // Hash routes: #sites, #site/<name>, #files/<path>
@@ -1185,7 +1185,11 @@ function connectTerminal(t) {
 			if (t.autoClose && t.remove) { t.remove(); loadSites().catch(() => {}); return; }
 			t.term.write(`\r\n\x1b[33m[Process exited with code ${message.x}]\x1b[0m\r\n`);
 			t.title.textContent += " ✓";
-			loadSites().catch(() => {});
+			run(loadSites).finally(() => {
+				if (activeTerminal === t.id && !$("#dock").hidden && !document.querySelector("dialog[open]")) {
+					requestAnimationFrame(fitActive);
+				}
+			});
 		}
 	};
 	ws.onclose = () => {
