@@ -277,11 +277,23 @@ else
 	_rsyncRemote=(-e "${_rsyncShell}" --rsync-path="${_rsyncPath}")
 fi
 
-# appsettings*.json and web.config are prod-specific: only copied the first time, never overwritten later
-_keep=(--exclude 'appsettings-schema*.json' --exclude 'umbraco-package-schema.json' --exclude 'appsettings*.json' --exclude 'web.config' --exclude 'wwwroot/media/' --exclude 'umbraco/Data/' --exclude 'umbraco/Logs/' --exclude 'App_Data/')
+# Is this the first publish? Decided before anything is copied.
+_exists=0
+if { ((_local)) && [[ -f ${_root}/appsettings.json ]]; } || { ((! _local)) && remote "${_sudo} test -f '${_root}/appsettings.json'"; }; then
+	_exists=1
+fi
+
+# Schema files are never uploaded. Once the site exists on the target, its content, settings and data are never
+# overwritten or deleted by a publish (rsync keeps excluded paths when using --delete).
+_keep=(--exclude 'appsettings-schema*.json' --exclude 'umbraco-package-schema.json')
+if ((_exists)); then
+	_keep+=(--exclude 'appsettings*.json' --exclude 'web.config'
+		--exclude '/umbraco/' --exclude '/uSync/' --exclude '/Views/' --exclude '/wwwroot/'
+		--exclude '/App_Data/' --exclude '/app_data/')
+fi
 rsync -az --delete "${_keep[@]}" ${_rsyncRemote[@]+"${_rsyncRemote[@]}"} "${_publishFolder}/" "${_dest}"
 
-if { ((_local)) && [[ -f ${_root}/appsettings.json ]]; } || { ((! _local)) && remote "${_sudo} test -f '${_root}/appsettings.json'"; }; then
+if ((_exists)); then
 	echo "appsettings.json and web.config already exist in the destination - not touched"
 else
 	echo "First publish: copy appsettings*.json (without ConnectionStrings) and web.config"
