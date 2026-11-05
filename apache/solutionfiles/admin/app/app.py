@@ -45,6 +45,7 @@ _files_spec = importlib.util.spec_from_file_location("vns_remote_files", os.path
 _files_module = importlib.util.module_from_spec(_files_spec)
 _files_spec.loader.exec_module(_files_module)
 editable_file = _files_module.editable_file
+contains_editable_files = _files_module.contains_editable_files
 ADMIN_SITE = cfg.get("admin_site", "")
 APACHE_SITES = "/etc/apache2/sites-available"
 APACHE_ENABLED = "/etc/apache2/sites-enabled"
@@ -1122,11 +1123,13 @@ def fs_list():
         is_dir = entry.is_dir(follow_symlinks=False)
         try:
             editable = not is_dir and not entry.is_symlink() and entry.is_file() and editable_file(Path(entry.path), info.st_size)
+            has_editable_files = contains_editable_files(Path(entry.path)) if is_dir else False
         except OSError as exc:
             app.logger.warning("Could not check file editability for %s: %s", entry.path, exc)
             editable = False
+            has_editable_files = is_dir
         items.append({"name": entry.name, "dir": is_dir, "size": 0 if is_dir else info.st_size,
-                      "modified": int(info.st_mtime), "editable": editable})
+                      "modified": int(info.st_mtime), "editable": editable, "has_editable_files": has_editable_files})
     items.sort(key=lambda i: (not i["dir"], i["name"].lower()))
     return jsonify(path=rel(full), items=items)
 

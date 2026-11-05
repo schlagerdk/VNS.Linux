@@ -30,6 +30,11 @@ class RemoteFilesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             (root / "folder").mkdir()
+            (root / "nested/deeper").mkdir(parents=True)
+            (root / "nested/deeper/config.json").write_text("{}")
+            (root / "binaries").mkdir()
+            (root / "binaries/app.dll").write_bytes(b"compiled")
+            (root / "folder/link").symlink_to(root / "nested", target_is_directory=True)
             (root / "app.dll").write_bytes(b"compiled")
             (root / "settings.json").write_text('{"enabled":true}')
             (root / "binary").write_bytes(b"\0binary")
@@ -38,6 +43,9 @@ class RemoteFilesTests(unittest.TestCase):
             self.assertTrue(items["settings.json"]["editable"])
             for name in ("app.dll", "binary", "large.log", "folder"):
                 self.assertFalse(items[name]["editable"])
+            self.assertTrue(items["nested"]["has_editable_files"])
+            self.assertFalse(items["folder"]["has_editable_files"])
+            self.assertFalse(items["binaries"]["has_editable_files"])
 
     def test_file_operations_and_confinement(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -77,6 +85,7 @@ class RemoteApiTests(unittest.TestCase):
             base64=base64, abort=abort, jsonify=jsonify, request=request,
             io=io, send_file=send_file, sys=sys, site_units=lambda site: [site, "local-prod.test"],
             Path=Path, editable_file=remote_files.editable_file,
+            contains_editable_files=remote_files.contains_editable_files,
             safe_path=lambda path: path, rel=lambda path: path,
             HTTPException=HTTPException, APACHE_DIR=str(APACHE), WEB_ROOT="/var/www",
             REMOTE_STATUS={}, site_dirs=lambda: ["example.test"],
@@ -188,11 +197,16 @@ class RemoteApiTests(unittest.TestCase):
             root = Path(directory)
             (root / "app.dll").write_bytes(b"compiled")
             (root / "config.json").write_text("{}")
+            (root / "empty").mkdir()
+            (root / "nested/deeper").mkdir(parents=True)
+            (root / "nested/deeper/config.json").write_text("{}")
             response = self.client.get("/api/fs/list", query_string={"path": directory})
             self.assertEqual(response.status_code, 200)
             items = {item["name"]: item for item in response.json["items"]}
             self.assertFalse(items["app.dll"]["editable"])
             self.assertTrue(items["config.json"]["editable"])
+            self.assertFalse(items["empty"]["has_editable_files"])
+            self.assertTrue(items["nested"]["has_editable_files"])
 
 
 class RemoteStatusTests(unittest.TestCase):
@@ -278,6 +292,9 @@ class RemoteTransportTests(unittest.TestCase):
                 self.assertIn("sudo -n", args)
                 self.assertEqual("-tt\n" in args, action in ("shell", "edit_service", "edit_conf"))
                 self.assertIn("SITE=production.test", args)
+                if action == "check_service":
+                    self.assertIn("TERM=xterm-256color SYSTEMD_COLORS=1 systemctl status",
+                                  (root / "input").read_text())
                 if action in ("shell", "edit_service", "edit_conf"):
                     self.assertIn("TERM=xterm-256color", args)
                     self.assertIn("COLORTERM=truecolor", args)

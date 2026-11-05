@@ -113,7 +113,7 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	$("#prompt-message").hidden = !message;
 	field.hidden = !input;
 	field.value = value;
-	field.placeholder = placeholder;
+	field.placeholder = match !== null ? "" : placeholder;
 	okButton.value = "ok";
 	okButton.textContent = ok;
 	okButton.disabled = match !== null;
@@ -573,9 +573,10 @@ function envPanel(site, env) {
 			await openTask(action ? { kind: "prod_action", site: site.name, action, scope: env.key === "prod" ? "prod" : "test" } : { kind: "script", site: site.name, script: file });
 		}) }));
 	}
-	if (env.unit || env.mode === "remote") {
+	if (env.unit || env.mode === "remote" || env.apache) {
 		const tools = el("div", { className: "actions quick" });
 		for (const [tool, label] of [["check_service", "Check service"], ["edit_service", "Edit service"], ["edit_conf", "Edit config"]]) {
+			if (tool !== "edit_conf" && !env.unit && env.mode !== "remote") continue;
 			tools.append(el("button", { textContent: label, className: "small", onclick: () => run(() => tool === "check_service"
 				? openTask({ kind: env.mode === "remote" ? "remote_tool" : "unit_tool", site: site.name, unit: env.unit, tool })
 				: editConfiguration(site, env, tool === "edit_service" ? "service" : "conf")) }));
@@ -646,7 +647,7 @@ async function deleteSite(site, scope) {
 			: `This deletes the ${prodEnvironment} site: its files, service, Apache config and logs. The ${mainEnvironment} site is kept.`,
 	}[scope];
 	const typed = await ask({
-		title: scope === "all" ? "Delete everything" : `Delete ${scope === "prod" ? prodEnvironment : mainEnvironment} site`, danger: true, ok: "Delete", match: target, placeholder: target,
+		title: scope === "all" ? "Delete everything" : `Delete ${scope === "prod" ? prodEnvironment : mainEnvironment} site`, danger: true, ok: "Delete", match: target,
 		message: `${what}\nType "${target}" to confirm.`,
 	});
 	if (typed === null) return;
@@ -845,6 +846,7 @@ const editorDialog = $("#dlg-editor");
 const filesDialog = $("#dlg-files");
 $("#files-close").onclick = () => filesDialog.close();
 filesDialog.addEventListener("cancel", (event) => {
+	if (event.target !== filesDialog) return;
 	event.preventDefault();
 	filesDialog.close();
 });
@@ -867,7 +869,7 @@ async function discardOk() {
 	return !dirty || (await ask({ title: "Unsaved changes", message: `${openFile} has unsaved changes.`, input: false, ok: "Discard", danger: true })) === true;
 }
 
-let hideNonEditableFiles = false;
+let hideNonEditableFiles = true;
 let listedFiles = [];
 $("#files-filter").onclick = () => {
 	hideNonEditableFiles = !hideNonEditableFiles;
@@ -892,7 +894,7 @@ async function loadFiles(path) {
 }
 
 function renderFiles() {
-	const items = listedFiles.filter((item) => !hideNonEditableFiles || item.dir || item.editable);
+	const items = listedFiles.filter((item) => !hideNonEditableFiles || (item.dir ? item.has_editable_files : item.editable));
 	const body = $("#files tbody");
 	body.replaceChildren();
 	if (currentPath) {
@@ -1281,4 +1283,4 @@ $("#settings-apache-test").onclick = () => run(() => openTask({ kind: "apache", 
 
 decorate($("#settings-menu"));
 decorate($("#view-sites .toolbar"));
-decorate($("#view-files .toolbar"));
+decorate($("#view-files"));

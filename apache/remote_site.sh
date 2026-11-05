@@ -70,7 +70,7 @@ if [[ ${ACTION} == logs ]]; then
 	journalctl -u "${SITE}.service" -n 300 --no-pager -o short-iso
 else
 	rc=0
-	systemctl status "${SITE}.service" --no-pager -l || rc=$?
+	TERM=xterm-256color SYSTEMD_COLORS=1 systemctl status "${SITE}.service" --no-pager -l || rc=$?
 	[[ ${rc} -eq 0 || ${rc} -eq 3 ]]
 fi
 REMOTE

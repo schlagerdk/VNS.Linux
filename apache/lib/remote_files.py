@@ -17,6 +17,22 @@ def editable_file(path, size):
     return b"\0" not in sample
 
 
+def contains_editable_files(path):
+    pending = [path]
+    while pending:
+        folder = pending.pop()
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(Path(entry.path))
+                elif entry.is_file(follow_symlinks=False) and editable_file(
+                        Path(entry.path), entry.stat(follow_symlinks=False).st_size):
+                    return True
+    return False
+
+
 def handle(root, data):
     action = data["action"]
     relative = data.get("path", "")
@@ -33,7 +49,8 @@ def handle(root, data):
             is_dir = entry.is_dir() and not entry.is_symlink()
             items.append({"name": entry.name, "dir": is_dir, "size": 0 if is_dir else info.st_size,
                           "modified": int(info.st_mtime), "editable": not is_dir and not entry.is_symlink()
-                          and entry.is_file() and editable_file(entry, info.st_size)})
+                          and entry.is_file() and editable_file(entry, info.st_size),
+                          "has_editable_files": contains_editable_files(entry) if is_dir else False})
         return {"path": relative, "items": sorted(items, key=lambda item: (not item["dir"], item["name"].lower()))}
     if action in ("read", "download"):
         if action == "read" and path.stat().st_size > 2 * 1024 * 1024:
