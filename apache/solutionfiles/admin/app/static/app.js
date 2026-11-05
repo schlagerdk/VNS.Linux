@@ -358,8 +358,9 @@ function quickActions(env) {
 function envPanel(site, env) {
 	const dot = env.unit ? env.state || "unknown" : "";
 	const heading = el("div", { className: "env-head" },
-		el("span", { className: "dot " + dot }), el("h3", { textContent: env.environment || env.label }),
+		el("span", { className: "dot " + dot }), el("h3", { textContent: env.label }),
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
+	if (env.environment) heading.append(el("span", { className: "badge env-" + env.environment.toLowerCase(), textContent: env.environment }));
 
 	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, bindingLink(env.binding)));
 	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, backofficeLink(env.binding)));
