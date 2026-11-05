@@ -715,10 +715,11 @@ function toggleDock() {
 }
 $("#btn-dock").onclick = toggleDock;
 // Closing the window also removes the terminals whose process has finished; running ones keep going
-$("#dock-close").onclick = async () => {
+async function closeDock() {
 	for (const t of Object.values(terminals).filter((x) => x.exited)) await t.remove();
 	$("#dock").hidden = true;
-};
+}
+$("#dock-close").onclick = closeDock;
 $("#dock-size").onclick = () => { $("#dock").classList.toggle("max"); fitActive(); };
 
 function fitActive() {
@@ -754,6 +755,7 @@ function connectTerminal(t) {
 		if (message.o !== undefined) t.term.write(message.o);
 		if (message.x !== undefined) {
 			t.exited = true;
+			t.exitCode = message.x;
 			// A shell that ends (e.g. "exit") closes its tab, and the modal closes with the last tab
 			if (t.autoClose && t.remove) { t.remove(); loadSites().catch(() => {}); return; }
 			t.term.write(`\r\n\x1b[33m[Process exited with code ${message.x}]\x1b[0m\r\n`);
@@ -782,6 +784,14 @@ function openTerminal(id, title, autoClose) {
 	const t = { id, term, fit, pane, tab, title: titleNode, exited: false, ws: null, autoClose: !!autoClose, remove: null };
 	terminals[id] = t;
 
+	// Esc or Enter in a terminal whose process ended successfully just closes the window
+	term.attachCustomKeyEventHandler((event) => {
+		if (t.exited && t.exitCode === 0 && (event.key === "Escape" || event.key === "Enter")) {
+			if (event.type === "keydown") closeDock();
+			return false;
+		}
+		return true;
+	});
 	term.onData((data) => t.ws && t.ws.readyState === 1 && t.ws.send(JSON.stringify({ t: "i", d: data })));
 	term.onResize(({ rows, cols }) => t.ws && t.ws.readyState === 1 && t.ws.send(JSON.stringify({ t: "r", rows, cols })));
 	new ResizeObserver(() => { if (!pane.hidden && pane.clientHeight > 0) { try { fit.fit(); } catch (_) { /* ignore */ } } }).observe($("#panes"));

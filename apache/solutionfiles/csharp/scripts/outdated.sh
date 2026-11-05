@@ -17,7 +17,15 @@ if [[ -z ${DOTNET_ROOT:-} ]]; then
 fi
 
 echo "Running dotnet outdated..."
-dotnet outdated
+_output=$(mktemp)
+trap 'rm -f "${_output}"' EXIT
+dotnet outdated 2>&1 | tee "${_output}" || true
+
+if grep -q "No outdated dependencies were detected" "${_output}"; then
+    echo
+    echo "Done."
+    exit 0
+fi
 
 echo
 read -p "Do you want to upgrade the packages? (y/n): " answer
