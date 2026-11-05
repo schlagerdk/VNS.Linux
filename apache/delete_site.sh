@@ -54,14 +54,23 @@ remove_service_and_config() {
 }
 
 remove_certificate() {
-	local _domain=$1 _directory=$2
+	local _domain=$1 _directory=$2 _conf
 	[[ ${_deleteCertificate} =~ ^([yY]|[yY][eE][sS])$ ]] || return 0
+	validate_binding "${_domain}" || return 1
+	for _conf in /etc/apache2/sites-enabled/*.conf; do
+		[[ -e ${_conf} ]] || continue
+		if awk -v d="${_domain}" '($1 == "ServerName" || $1 == "ServerAlias") { for (i = 2; i <= NF; i++) if (tolower($i) == tolower(d)) f = 1 } END { exit !f }' "${_conf}"; then
+			echo "Keep certificate for ${_domain}; another enabled site uses it."
+			return 0
+		fi
+	done
 	echo "Revoke and remove certificate for ${_domain}"
 	sudo "${_acme}" --revoke -d "${_domain}" || true
 	sudo "${_acme}" --remove -d "${_domain}" || true
-	sudo rm -rf "${_directory:?}"
+	sudo rm -rf "${_directory:?}" || return 1
 	# acme.sh keeps its files in a folder named after the binding, and --remove does not delete them
-	clean_stale_acme "${_domain}"
+	clean_stale_acme "${_domain}" || return 1
+	sudo rm -rf -- "/root/.acme.sh/${_domain}" "/root/.acme.sh/${_domain}_ecc"
 }
 
 if [[ -z ${_deleteCertificate} ]]; then
@@ -86,7 +95,7 @@ if [[ ${_scope} != test && ${_hasProd} -eq 1 ]]; then
 		remove_service_and_config "${_prodFolder}"
 		echo "Delete production files ${_prodLocalPath}"
 		sudo rm -rf "${_prodLocalPath:?}"
-		[[ -z ${_prodBinding} ]] || remove_certificate "${_prodBinding}" "/etc/ssl/certs/${_prodBinding}_ecc"
+		[[ -z ${_prodBinding} ]] || remove_certificate "${_prodBinding}" "/etc/ssl/certs/${_prodBinding}_ecc" || exit 1
 	else
 		echo "Delete the remote production site (${_prodFolder})"
 		# Use the saved production connection settings. Do not execute publish_prod.sh.
@@ -131,6 +140,7 @@ if [[ ${DELETE_CERTIFICATE} =~ ^([yY]|[yY][eE][sS])$ ]]; then
 			/etc/acmesh/acme.sh --remove -d "${BINDING}" || true
 		fi
 		rm -rf -- "/etc/ssl/certs/${BINDING}" "/etc/ssl/certs/${BINDING}_ecc"
+		rm -rf -- "/root/.acme.sh/${BINDING}" "/root/.acme.sh/${BINDING}_ecc"
 	fi
 fi
 systemctl daemon-reload
@@ -166,7 +176,7 @@ if [[ ${_scope} != prod ]]; then
 		echo "Delete site and files"
 		sudo rm -rf "${_rootPath:?}/${_site:?}"
 	fi
-	remove_certificate "${_binding}" "${_certificateDirectory}"
+	remove_certificate "${_binding}" "${_certificateDirectory}" || exit 1
 fi
 
 echo "Reload daemon"
