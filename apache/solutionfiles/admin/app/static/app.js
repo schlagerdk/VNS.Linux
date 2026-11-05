@@ -122,6 +122,7 @@ async function loadSites() {
 	allSites = data.sites;
 	sitesLoaded = true;
 	$("#settings-admin-site").hidden = !allSites.some((s) => s.admin);
+	$("#settings-admin-group").hidden = $("#settings-admin-site").hidden;
 	defaultUmbracoVersion = (data.defaults || {}).umbraco_version || "";
 	renderSites();
 	if (currentView === "site") renderSite(decodeURIComponent(location.hash.slice(6)));
