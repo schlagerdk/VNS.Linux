@@ -125,6 +125,11 @@ a.link:hover { text-decoration: underline; }
 .package-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 20px; width: 100%; min-width: 0; padding: 12px 10px; border: 0; border-radius: 6px; background: transparent; text-align: left; white-space: normal; }
 .package-row:hover { background: var(--hover); }
 .package-row + .package-row { border-top: 1px solid var(--line); }
+.package-copy { min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; white-space: normal; }
+.package-copy:hover { background: transparent; color: var(--blue); }
+.package-versions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.package-version.package-latest { color: var(--green); border-color: rgba(63, 185, 80, .4); background: rgba(63, 185, 80, .1); }
+.package-row.has-update { background: rgba(63, 185, 80, .04); }
 .package-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
 .package-name .ico { flex: none; width: 18px; height: 18px; color: var(--purple); }
 .package-name > span { min-width: 0; }

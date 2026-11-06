@@ -493,6 +493,7 @@ def site_info(name, states):
                                  **remote_status(name)})
 
     updates = ""
+    package_updates = []
     if projects:
         try:
             current = _publish_module.fingerprint(root)
@@ -501,7 +502,9 @@ def site_info(name, states):
             current = None
         if current is not None:
             try:
-                updates = _publish_module.updates_status(root, current)
+                details = _publish_module.updates_details(root, current)
+                updates = details["status"]
+                package_updates = details["packages"]
             except (OSError, ValueError):
                 app.logger.warning("Could not read package update status for %s", name)
                 updates = "error"
@@ -519,6 +522,7 @@ def site_info(name, states):
         "kind": kind,
         "has_project": bool(projects),
         "updates": updates,
+        "package_updates": package_updates,
         "umbraco_version": umbraco,
         "packages": packages,
         "package_errors": package_errors,
@@ -746,7 +750,7 @@ def terminal_scope(payload):
 
 def terminal_auto_close(payload):
     kind = payload.get("kind")
-    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions", "publish_both", "bulk"):
+    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions", "publish_both", "bulk", "update_package"):
         return True
     if kind == "remote_tool":
         return payload.get("tool") == "shell"
@@ -1010,6 +1014,23 @@ def build_command(data):
     """Validate a terminal request and return (title, argv, cwd). User input is never shell code."""
     kind = data.get("kind")
     bash = "/bin/bash"
+    if kind == "update_package":
+        site = site_arg(data)
+        info = site_info(site, {})
+        if info["kind"] not in ("csharp", "umbraco") or info.get("admin"):
+            abort(400, "Package updates require a C# site")
+        package = data.get("package")
+        if package is not None and (not isinstance(package, str) or not PACKAGE_RE.fullmatch(package)):
+            abort(400, "Invalid package name")
+        available = info.get("package_updates", [])
+        if info["updates"] != "available" or not available or (
+                package is not None and not any(item["name"].lower() == package.lower() for item in available)):
+            abort(400, "Run Check before updating this package")
+        root = os.path.join(WEB_ROOT, site)
+        return "Update packages: " + site, [
+            sys.executable, os.path.join(APACHE_DIR, "lib", "publish_status.py"),
+            "upgrade", root, *([package] if package else []),
+        ], root
     if kind == "bulk":
         sites = data.get("sites")
         action = data.get("action")

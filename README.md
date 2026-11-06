@@ -12,6 +12,8 @@ The shared publish targets default `SatelliteResourceLanguages` to `en;da`, reta
 
 ## Multi-site actions
 
+The NuGet packages panel shows checked installed and available versions, with an **Update** button per package and **Update all** when multiple updates are available. **Check** retrieves structured .NET output (latest stable versions, including major upgrades). Updates install the exact checked version, ask for confirmation, and re-check afterward. Project changes invalidate old check results; run Check again before updating. Updating packages never publishes automatically, and major upgrades may require code changes. Older saved update badges need a fresh Check to populate version details.
+
 The Packages group's first action, **Check**, runs `dotnet list package --outdated` on each selected project without modifying packages and saves the result for the site's Updates available badge. A successful check with no updates clears that badge; failed checks record an error instead.
 
 The file editor and file-browser dialogs share the same responsive outer dimensions, so opening an editor above the browser does not change window size.

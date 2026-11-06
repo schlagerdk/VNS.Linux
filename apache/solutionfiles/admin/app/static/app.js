@@ -599,25 +599,34 @@ function renderSite(name) {
 	for (const env of site.environments) envs.append(envPanel(site, env));
 	if (site.has_project && (site.kind === "csharp" || site.kind === "umbraco")) {
 		packagesPanel.hidden = false;
-		const packages = (site.packages || []).filter((item) => item.name.toLowerCase() !== "microsoft.icu.icu4c.runtime");
+		const updates = new Map((site.package_updates || []).map((item) => [item.name.toLowerCase(), item]));
+		const packages = (site.packages || []).filter((item) => item.name.toLowerCase() !== "microsoft.icu.icu4c.runtime" || updates.has(item.name.toLowerCase()));
 		const packageActions = el("div", { className: "actions" },
 			el("button", { textContent: "Add", title: "Add package", onclick: () => run(() => openPackageDialog(site, "add")) }),
 			el("button", { textContent: "Remove", title: "Remove package", onclick: () => run(() => openPackageDialog(site, "remove")) }));
-		if (site.scripts.includes("outdated.sh")) {
-			packageActions.append(el("button", { textContent: "Check", title: "Check outdated packages", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));
+		packageActions.append(el("button", { textContent: "Check", title: "Check outdated packages", onclick: () => run(() => openTask({ kind: "bulk", sites: [site.name], action: "check" })) }));
+		if (updates.size > 1) {
+			packageActions.append(el("button", { textContent: "Update all", className: "primary", onclick: () => run(() => updatePackages(site)) }));
 		}
 		const packageList = el("div", { className: "package-list" });
 		for (const item of packages) {
-			packageList.append(el("button", {
-				type: "button", className: "package-row", title: `Copy ${item.name}`,
+			const update = updates.get(item.name.toLowerCase());
+			const nameButton = el("button", {
+				type: "button", className: "package-copy", title: `Copy ${item.name}`,
 				onclick: () => run(async () => {
 					if (!navigator.clipboard) throw new Error("Clipboard access requires HTTPS or localhost.");
 					await navigator.clipboard.writeText(item.name);
 					toast(`Copied ${item.name}`, "ok");
 				}),
-			},
-				el("span", { className: "package-name" }, svgIcon("package"), el("span", { textContent: item.name })),
-				el("span", { className: "package-version", textContent: item.version || "Managed separately" })));
+			}, el("span", { className: "package-name" }, svgIcon("package"), el("span", { textContent: item.name })));
+			const versions = el("div", { className: "package-versions" },
+				el("span", { className: "package-version", textContent: update ? update.current : item.version || "Managed separately" }));
+			if (update) versions.append(
+				el("span", { className: "muted", textContent: "→", ariaLabel: "Update available to" }),
+				el("span", { className: "package-version package-latest", textContent: update.latest }),
+				el("button", { className: "small primary", textContent: "Update", title: `Update ${item.name} to ${update.latest}`,
+					onclick: () => run(() => updatePackages(site, update)) }));
+			packageList.append(el("div", { className: "package-row" + (update ? " has-update" : "") }, nameButton, versions));
 		}
 		if (!packageList.children.length && !(site.package_errors || []).length) {
 			packageList.append(el("p", { className: "muted", textContent: "No packages to display." }));
@@ -627,12 +636,25 @@ function renderSite(name) {
 				el("div", { className: "package-heading" }, el("h3", { textContent: "NuGet packages" }), el("span", { className: "package-count", textContent: String(packages.length), title: "Visible package references" })),
 				packageActions),
 			...(site.package_errors || []).map((message) => el("p", { className: "package-error", textContent: `Could not read package references: ${message}` })),
+			...(site.updates === "error" ? [el("p", { className: "package-error", textContent: "Package update check failed. Run Check to retry." })] : []),
+			...(site.updates === "available" && !updates.size ? [el("p", { className: "muted", textContent: "Run Check to load available package versions." })] : []),
 			packageList);
 	}
 	decorate(head);
 	decorate(envs);
 	updateSiteActivity();
 	decorate(packagesPanel);
+}
+
+async function updatePackages(site, update) {
+	const items = update ? [update] : site.package_updates;
+	if (!(await ask({
+		title: update ? "Update package" : "Update all packages",
+		message: items.map((item) => `${item.name}: ${item.current} → ${item.latest}`).join("\n")
+			+ "\nMajor upgrades may require code changes. This updates the project; publish separately.",
+		input: false, ok: update ? "Update" : "Update all",
+	}))) return;
+	await openTask({ kind: "update_package", site: site.name, ...(update ? { package: update.name } : {}) });
 }
 
 // Scripts that have their own button and are therefore left out of the "Run script…" list

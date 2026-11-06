@@ -72,6 +72,21 @@ class BulkTests(unittest.TestCase):
         with self.assertRaises(BadRequest):
             self.command(action="add", package="bad;command")
 
+    def test_checked_package_update_commands_and_validation(self):
+        self.ns["site_info"] = lambda *_: {
+            "kind": "csharp", "updates": "available",
+            "package_updates": [{"name": "Example", "current": "1.0", "latest": "2.0"}],
+        }
+        for package in (None, "Example"):
+            payload = {"kind": "update_package", "site": "one"}
+            if package:
+                payload["package"] = package
+            _, argv, _ = self.ns["build_command"](payload)
+            self.assertEqual(argv[2:4], ["upgrade", str(self.root / "one")])
+            self.assertEqual(argv[4:], [package] if package else [])
+        with self.assertRaises(BadRequest):
+            self.ns["build_command"]({"kind": "update_package", "site": "one", "package": "Unknown"})
+
     def test_outdated_upgrades_each_project_without_interactive_script(self):
         _, argv, _ = self.command(action="outdated")
         for task in json.loads(argv[-1]):
@@ -92,9 +107,12 @@ class BulkTests(unittest.TestCase):
         dotnet.write_text('#!/bin/bash\nprintf "%s\\n" "$CHECK_OUTPUT"\nexit "${CHECK_EXIT:-0}"\n')
         dotnet.chmod(0o700)
         _, argv, cwd = self.command(action="check")
+        available = json.dumps({"version": 1, "projects": [{"frameworks": [{"topLevelPackages": [
+            {"id": "Example", "resolvedVersion": "1.0", "latestVersion": "2.0"}]}]}]})
+        current = json.dumps({"version": 1, "projects": [{"frameworks": []}]})
         for output, code, expected in (
-            ("Example 1.0 -> 2.0", "0", "available"),
-            ("has no updates given the current sources", "0", "current"),
+            (available, "0", "available"),
+            (current, "0", "current"),
             ("error: feed unavailable", "1", "error"),
         ):
             with self.subTest(expected=expected):
@@ -103,7 +121,8 @@ class BulkTests(unittest.TestCase):
                     env=os.environ | {"PATH": str(tools) + os.pathsep + os.environ["PATH"],
                                       "CHECK_OUTPUT": output, "CHECK_EXIT": code})
                 self.assertEqual(result.returncode, int(code != "0"), result.stderr)
-                self.assertIn(output, result.stdout)
+                self.assertIn("Example: 1.0 -> 2.0" if expected == "available" else
+                              "No updates available" if expected == "current" else output, result.stdout)
                 for site in ("one", "two"):
                     state = json.loads((self.root / site / ".vns-publish/updates.json").read_text())
                     self.assertEqual(state["status"], expected)
