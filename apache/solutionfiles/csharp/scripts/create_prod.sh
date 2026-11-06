@@ -54,6 +54,7 @@ if [[ ${VNS_PROD_MODAL:-} == 1 ]]; then
 	_sshPort=${VNS_PROD_SSH_PORT:-22}
 	_prodFolder=${VNS_PROD_FOLDER:-}
 	_prodBinding=${VNS_PROD_BINDING:-}
+	_prodEnvironment=${VNS_PROD_ENVIRONMENT:-Production}
 else
 	_target=${1:-}
 	ask _target "Production target (remote/local)" remote
@@ -80,8 +81,13 @@ else
 	esac
 	ask _prodFolder "Production site name (folder /var/www/<name>, service and Apache config)" "${_defaultFolder}"
 	ask _prodBinding "Production binding (domain)" "${_prodFolder}"
+	ask _prodEnvironment "Environment (Development/Test/Staging/Production)" Production
 fi
 
+case "${_prodEnvironment}" in
+	Development | Test | Staging | Production) ;;
+	*) echo "Environment must be Development, Test, Staging or Production." >&2; exit 1 ;;
+esac
 [[ ${_target} == remote || ${_target} == local ]] || { echo "Target must be remote or local." >&2; exit 1; }
 validate_site_name "${_prodFolder}"
 validate_binding "${_prodBinding}"
@@ -101,6 +107,7 @@ echo
 echo "Target:   ${_target}${_ip:+ (${_user}@${_ip}:${_sshPort})}${_localPath:+ (${_localPath})}"
 echo "Site:     ${_prodFolder}"
 echo "Binding:  ${_prodBinding}"
+echo "Environment: ${_prodEnvironment}"
 if [[ ${VNS_PROD_MODAL:-} != 1 ]]; then
 	read -r -p "Create the production scripts? [Y/n]: " _confirm
 	[[ ${_confirm:-y} =~ ^[Yy] ]] || { echo "Cancelled."; exit 1; }
@@ -109,7 +116,7 @@ fi
 _q() { printf '%q' "$1"; }
 export R_PROD_LOCAL_PATH="$(_q "${_localPath}")" R_PROD_IP="$(_q "${_ip}")" R_PROD_USER="$(_q "${_user}")" \
 	R_PROD_PASSWORD="$(_q "${_password}")" R_PROD_SSH_PORT="$(_q "${_sshPort}")" R_PROD_FOLDER="$(_q "${_prodFolder}")" \
-	R_PROD_BINDING="$(_q "${_prodBinding}")" R_ADMIN_MAIL="${_adminMail}" \
+	R_PROD_BINDING="$(_q "${_prodBinding}")" R_PROD_ENVIRONMENT="${_prodEnvironment}" R_ADMIN_MAIL="${_adminMail}" \
 	R_PROJECT_NAME="${_projectName}" R_PUBLISH_FOLDER="${_publishFolder}" R_SITE="${_site}"
 unset _password VNS_PROD_PASSWORD
 

@@ -18,7 +18,7 @@ PROD_PASSWORD=@PROD_PASSWORD@       # SSH password (needs sshpass). Empty = use 
 PROD_SSH_PORT=@PROD_SSH_PORT@
 PROD_FOLDER=@PROD_FOLDER@           # Site name on prod: folder /var/www/<folder>, service and Apache config
 PROD_BINDING=@PROD_BINDING@         # Public domain on prod, e.g. account.vns.dk
-PROD_ENVIRONMENT="Production"
+PROD_ENVIRONMENT="@PROD_ENVIRONMENT@"
 PROD_ADMIN_MAIL="@ADMIN_MAIL@"
 # ---------------------------------------------------------------------------
 

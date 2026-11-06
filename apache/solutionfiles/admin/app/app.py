@@ -733,6 +733,9 @@ def production_setup_env(data, site):
         abort(400, "Invalid production site name or binding")
     if target not in ("local", "remote"):
         abort(400, "Invalid production target")
+    environment = data.get("environment", "Production")
+    if environment not in ("Development", "Test", "Staging", "Production"):
+        abort(400, "Invalid production environment")
     if os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
         abort(400, "This site already has a production target")
     if not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "create_prod.sh")):
@@ -743,6 +746,7 @@ def production_setup_env(data, site):
         "VNS_PROD_TARGET": target,
         "VNS_PROD_FOLDER": folder,
         "VNS_PROD_BINDING": binding,
+        "VNS_PROD_ENVIRONMENT": environment,
         "VNS_PROD_LOCAL_PATH": "",
         "VNS_PROD_IP": "",
         "VNS_PROD_USER": "",
