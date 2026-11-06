@@ -513,7 +513,6 @@ function siteCard(site) {
 			links.append(backend);
 		}
 		group.append(links);
-		if (!env.binding) group.append(el("span", { className: "muted", textContent: "Default / wildcard", title: address.title }));
 		actions.append(group);
 	}
 
@@ -710,7 +709,7 @@ function envPanel(site, env) {
 	const address = environmentAddress(env);
 	const binding = !address.url ? bindingLink("") : site.admin && env.key !== "prod"
 		? el("span", { textContent: env.binding })
-		: openLink(env.binding || `Default / wildcard (${address.hostname})`, address.url, address.title);
+		: openLink(env.binding || address.hostname, address.url, address.title);
 	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, binding));
 	if (env.aliases && env.aliases.length) {
 		meta.append(el("dt", { textContent: "Aliases" }), el("dd", { className: "database-name aliases" },
