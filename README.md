@@ -12,9 +12,9 @@ The shared publish targets default `SatelliteResourceLanguages` to `en;da`, reta
 
 ## Multi-site actions
 
-Overview cards show a Working spinner while an associated terminal is running (including open site shells). Multi actions mark all selected sites until the batch finishes. Hover the indicator to see task titles. Indicators survive reloading the admin page and disappear when the tasks finish or are closed.
+Overview and environment detail cards show a Working spinner while an associated terminal is running (including open site shells). Multi actions mark all selected sites until the batch finishes. Hover the indicator to see task titles. Indicators survive reloading the admin page and disappear when the tasks finish or are closed.
 
-The admin overview offers **Multi action** for C#/Umbraco sites. Enable selection, tick sites and choose **Choose action** to add/remove a NuGet package or publish local, production, or both. Package versions are optional when adding; package changes do not publish automatically. Selection survives searching/filtering and the modal lists every selected site. Production actions explicitly skip sites without a production publish script. Sites run sequentially, failures do not stop the remaining sites, and the terminal stays open with a per-site summary. **Publish both** runs local first and only publishes that site's production if local succeeds.
+The admin overview offers **Multi action** for C#/Umbraco sites. Enable selection, tick sites and choose **Choose action** to add/remove a NuGet package, run **Update outdated** (`dotnet outdated --upgrade`), or publish local, production, or both. Package versions are optional when adding; package changes do not publish automatically. Selection survives searching/filtering and the compact modal lists every selected site. Production actions explicitly skip sites without a production publish script. Sites run in parallel, failures do not stop other sites, and the terminal stays open with site-labelled output and a per-site summary. **Publish both** runs local first and only publishes that site's production if local succeeds.
 
 ## Installation
 

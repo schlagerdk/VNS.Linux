@@ -416,6 +416,13 @@ function updateSiteActivity() {
 	}
 }
 
+function siteActivity(site) {
+	const activity = el("span", { className: "site-activity", hidden: true, role: "status" },
+		el("span", { className: "activity-spinner", ariaHidden: "true" }), el("span", { textContent: "Working" }));
+	activity.dataset.site = site.name;
+	return activity;
+}
+
 // Opens a URL in a new tab: a plain link, or (asButton) a small button with an "open" icon
 function openLink(text, url, title, asButton) {
 	const a = el("a", { className: asButton ? "btn-link" : "link", href: url, target: "_blank", rel: "noopener noreferrer", title: title || url, onclick: (event) => event.stopPropagation() });
@@ -498,10 +505,7 @@ function siteCard(site) {
 	}
 
 	const badges = kindBadges(site);
-	const activity = el("span", { className: "site-activity", hidden: true, role: "status" },
-		el("span", { className: "activity-spinner", ariaHidden: "true" }), el("span", { textContent: "Working" }));
-	activity.dataset.site = site.name;
-	badges.append(activity);
+	badges.append(siteActivity(site));
 	const selection = multiSelecting && canMultiSelect(site)
 		? el("label", { className: "multi-select", onclick: (event) => event.stopPropagation() },
 			el("input", { type: "checkbox", checked: multiSites.has(site.name), ariaLabel: "Select " + site.name,
@@ -625,6 +629,7 @@ function renderSite(name) {
 	}
 	decorate(head);
 	decorate(envs);
+	updateSiteActivity();
 	decorate(packagesPanel);
 }
 
@@ -652,6 +657,7 @@ function quickActions(env) {
 function envPanel(site, env) {
 	const dot = env.unit ? env.state || "unknown" : "";
 	const heading = el("div", { className: "env-head" },
+		siteActivity(site),
 		el("span", { className: "dot " + dot }),
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
 	const environment = site.kind === "python" ? "Live" : env.environment;
@@ -1021,6 +1027,14 @@ $("#btn-multi").onclick = () => { multiSelecting = true; renderSites(); };
 $("#btn-multi-cancel").onclick = () => { multiSelecting = false; multiSites.clear(); renderSites(); };
 function syncMultiAction() {
 	const action = multiForm.elements.namedItem("action").value;
+	$("#multi-action-description").textContent = {
+		add: "Add a NuGet package to every selected project.",
+		remove: "Remove a NuGet package from every selected project.",
+		local: "Build and restart each selected site's local environment.",
+		prod: "Build and deploy each selected site's production environment.",
+		both: "Publish local, then production for each site. Sites run in parallel.",
+		outdated: "Run dotnet outdated --upgrade for every selected project. Review changes and publish afterward.",
+	}[action];
 	const packageAction = action === "add" || action === "remove";
 	$("#multi-package-fields").hidden = !packageAction;
 	multiForm.elements.namedItem("package").disabled = !packageAction;

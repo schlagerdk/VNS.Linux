@@ -73,21 +73,23 @@
     <form id="form-multi">
       <h2 id="multi-title">Multi action</h2>
       <p id="multi-selection" class="muted"></p>
-      <label>Action
+      <label class="multi-action-label">Choose an action
         <select name="action">
           <option value="add">Add package</option>
           <option value="remove">Remove package</option>
           <option value="local">Publish local</option>
           <option value="prod">Publish prod</option>
           <option value="both">Publish both</option>
+          <option value="outdated">Update outdated</option>
         </select>
       </label>
+      <p id="multi-action-description" class="muted"></p>
       <div id="multi-package-fields">
         <label>Package name<input name="package" required autocomplete="off"></label>
         <label id="multi-version-row">Version (optional)<input name="version" autocomplete="off"></label>
       </div>
       <p id="multi-skipped" class="hint"></p>
-      <p class="hint">Sites run one at a time. Failures do not stop the remaining sites. The terminal keeps the final summary. Package changes require a separate publish.</p>
+      <p class="hint">Sites run in parallel. Failures do not stop other sites. Terminal output is labelled by site and ends with a summary. Package changes require a separate publish.</p>
       <menu><button id="multi-close" type="button">Cancel</button><button id="multi-submit" class="primary" type="submit">Run action</button></menu>
     </form>
   </dialog>

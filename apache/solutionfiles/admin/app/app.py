@@ -998,7 +998,7 @@ def build_command(data):
         if (not isinstance(sites, list) or not sites or len(sites) > 100
                 or any(not isinstance(site, str) for site in sites)
                 or len(set(sites)) != len(sites)
-                or action not in ("add", "remove", "local", "prod", "both")):
+                or action not in ("add", "remove", "local", "prod", "both", "outdated")):
             abort(400, "Invalid multi action selection")
         tasks = []
         for name in sites:
@@ -1013,6 +1013,13 @@ def build_command(data):
             if action in ("add", "remove"):
                 payload = {"kind": "dotnet_package", "site": site, "action": action,
                            "package": data.get("package"), "version": data.get("version", "")}
+            elif action == "outdated":
+                projects = sorted(glob.glob(os.path.join(WEB_ROOT, site, "*.csproj")))
+                if len(projects) != 1:
+                    abort(400, "Expected exactly one C# project in this site")
+                tasks.append({"site": site, "argv": ["dotnet", "outdated", "--upgrade"],
+                              "cwd": os.path.dirname(projects[0])})
+                continue
             elif action == "both":
                 payload = {"kind": "publish_both", "site": site}
             else:

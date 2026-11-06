@@ -72,6 +72,37 @@ class BulkTests(unittest.TestCase):
         with self.assertRaises(BadRequest):
             self.command(action="add", package="bad;command")
 
+    def test_outdated_upgrades_each_project_without_interactive_script(self):
+        _, argv, _ = self.command(action="outdated")
+        for task in json.loads(argv[-1]):
+            self.assertEqual(task["argv"], ["dotnet", "outdated", "--upgrade"])
+            self.assertTrue(Path(task["cwd"], "Project.csproj").is_file())
+
+    def test_sites_start_concurrently_and_output_is_labelled(self):
+        script = (
+            "import pathlib, sys, time\n"
+            "root = pathlib.Path(sys.argv[1])\n"
+            "name, other = sys.argv[2:]\n"
+            "(root / name).touch()\n"
+            "deadline = time.monotonic() + 5\n"
+            "while not (root / other).exists():\n"
+            "    if time.monotonic() >= deadline: sys.exit(9)\n"
+            "    time.sleep(0.01)\n"
+            "print('concurrent')\n"
+        )
+        tasks = [
+            {"site": name, "argv": [sys.executable, "-c", script, str(self.root), name, other],
+             "cwd": str(self.root)}
+            for name, other in (("started-one", "started-two"), ("started-two", "started-one"))
+        ]
+        result = subprocess.run(
+            [sys.executable, str(APACHE / "lib/bulk_tasks.py"), json.dumps(tasks)],
+            capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        for task in tasks:
+            self.assertIn(f'[{task["site"]}] concurrent', result.stdout)
+            self.assertIn(f'{task["site"]}: OK', result.stdout)
+
     def test_invalid_selection_and_non_csharp_are_rejected(self):
         for sites in ([], ["one", "one"], ["one"] * 101, [1]):
             with self.assertRaises(BadRequest):
