@@ -87,7 +87,8 @@ class RemoteApiTests(unittest.TestCase):
         self.ns = dict(
             app=self.app, os=os, json=json, subprocess=subprocess, time=time, shlex=shlex,
             _database_module=database_info,
-            re=re, SERVICE_DIR="/etc/systemd/system", read_text=lambda path: "",
+            re=re, SERVICE_DIR="/etc/systemd/system", APACHE_SITES="/etc/apache2/sites-available",
+            read_text=lambda path: "",
             base64=base64, abort=abort, jsonify=jsonify, request=request,
             io=io, send_file=send_file, sys=sys, site_units=lambda site: [site, "local-prod.test"],
             Path=Path, editable_file=remote_files.editable_file,
@@ -99,7 +100,7 @@ class RemoteApiTests(unittest.TestCase):
             site_arg=lambda data: "example.test",
         )
         functions = {"error", "remote_command", "remote_status", "remote_site", "api_service", "api_logs", "build_command", "remote_fs",
-                     "service_environment", "environment_info", "managed_config", "fs_list"}
+                     "service_environment", "server_aliases", "environment_info", "managed_config", "fs_list"}
         nodes = [node for node in ast.parse(APP_SOURCE.read_text()).body
                  if isinstance(node, ast.FunctionDef) and node.name in functions]
         exec(compile(ast.Module(body=nodes, type_ignores=[]), str(APP_SOURCE), "exec"), self.ns)
@@ -130,6 +131,14 @@ class RemoteApiTests(unittest.TestCase):
         self.assertEqual(self.ns["remote_status"]("example.test"), status)
         self.ns["remote_status"]("example.test")
         self.assertEqual(command.call_count, 1)
+
+    def test_server_aliases_parsing_is_case_insensitive_and_skips_binding_comments(self):
+        aliases = self.ns["server_aliases"](
+            "ServerName main.example.test\n"
+            "ServerAlias WWW.EXAMPLE.TEST api.example.test www.example.test # ignored.example.test\n"
+            "ServerAlias api.example.test cdn.example.test\n",
+            "main.example.test")
+        self.assertEqual(aliases, ["WWW.EXAMPLE.TEST", "api.example.test", "cdn.example.test"])
 
     def test_unreachable_status_is_unknown_not_insecure(self):
         self.ns["remote_command"] = Mock(side_effect=HTTPException("SSH unavailable"))
@@ -248,7 +257,7 @@ class RemoteStatusTests(unittest.TestCase):
             certificate = root / "certificate"
             certificate.touch()
             conf = root / "conf"
-            conf.write_text('<VirtualHost *:443>\nServerName production.test\nSSLCertificateFile "' + str(certificate) + '"\n</VirtualHost>')
+            conf.write_text('<VirtualHost *:443>\nServerName production.test\nServerAlias www.production.test api.production.test\nServerAlias WWW.PRODUCTION.TEST # ignored.test\nSSLCertificateFile "' + str(certificate) + '"\n</VirtualHost>')
             def remote_path(*parts):
                 return {"/etc/systemd/system": root / "service", "/etc/apache2/sites-available": conf,
                         "/var/www": root / "site"}.get(parts[0], Path(*parts))
@@ -264,6 +273,7 @@ class RemoteStatusTests(unittest.TestCase):
                 status = json.loads(output.getvalue())
                 self.assertEqual(status["https"], has_certificate)
                 self.assertEqual(status["binding"], "production.test")
+                self.assertEqual(status["aliases"], ["www.production.test", "api.production.test"])
                 self.assertEqual(status["environment"], "Production")
                 self.assertEqual(status["port"], "4100")
                 self.assertEqual(status["state"], "active")

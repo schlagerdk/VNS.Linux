@@ -182,6 +182,8 @@ with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch
         self.assertNotIn("env.database", overview)
         detail = source[source.index("function envPanel("):]
         self.assertNotIn('className: "badge database"', detail)
+        self.assertIn('if (env.aliases && env.aliases.length)', detail)
+        self.assertIn('textContent: env.aliases.join(", ")', detail)
         start = detail.index('\tif (site.kind === "csharp" || site.kind === "umbraco")')
         row = detail[start:detail.index('\n\tif (env.port)', start)]
         harness = r"""

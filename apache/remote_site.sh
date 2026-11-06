@@ -47,6 +47,15 @@ if service.is_file():
     environment = variables.get("DOTNET_ENVIRONMENT") or variables.get("ASPNETCORE_ENVIRONMENT", "")
 port = re.search(r"(?:localhost|127\.0\.0\.1):(\d+)", service_text)
 binding = re.search(r"^\s*ServerName\s+(\S+)", text, re.M)
+aliases = []
+seen = {binding.group(1).lower()} if binding else set()
+for line in text.splitlines():
+    fields = line.split("#", 1)[0].split()
+    if len(fields) > 1 and fields[0].lower() == "serveralias":
+        for alias in fields[1:]:
+            if alias.lower() not in seen:
+                aliases.append(alias)
+                seen.add(alias.lower())
 exec(os.environ.pop("DATABASE_CODE"))
 database = {"database": "Unknown", "database_name": ""}
 try:
@@ -62,6 +71,7 @@ print(json.dumps({
     "environment": environment,
     **database,
     "binding": binding.group(1) if binding else "",
+    "aliases": aliases,
     "port": port.group(1) if port else "",
 }))
 PY

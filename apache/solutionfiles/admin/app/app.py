@@ -312,11 +312,29 @@ def service_environment(unit):
     return variables.get("DOTNET_ENVIRONMENT") or variables.get("ASPNETCORE_ENVIRONMENT", "")
 
 
+def server_aliases(config_text, binding=""):
+    aliases = []
+    seen = {binding.lower()} if binding else set()
+    for line in config_text.splitlines():
+        fields = line.split("#", 1)[0].split()
+        if len(fields) < 2 or fields[0].lower() != "serveralias":
+            continue
+        for alias in fields[1:]:
+            normalized = alias.lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                aliases.append(alias)
+    return aliases
+
+
 def environment_info(key, label, unit, binding, port, path, states, **extra):
     service = bool(unit) and unit_of(unit)
     info = {"key": key, "label": label, "unit": unit if service else "", "binding": binding, "port": port, "path": path,
             "state": states.get(unit, "") if service else ""}
     info.update(extra)
+    if unit:
+        config_text = read_text(os.path.join(APACHE_SITES, unit + ".conf"))
+        info["aliases"] = server_aliases(config_text, binding)
     info["environment"] = service_environment(unit) if service else ""
     info.update(https_status(unit=unit))
     if service:
