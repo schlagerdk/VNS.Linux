@@ -52,6 +52,9 @@
     <div class="toolbar">
       <div class="stats" id="stats"></div>
       <span class="spacer"></span>
+      <button id="btn-multi" type="button" hidden>Multi action</button>
+      <button id="btn-multi-action" class="primary" type="button" hidden>Choose action</button>
+      <button id="btn-multi-cancel" type="button" hidden>Cancel selection</button>
       <button id="btn-check-updates" type="button">Check for updates</button>
       <button id="btn-new-site" class="primary">＋ New site</button>
     </div>
@@ -65,6 +68,29 @@
       <button id="btn-empty-new-site" class="primary" type="button"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New site</button>
     </div>
   </section>
+
+  <dialog id="dlg-multi" aria-labelledby="multi-title">
+    <form id="form-multi">
+      <h2 id="multi-title">Multi action</h2>
+      <p id="multi-selection" class="muted"></p>
+      <label>Action
+        <select name="action">
+          <option value="add">Add package</option>
+          <option value="remove">Remove package</option>
+          <option value="local">Publish local</option>
+          <option value="prod">Publish prod</option>
+          <option value="both">Publish both</option>
+        </select>
+      </label>
+      <div id="multi-package-fields">
+        <label>Package name<input name="package" required autocomplete="off"></label>
+        <label id="multi-version-row">Version (optional)<input name="version" autocomplete="off"></label>
+      </div>
+      <p id="multi-skipped" class="hint"></p>
+      <p class="hint">Sites run one at a time. Failures do not stop the remaining sites. The terminal keeps the final summary. Package changes require a separate publish.</p>
+      <menu><button id="multi-close" type="button">Cancel</button><button id="multi-submit" class="primary" type="submit">Run action</button></menu>
+    </form>
+  </dialog>
 
   <section id="view-site" hidden>
     <div class="toolbar">

@@ -107,6 +107,7 @@ Done.
             with self.subTest(expected=expected):
                 session = cls.__new__(cls)
                 session.id, session.title, session.auto_close = "test", "Create site", True
+                session.sites = ["example.test"]
                 session.output_tail, session.output_problem = "", False
                 session.update_root = None
                 session.buffer, session.lock, session.subscribers = bytearray(), threading.Lock(), set()
@@ -119,6 +120,7 @@ Done.
                 self.assertTrue(metadata["auto_close"])
                 self.assertEqual(metadata["output_problem"], expected)
                 self.assertEqual(metadata["exit"], 0)
+                self.assertEqual(metadata["sites"], ["example.test"])
 
     def test_outdated_output_updates_shared_flag_after_completion(self):
         record = Mock()
@@ -151,6 +153,7 @@ const terminals = {};
 const activeTerminal = null;
 const run = async () => {};
 const loadSites = () => {};
+const updateSiteActivity = () => {};
 """
         test += function + r"""
 for (const [autoClose, exit, problem, expected] of [

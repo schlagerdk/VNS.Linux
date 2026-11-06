@@ -374,8 +374,24 @@ function decorate(root) {
 	}
 }
 
+let multiSelecting = false;
+const multiSites = new Set();
+const canMultiSelect = (site) => !site.admin && (site.kind === "csharp" || site.kind === "umbraco");
+
+function renderMultiSelection() {
+	$("#btn-multi").hidden = multiSelecting || !listedSites().some(canMultiSelect);
+	$("#btn-multi-action").hidden = !multiSelecting;
+	$("#btn-multi-action").disabled = multiSites.size === 0;
+	$("#btn-multi-action").textContent = `Choose action (${multiSites.size})`;
+	$("#btn-multi-cancel").hidden = !multiSelecting;
+}
+
 function renderSites() {
 	renderStats();
+	for (const name of multiSites) {
+		if (!listedSites().some((site) => site.name === name && canMultiSelect(site))) multiSites.delete(name);
+	}
+	renderMultiSelection();
 	const box = $("#sites");
 	box.replaceChildren();
 	const visible = listedSites().filter(matches);
@@ -388,7 +404,16 @@ function renderSites() {
 		? "Create a home for your next idea. Set up your first site in just a few steps."
 		: "Try a different search or filter, or bring something new to life by creating a site.";
 	for (const site of visible) box.append(siteCard(site));
+	updateSiteActivity();
 	decorate(box);
+}
+
+function updateSiteActivity() {
+	for (const badge of document.querySelectorAll(".site-activity")) {
+		const tasks = Object.values(terminals).filter((task) => !task.exited && task.sites.includes(badge.dataset.site));
+		badge.hidden = tasks.length === 0;
+		badge.title = tasks.map((task) => task.taskTitle).join("\n");
+	}
 }
 
 // Opens a URL in a new tab: a plain link, or (asButton) a small button with an "open" icon
@@ -473,7 +498,20 @@ function siteCard(site) {
 	}
 
 	const badges = kindBadges(site);
+	const activity = el("span", { className: "site-activity", hidden: true, role: "status" },
+		el("span", { className: "activity-spinner", ariaHidden: "true" }), el("span", { textContent: "Working" }));
+	activity.dataset.site = site.name;
+	badges.append(activity);
+	const selection = multiSelecting && canMultiSelect(site)
+		? el("label", { className: "multi-select", onclick: (event) => event.stopPropagation() },
+			el("input", { type: "checkbox", checked: multiSites.has(site.name), ariaLabel: "Select " + site.name,
+				onchange: (event) => {
+					if (event.target.checked) multiSites.add(site.name); else multiSites.delete(site.name);
+					renderMultiSelection();
+				} }), el("span", { textContent: "Select site" }))
+		: null;
 	return el("article", { className: "site " + state + (hasProd(site) ? " with-production" : "") + (site.admin ? " is-admin" : ""), onclick: () => go(siteLink(site.name)) },
+		...(selection ? [selection] : []),
 		el("div", { className: "site-head" },
 			el("span", { className: "site-emblem" }, svgIcon("globe")),
 			el("div", { className: "site-identity" }, el("h3", { className: "site-title", textContent: site.name }), badges),
@@ -977,6 +1015,55 @@ environmentForm.onsubmit = (event) => {
 	});
 };
 
+const multiDialog = $("#dlg-multi");
+const multiForm = $("#form-multi");
+$("#btn-multi").onclick = () => { multiSelecting = true; renderSites(); };
+$("#btn-multi-cancel").onclick = () => { multiSelecting = false; multiSites.clear(); renderSites(); };
+function syncMultiAction() {
+	const action = multiForm.elements.namedItem("action").value;
+	const packageAction = action === "add" || action === "remove";
+	$("#multi-package-fields").hidden = !packageAction;
+	multiForm.elements.namedItem("package").disabled = !packageAction;
+	$("#multi-version-row").hidden = action !== "add";
+	multiForm.elements.namedItem("version").disabled = action !== "add";
+	const selected = listedSites().filter((site) => multiSites.has(site.name));
+	const skipped = action === "prod" || action === "both"
+		? selected.filter((site) => !site.scripts.includes("publish_prod.sh")) : [];
+	$("#multi-skipped").textContent = skipped.length
+		? "Will be skipped (no production): " + skipped.map((site) => site.name).join(", ") : "";
+	$("#multi-submit").disabled = !selected.length || skipped.length === selected.length;
+}
+$("#btn-multi-action").onclick = () => {
+	multiForm.reset();
+	$("#multi-selection").textContent = Array.from(multiSites).join(", ");
+	syncMultiAction();
+	multiDialog.showModal();
+};
+multiForm.elements.namedItem("action").onchange = syncMultiAction;
+$("#multi-close").onclick = () => multiDialog.close();
+let submittingMulti = false;
+multiForm.onsubmit = (event) => {
+	event.preventDefault();
+	if (submittingMulti) return;
+	const payload = Object.fromEntries(new FormData(multiForm));
+	payload.kind = "bulk";
+	payload.sites = Array.from(multiSites);
+	submittingMulti = true;
+	$("#multi-submit").disabled = true;
+	run(async () => {
+		try {
+			await openTask(payload);
+			multiDialog.close();
+			multiSelecting = false;
+			multiSites.clear();
+			renderSites();
+		} finally {
+			submittingMulti = false;
+			syncMultiAction();
+		}
+	});
+};
+
 const packageDialog = $("#dlg-package");
 const packageForm = $("#form-package");
 function openPackageDialog(site, action) {
@@ -1352,6 +1439,7 @@ function connectTerminal(t) {
 		if (message.o !== undefined) t.term.write(message.o);
 		if (message.x !== undefined) {
 			t.exited = true;
+			updateSiteActivity();
 			t.exitCode = message.x;
 			if (t.autoClose && message.x === 0 && message.output_problem === false && t.remove) {
 				t.remove();
@@ -1372,7 +1460,7 @@ function connectTerminal(t) {
 	};
 }
 
-function openTerminal(id, title, autoClose) {
+function openTerminal(id, title, autoClose, sites = [], running = true) {
 	if (terminals[id]) return activate(id);
 	const pane = el("div", { className: "pane", hidden: true });
 	const titleNode = el("span", { textContent: title });
@@ -1385,8 +1473,9 @@ function openTerminal(id, title, autoClose) {
 	const fit = new FitAddon.FitAddon();
 	term.loadAddon(fit);
 	term.open(pane);
-	const t = { id, term, fit, pane, tab, title: titleNode, exited: false, ws: null, autoClose: !!autoClose, remove: null };
+	const t = { id, term, fit, pane, tab, title: titleNode, taskTitle: title, sites, exited: !running, ws: null, autoClose: !!autoClose, remove: null };
 	terminals[id] = t;
+	updateSiteActivity();
 
 	// Esc or Enter closes finished terminals, including failed processes.
 	term.attachCustomKeyEventHandler((event) => {
@@ -1407,6 +1496,7 @@ function openTerminal(id, title, autoClose) {
 		if (t.ws) t.ws.close();
 		term.dispose(); tab.remove(); pane.remove();
 		delete terminals[id];
+		updateSiteActivity();
 		activeTerminal = Object.keys(terminals)[0] || null;
 		if (activeTerminal) activate(activeTerminal);
 		updateTerminalState();
@@ -1423,7 +1513,7 @@ function openTerminal(id, title, autoClose) {
 
 async function openTask(payload) {
 	const data = await api("/api/term", { json: payload });
-	openTerminal(data.id, data.title, data.auto_close);
+	openTerminal(data.id, data.title, data.auto_close, data.sites, data.running);
 	if (terminals[data.id]) {
 		showDock();
 		for (const dialog of document.querySelectorAll("dialog[open]")) {
@@ -1438,7 +1528,7 @@ async function openTask(payload) {
 
 async function restoreTerminals() {
 	const { sessions } = await api("/api/term");
-	for (const s of sessions) openTerminal(s.id, s.title, s.auto_close);
+	for (const s of sessions) openTerminal(s.id, s.title, s.auto_close, s.sites, s.running);
 	if (sessions.length) { for (const t of Object.values(terminals)) t.pane.hidden = true; activate(sessions[0].id); }
 }
 

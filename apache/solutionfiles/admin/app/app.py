@@ -757,9 +757,10 @@ def terminal_output_problem(text):
 
 
 class TermSession:
-    def __init__(self, title, argv, cwd, extra_env=None, auto_close=False, update_root=None):
+    def __init__(self, title, argv, cwd, extra_env=None, auto_close=False, update_root=None, sites=None):
         self.id = uuid.uuid4().hex[:12]
         self.title = title
+        self.sites = sites or []
         self.created = time.time()
         self.exit = None
         self.auto_close = auto_close
@@ -991,6 +992,38 @@ def build_command(data):
     """Validate a terminal request and return (title, argv, cwd). User input is never shell code."""
     kind = data.get("kind")
     bash = "/bin/bash"
+    if kind == "bulk":
+        sites = data.get("sites")
+        action = data.get("action")
+        if (not isinstance(sites, list) or not sites or len(sites) > 100
+                or any(not isinstance(site, str) for site in sites)
+                or len(set(sites)) != len(sites)
+                or action not in ("add", "remove", "local", "prod", "both")):
+            abort(400, "Invalid multi action selection")
+        tasks = []
+        for name in sites:
+            site = site_arg({"site": name})
+            info = site_info(site, {})
+            if info["kind"] not in ("csharp", "umbraco") or info.get("admin"):
+                abort(400, "Multi actions require non-admin C# sites")
+            scripts = info["scripts"]
+            if action in ("prod", "both") and "publish_prod.sh" not in scripts:
+                tasks.append({"site": site, "skip": "No production publish script"})
+                continue
+            if action in ("add", "remove"):
+                payload = {"kind": "dotnet_package", "site": site, "action": action,
+                           "package": data.get("package"), "version": data.get("version", "")}
+            elif action == "both":
+                payload = {"kind": "publish_both", "site": site}
+            else:
+                script = "publish_prod.sh" if action == "prod" else next(
+                    (name for name in ("publish_local.sh", "publish.sh") if name in scripts), "")
+                payload = {"kind": "script", "site": site, "script": script}
+            _, argv, cwd = build_command(payload)
+            tasks.append({"site": site, "argv": argv, "cwd": cwd})
+        return "Multi action: " + action, [
+            sys.executable, os.path.join(APACHE_DIR, "lib", "bulk_tasks.py"), json.dumps(tasks),
+        ], WEB_ROOT
     if kind == "remote_tool":
         site = site_arg(data)
         remote_site(site)
@@ -1198,7 +1231,7 @@ def build_command(data):
 
 def describe(s):
     return {"id": s.id, "title": s.title, "running": s.running, "exit": s.exit,
-            "auto_close": s.auto_close, "output_problem": s.output_problem}
+            "auto_close": s.auto_close, "output_problem": s.output_problem, "sites": s.sites}
 
 
 @app.route("/api/term", methods=["GET", "POST"])
@@ -1219,7 +1252,8 @@ def api_term():
             return error("Too many running terminals. Close some first.")
         try:
             update_root = os.path.join(WEB_ROOT, payload["site"]) if payload.get("kind") == "script" and payload.get("script") == "outdated.sh" and glob.glob(os.path.join(WEB_ROOT, payload["site"], "*.csproj")) else None
-            session_obj = TermSession(title, argv, cwd, extra_env, auto_close=terminal_auto_close(payload), update_root=update_root)
+            sites = payload.get("sites", []) if payload.get("kind") == "bulk" else [payload["site"]] if payload.get("site") else []
+            session_obj = TermSession(title, argv, cwd, extra_env, auto_close=terminal_auto_close(payload), update_root=update_root, sites=sites)
         except Exception:
             if extra_env is not None:
                 os.unlink(argv[1])

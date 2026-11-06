@@ -10,6 +10,12 @@ Publish uses `apache/lib/publish.targets` to always refresh assemblies, even whe
 
 The shared publish targets default `SatelliteResourceLanguages` to `en;da`, retaining only English and Danish satellite assemblies from dependencies. Neutral resources remain available as the fallback. This does not restrict Umbraco content languages, but other translations of library messages and resource-based UI are omitted. A project can override this property to retain additional cultures. Existing language folders in an in-place publish directory are not removed automatically.
 
+## Multi-site actions
+
+Overview cards show a Working spinner while an associated terminal is running (including open site shells). Multi actions mark all selected sites until the batch finishes. Hover the indicator to see task titles. Indicators survive reloading the admin page and disappear when the tasks finish or are closed.
+
+The admin overview offers **Multi action** for C#/Umbraco sites. Enable selection, tick sites and choose **Choose action** to add/remove a NuGet package or publish local, production, or both. Package versions are optional when adding; package changes do not publish automatically. Selection survives searching/filtering and the modal lists every selected site. Production actions explicitly skip sites without a production publish script. Sites run sequentially, failures do not stop the remaining sites, and the terminal stays open with a per-site summary. **Publish both** runs local first and only publishes that site's production if local succeeds.
+
 ## Installation
 
 Run as a user with `sudo` privileges:

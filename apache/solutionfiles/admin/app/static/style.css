@@ -59,6 +59,14 @@ main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); grid-auto-rows: 1fr; align-items: stretch; gap: 16px; }
 .cards > .site { min-width: 0; }
+.site-activity { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; color: var(--blue); background: rgba(88, 166, 255, .12); font-size: 11px; }
+.activity-spinner { width: 12px; height: 12px; border: 2px solid rgba(88, 166, 255, .25); border-top-color: var(--blue); border-radius: 50%; animation: activity-spin .8s linear infinite; }
+@keyframes activity-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .activity-spinner { animation: none; } }
+.multi-select { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(88, 166, 255, .08); cursor: pointer; }
+.multi-select input { width: 18px; height: 18px; margin: 0; accent-color: var(--blue); }
+.site:has(.multi-select input:checked) { border-color: var(--blue); }
+#multi-selection, #multi-skipped { overflow-wrap: anywhere; }
 .site { background: linear-gradient(135deg, rgba(88, 166, 255, .04), transparent 60%), var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: 0 4px 16px rgba(0, 0, 0, .15); display: flex; flex-direction: column; gap: 20px; position: relative; cursor: pointer; transition: border-color .2s, box-shadow .2s; }
 .site:hover { border-color: rgba(88, 166, 255, .5); box-shadow: 0 10px 28px rgba(0, 0, 0, .3), 0 0 20px rgba(88, 166, 255, .07); }
 .site.is-admin { border-color: rgba(163, 113, 247, .5); }
