@@ -233,6 +233,7 @@ for (const kind of ["csharp", "umbraco", "python", "html"]) {
         self.assertIn('<textarea id="prompt-extra" rows="4"', template)
         styles = (APACHE / "solutionfiles/admin/app/static/style.css").read_text()
         self.assertIn("#dlg-prompt .prompt-extra-row { margin-top: 16px; }", styles)
+        self.assertIn("#dlg-prompt #prompt-extra { width: 100%; height: 160px; resize: none; overflow-y: auto; font: inherit; }", styles)
 
     def test_overview_has_one_https_icon_before_each_environment_badge(self):
         source = (APACHE / "solutionfiles/admin/app/static/app.js").read_text()
