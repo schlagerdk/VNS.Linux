@@ -591,12 +591,39 @@ def dotnet_root_dir():
 DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
+def terminal_auto_close(payload):
+    kind = payload.get("kind")
+    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package"):
+        return True
+    if kind == "remote_tool":
+        return payload.get("tool") == "shell"
+    if kind == "apache":
+        return payload.get("tool") == "restart"
+    if kind == "script":
+        return payload.get("script") in {
+            "publish.sh", "publish_local.sh", "publish_prod.sh", "create_prod.sh",
+            "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh",
+            "issue_certificat.sh", "change_env.sh", "restart_service.sh", "restart_apache.sh",
+            "fix_permissions.sh", "update_packages.sh", "set_password.sh",
+        }
+    return False
+
+
+def terminal_output_problem(text):
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)", "", text)
+    text = re.sub(r"\b(?:0|no)\s+(?:errors?|warnings?|failures?)(?:\(s\))?\b", "", text, flags=re.I)
+    return bool(re.search(r"\b(?:errors?|failed|failure|fatal|\w*exception|traceback|warnings?)\b(?![/_-]|\.[A-Za-z0-9])", text, re.I))
+
+
 class TermSession:
-    def __init__(self, title, argv, cwd, extra_env=None):
+    def __init__(self, title, argv, cwd, extra_env=None, auto_close=False):
         self.id = uuid.uuid4().hex[:12]
         self.title = title
         self.created = time.time()
         self.exit = None
+        self.auto_close = auto_close
+        self.output_problem = False
+        self.output_tail = ""
         self.buffer = bytearray()
         self.subscribers = set()
         self.lock = threading.Lock()
@@ -616,6 +643,7 @@ class TermSession:
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
         while True:
             try:
                 data = os.read(self.proc.fd, 4096)
@@ -623,6 +651,12 @@ class TermSession:
                 break
             if not data:
                 break
+            lines = (self.output_tail + decoder.decode(data)).split("\n")
+            self.output_tail = lines.pop()
+            self.output_problem |= any(terminal_output_problem(line) for line in lines)
+            if len(self.output_tail) > BUFFER_MAX:
+                self.output_problem |= terminal_output_problem(self.output_tail)
+                self.output_tail = self.output_tail[-4096:]
             with self.lock:
                 self.buffer += data
                 if len(self.buffer) > BUFFER_MAX:
@@ -633,6 +667,7 @@ class TermSession:
             self.proc.wait()
         except Exception:
             pass
+        self.output_problem |= terminal_output_problem(self.output_tail + decoder.decode(b"", final=True))
         status = self.proc.exitstatus
         self.exit = status if status is not None else -(self.proc.signalstatus or 1)
         REMOTE_STATUS.clear()
@@ -956,7 +991,8 @@ def build_command(data):
 
 
 def describe(s):
-    return {"id": s.id, "title": s.title, "running": s.running, "exit": s.exit}
+    return {"id": s.id, "title": s.title, "running": s.running, "exit": s.exit,
+            "auto_close": s.auto_close, "output_problem": s.output_problem}
 
 
 @app.route("/api/term", methods=["GET", "POST"])
@@ -976,7 +1012,7 @@ def api_term():
                 os.unlink(argv[1])
             return error("Too many running terminals. Close some first.")
         try:
-            session_obj = TermSession(title, argv, cwd, extra_env)
+            session_obj = TermSession(title, argv, cwd, extra_env, auto_close=terminal_auto_close(payload))
         except Exception:
             if extra_env is not None:
                 os.unlink(argv[1])
@@ -1012,13 +1048,13 @@ def ws_term(ws, sid):
         if replay:
             ws.send(json.dumps({"o": decoder.decode(replay)}))
         if already_exited:
-            ws.send(json.dumps({"x": s.exit}))
+            ws.send(json.dumps({"x": s.exit, "output_problem": s.output_problem}))
 
         def pump():
             while True:
                 data = q.get()
                 if data is None:
-                    ws.send(json.dumps({"x": s.exit}))
+                    ws.send(json.dumps({"x": s.exit, "output_problem": s.output_problem}))
                     return
                 text = decoder.decode(data)
                 if text:

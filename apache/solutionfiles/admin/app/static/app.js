@@ -1229,10 +1229,13 @@ function connectTerminal(t) {
 		if (message.x !== undefined) {
 			t.exited = true;
 			t.exitCode = message.x;
-			// A shell that ends (e.g. "exit") closes its tab, and the modal closes with the last tab
-			if (t.autoClose && t.remove) { t.remove(); loadSites().catch(() => {}); return; }
+			if (t.autoClose && message.x === 0 && message.output_problem === false && t.remove) {
+				t.remove();
+				run(loadSites);
+				return;
+			}
 			t.term.write(`\r\n\x1b[33m[Process exited with code ${message.x}]\x1b[0m\r\n`);
-			t.title.textContent += " ✓";
+			t.title.textContent += message.x === 0 && !message.output_problem ? " ✓" : " !";
 			run(loadSites).finally(() => {
 				if (activeTerminal === t.id && !$("#dock").hidden && !document.querySelector("dialog[open]")) {
 					requestAnimationFrame(fitActive);
@@ -1296,7 +1299,7 @@ function openTerminal(id, title, autoClose) {
 
 async function openTask(payload) {
 	const data = await api("/api/term", { json: payload });
-	openTerminal(data.id, data.title, payload.kind === "shell" || (payload.kind === "remote_tool" && payload.tool === "shell"));
+	openTerminal(data.id, data.title, data.auto_close);
 	if (terminals[data.id]) {
 		showDock();
 		for (const dialog of document.querySelectorAll("dialog[open]")) {
@@ -1311,7 +1314,7 @@ async function openTask(payload) {
 
 async function restoreTerminals() {
 	const { sessions } = await api("/api/term");
-	for (const s of sessions) openTerminal(s.id, s.title + (s.running ? "" : " ✓"), s.title.startsWith("Shell"));
+	for (const s of sessions) openTerminal(s.id, s.title, s.auto_close);
 	if (sessions.length) { for (const t of Object.values(terminals)) t.pane.hidden = true; activate(sessions[0].id); }
 }
 
