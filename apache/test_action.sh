@@ -37,8 +37,10 @@ case "${_action}" in
 		enable_https_config
 		_working=$(sed -n 's/^WorkingDirectory=//p' "${_servicePath}" 2>/dev/null || true)
 		if [[ -n ${_working} && -f ${_working}/appsettings.json ]]; then
-			configure_umbraco_https "${_working}/appsettings.json" "${_binding}" y
-			sudo systemctl restart "${_site}"
+			_settingsChanged=$(configure_umbraco_https "${_working}/appsettings.json" "${_binding}" y)
+			if [[ ${_settingsChanged} == changed ]]; then
+				sudo systemctl restart "${_site}"
+			fi
 		fi
 		echo "Certificate installed in ${_certificateDirectory}"
 		;;

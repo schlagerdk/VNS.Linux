@@ -69,6 +69,7 @@ sudo cp "${_keyFile}" "${_backupDir}/site.key"
 if [[ -f ${_appSettings} ]]; then
 	sudo cp "${_appSettings}" "${_backupDir}/appsettings.json"
 fi
+_appRestartAttempted=n
 
 _rollback() {
 	echo "Restoring previous Apache config and certificate" >&2
@@ -80,7 +81,7 @@ _rollback() {
 	fi
 	sudo apache2ctl configtest
 	sudo systemctl reload apache2
-	if [[ -f ${_servicePath} ]]; then
+	if [[ ${_appRestartAttempted} == y ]]; then
 		sudo systemctl restart "${_site}" || true
 	fi
 }
@@ -89,7 +90,7 @@ if ! sudo env OLD_BINDING="${_oldBinding}" NEW_BINDING="${_newBinding}" perl -pi
 	_rollback
 	exit 1
 fi
-if [[ -f ${_appSettings} ]] &&
+if [[ -f ${_appSettings} ]] && grep -q '"UmbracoApplicationUrl"' "${_appSettings}" &&
 	! sudo env NEW_BINDING="${_newBinding}" perl -0pi -e 's/("UmbracoApplicationUrl"\s*:\s*")[^"]*(")/${1}https:\/\/$ENV{NEW_BINDING}$2/ or die "UmbracoApplicationUrl not found\n"' "${_appSettings}"; then
 	_rollback
 	exit 1
@@ -137,9 +138,13 @@ if ! sudo apache2ctl configtest || ! sudo systemctl reload apache2; then
 	_rollback
 	exit 1
 fi
-if [[ -f ${_appSettings} ]] && ! sudo systemctl restart "${_site}"; then
-	_rollback
-	exit 1
+if [[ -f ${_backupDir}/appsettings.json ]] &&
+	! sudo cmp -s "${_backupDir}/appsettings.json" "${_appSettings}"; then
+	_appRestartAttempted=y
+	if ! sudo systemctl restart "${_site}"; then
+		_rollback
+		exit 1
+	fi
 fi
 
 _oldBindingInUse=0

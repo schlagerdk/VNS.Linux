@@ -60,12 +60,15 @@ backup=$(mktemp -d)
 trap 'rm -rf "${backup}"' EXIT
 cp "${conf}" "${backup}/site.conf"
 [[ -f ${settings} ]] && cp "${settings}" "${backup}/appsettings.json"
+app_restart_attempted=n
 rollback() {
 	echo "Restoring the previous Apache config" >&2
 	cp "${backup}/site.conf" "${conf}"
 	[[ -f ${backup}/appsettings.json ]] && cp "${backup}/appsettings.json" "${settings}"
 	apache2ctl configtest && systemctl reload apache2 || true
-	systemctl restart "${SITE}" 2>/dev/null || true
+	if [[ ${app_restart_attempted} == y ]]; then
+		systemctl restart "${SITE}" 2>/dev/null || true
+	fi
 }
 
 # 1. Serve the new name on port 80 (the certificate still points to the old one)
@@ -97,7 +100,10 @@ if [[ -f ${settings} ]] && grep -q "UmbracoApplicationUrl" "${settings}"; then
 fi
 apache2ctl configtest || { rollback; exit 1; }
 systemctl reload apache2
-systemctl restart "${SITE}" || { rollback; exit 1; }
+if [[ -f ${backup}/appsettings.json ]] && ! cmp -s "${backup}/appsettings.json" "${settings}"; then
+	app_restart_attempted=y
+	systemctl restart "${SITE}" || { rollback; exit 1; }
+fi
 
 # 4. Remove the old certificate unless another site still uses that name
 if used_by_other "${OLD}"; then

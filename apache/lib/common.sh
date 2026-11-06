@@ -270,6 +270,7 @@ install_apache_config() {
 	sudo systemctl reload apache2
 }
 
+# Prints "changed" only when application settings were updated.
 configure_umbraco_https() {
 	sudo python3 - "$1" "$2" "$3" <<'PY'
 import json
@@ -280,11 +281,16 @@ with open(path) as stream:
 cms = settings.get("Umbraco", {}).get("CMS")
 if cms is not None:
     secure = enabled == "y"
+    url = ("https://" if secure else "http://") + binding
+    if (cms.get("Global", {}).get("UseHttps") == secure
+            and cms.get("WebRouting", {}).get("UmbracoApplicationUrl") == url):
+        sys.exit(0)
     cms.setdefault("Global", {})["UseHttps"] = secure
-    cms.setdefault("WebRouting", {})["UmbracoApplicationUrl"] = ("https://" if secure else "http://") + binding
+    cms.setdefault("WebRouting", {})["UmbracoApplicationUrl"] = url
     with open(path, "w") as stream:
         json.dump(settings, stream, indent=2)
         stream.write("\n")
+    print("changed")
 PY
 }
 

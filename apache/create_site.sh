@@ -223,7 +223,7 @@ create_umbraco_project() {
 	sudo cp -f "${_files}/appsettings.json" "${_publish}/appsettings.json"
 	sudo sed -i "s|FolderName|${_binding}|g; s|UUID|$(uuidgen)|g" "${_publish}/appsettings.json"
 	if [[ ${_createCertificate} == n ]]; then
-		configure_umbraco_https "${_publish}/appsettings.json" "${_binding}" n
+		configure_umbraco_https "${_publish}/appsettings.json" "${_binding}" n >/dev/null
 	fi
 	sudo cp -f "${_files}/web.config" "${_publish}/web.config"
 	sudo sed -i "s|UmbracoCoreProjectName|${_projectName}|g" "${_publish}/web.config"
