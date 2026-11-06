@@ -214,7 +214,7 @@ const fsUrl = (action) => remoteFilesSite ? "/api/remote-fs/" + encodeURICompone
 // ------------------------------------------------------------------ sites
 
 let allSites = [];
-// The overview leaves out the Apache default site (/var/www/html) and the admin site itself (reached via Settings)
+// The admin site itself is reached via Settings.
 const isListed = (s) => !s.admin;
 const listedSites = () => allSites.filter(isListed);
 let filter = "all";
@@ -272,7 +272,7 @@ function siteState(site) {
 const hasProd = (site) => site.environments.some((e) => e.key === "prod");
 
 function renderStats() {
-	const searched = listedSites().filter(matchesQuery);
+	const searched = overviewSites().filter(matchesQuery);
 	const count = (test) => searched.filter(test).length;
 	const chips = [
 		["all", "All", searched.length],
@@ -376,9 +376,11 @@ function decorate(root) {
 
 let multiSelecting = false;
 const multiSites = new Set();
-const canMultiSelect = (site) => !site.admin && (site.kind === "csharp" || site.kind === "umbraco");
+const canMultiSelect = (site) => !site.admin && site.has_project && (site.kind === "csharp" || site.kind === "umbraco");
+const overviewSites = () => listedSites().filter((site) => !multiSelecting || canMultiSelect(site));
 
 function renderMultiSelection() {
+	$("#btn-check-updates").hidden = !listedSites().some(canMultiSelect);
 	$("#btn-multi").hidden = multiSelecting || !listedSites().some(canMultiSelect);
 	$("#btn-multi-action").hidden = !multiSelecting;
 	$("#btn-multi-action").disabled = multiSites.size === 0;
@@ -394,7 +396,7 @@ function renderSites() {
 	renderMultiSelection();
 	const box = $("#sites");
 	box.replaceChildren();
-	const visible = listedSites().filter(matches);
+	const visible = overviewSites().filter(matches);
 	$("#no-sites").hidden = visible.length > 0;
 	$("#btn-new-site").hidden = visible.length === 0;
 	const firstSite = listedSites().length === 0;

@@ -450,7 +450,7 @@ def site_info(name, states):
         port = match.group(1)
     aspnet = re.search(r"ASPNETCORE_ENVIRONMENT=(\S+)", service_text)
 
-    projects = glob.glob(os.path.join(root, "*.csproj"))
+    projects = [path for path in glob.glob(os.path.join(root, "*.csproj")) if os.path.isfile(path)]
     umbraco = ""
     packages = []
     package_errors = []
@@ -595,7 +595,7 @@ def api_package_updates():
     with UPDATE_CHECK_LOCK:
         if request.method == "POST" and not UPDATE_CHECK["running"]:
             names = [name for name in site_dirs() if name != ADMIN_SITE
-                     and glob.glob(os.path.join(WEB_ROOT, name, "*.csproj"))]
+                     and any(os.path.isfile(path) for path in glob.glob(os.path.join(WEB_ROOT, name, "*.csproj")))]
             UPDATE_CHECK.update(running=True, completed=0, total=len(names), errors=[])
             try:
                 threading.Thread(target=check_all_updates, args=(names,), daemon=True).start()
@@ -1045,6 +1045,8 @@ def build_command(data):
             info = site_info(site, {})
             if info["kind"] not in ("csharp", "umbraco") or info.get("admin"):
                 abort(400, "Multi actions require non-admin C# sites")
+            if not any(os.path.isfile(path) for path in glob.glob(os.path.join(WEB_ROOT, site, "*.csproj"))):
+                abort(400, "Multi actions require a C# project file in the site root")
             scripts = info["scripts"]
             if action in ("prod", "both") and "publish_prod.sh" not in scripts:
                 tasks.append({"site": site, "skip": "No production publish script"})

@@ -72,6 +72,17 @@ class BulkTests(unittest.TestCase):
         with self.assertRaises(BadRequest):
             self.command(action="add", package="bad;command")
 
+    def test_all_bulk_actions_require_project_file_in_site_root(self):
+        project = self.root / "two/Project.csproj"
+        project.unlink()
+        nested = project.parent / "nested"
+        nested.mkdir()
+        (nested / "Project.csproj").touch()
+        project.mkdir()
+        for action in ("check", "add", "remove", "local", "prod", "both", "outdated"):
+            with self.subTest(action=action), self.assertRaises(BadRequest):
+                self.command(action=action, package="Example")
+
     def test_checked_package_update_commands_and_validation(self):
         self.ns["site_info"] = lambda *_: {
             "kind": "csharp", "updates": "available",
