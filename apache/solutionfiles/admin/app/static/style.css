@@ -120,7 +120,7 @@ a.link:hover { text-decoration: underline; }
 .package-head h3 { margin: 0; font-size: 15px; }
 .package-count { padding: 2px 8px; border-radius: 12px; background: rgba(163, 113, 247, .15); color: var(--purple); font-size: 12px; font-weight: 600; }
 .package-head .actions { margin: 0; padding: 0; border: 0; }
-.package-list { padding: 4px 20px; }
+.package-list { display: flex; flex-direction: column; gap: 8px; padding: 12px 20px; }
 .package-list > p { margin: 12px 0; }
 .package-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 20px; width: 100%; min-width: 0; padding: 12px 10px; border: 0; border-radius: 6px; background: transparent; text-align: left; white-space: normal; }
 .package-row:hover { background: var(--hover); }
