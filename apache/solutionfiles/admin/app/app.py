@@ -451,6 +451,7 @@ def site_info(name, states):
     return {
         "name": name,
         "kind": kind,
+        "has_project": bool(projects),
         "umbraco_version": umbraco,
         "packages": packages,
         "package_errors": package_errors,

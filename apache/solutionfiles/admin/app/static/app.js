@@ -496,10 +496,10 @@ function renderSite(name) {
 			if (await ask({ title: label + "?", message: `Sync content to ${target.binding || target.host || site.name}.`, input: false, ok: label })) await openTask({ kind: "script", site: site.name, script: "sync_prod.sh" });
 		}) }));
 	}
-	if (!site.admin) add(hasProd(site) ? "Delete everything" : "Delete site", () => deleteSite(site, "all"), "danger");
+	if (!site.admin && hasProd(site)) add("Delete everything", () => deleteSite(site, "all"), "danger");
 	head.append(el("div", { className: "detail-title" }, el("h2", { textContent: site.name }), kindBadges(site)), actions);
 	for (const env of site.environments) envs.append(envPanel(site, env));
-	if (site.kind === "csharp" || site.kind === "umbraco") {
+	if (site.has_project && (site.kind === "csharp" || site.kind === "umbraco")) {
 		packagesPanel.hidden = false;
 		const packages = (site.packages || []).filter((item) => item.name.toLowerCase() !== "microsoft.icu.icu4c.runtime");
 		const packageActions = el("div", { className: "actions" },
@@ -635,6 +635,7 @@ function envPanel(site, env) {
 		extraTools = tools;
 	}
 	if (hasProd(site) && !site.admin) add(`Delete ${environmentLabel(site, env)} site`, () => deleteSite(site, env.key === "prod" ? "prod" : "test"), "danger");
+	if (!hasProd(site) && !site.admin) add("Delete site", () => deleteSite(site, "all"), "danger");
 
 	const panel = el("section", { className: "env " + (env.key === "prod" ? "prod" : "") }, heading, meta);
 	if (env.exists === false) panel.append(el("p", { className: "muted", textContent: "Nothing published here yet." }));
