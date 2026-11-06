@@ -1,4 +1,7 @@
 <Project>
+  <PropertyGroup>
+    <SatelliteResourceLanguages Condition="'$(SatelliteResourceLanguages)' == ''">en;da</SatelliteResourceLanguages>
+  </PropertyGroup>
   <Target Name="VnsRefreshPublishedAssemblies" BeforeTargets="_ComputeResolvedFilesToPublishTypes">
     <ItemGroup>
       <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.dll'">

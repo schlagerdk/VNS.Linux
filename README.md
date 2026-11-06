@@ -8,6 +8,8 @@ C# site publishes remain framework-dependent and target the destination Linux ar
 
 Publish uses `apache/lib/publish.targets` to always refresh assemblies, even when an existing DLL has a newer timestamp. This prevents an old portable SQL client placeholder from surviving a Linux-specific publish. Existing sites can update their publish commands by running `sudo /vns/apache/update_admin_site.sh --update-csharp-publish-scripts` again; publish each affected site afterward. This does not delete settings or site data.
 
+The shared publish targets default `SatelliteResourceLanguages` to `en;da`, retaining only English and Danish satellite assemblies from dependencies. Neutral resources remain available as the fallback. This does not restrict Umbraco content languages, but other translations of library messages and resource-based UI are omitted. A project can override this property to retain additional cultures. Existing language folders in an in-place publish directory are not removed automatically.
+
 ## Installation
 
 Run as a user with `sudo` privileges:
