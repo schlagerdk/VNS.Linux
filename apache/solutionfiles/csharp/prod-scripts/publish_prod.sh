@@ -6,6 +6,9 @@
 # Requirements on prod: VNS.Linux apache/init.sh has been run, and the login is root or has passwordless sudo.
 # DNS for PROD_BINDING must point to the target server before the certificate can be issued.
 # With PROD_LOCAL_PATH use a PROD_FOLDER and PROD_BINDING that differ from the site it is published from.
+if [[ ${VNS_PUBLISH_TRACKED:-} != prod ]]; then
+	exec python3 "@APACHE_DIR@/lib/publish_status.py" run "$(cd "$(dirname "$0")/.." && pwd)" prod /bin/bash "$(realpath "$0")" "$@"
+fi
 cd "$(dirname "$0")"
 cd ..
 set -euo pipefail

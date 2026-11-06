@@ -46,6 +46,9 @@ _files_module = importlib.util.module_from_spec(_files_spec)
 _files_spec.loader.exec_module(_files_module)
 editable_file = _files_module.editable_file
 contains_editable_files = _files_module.contains_editable_files
+_publish_spec = importlib.util.spec_from_file_location("vns_publish_status", os.path.join(APACHE_DIR, "lib", "publish_status.py"))
+_publish_module = importlib.util.module_from_spec(_publish_spec)
+_publish_spec.loader.exec_module(_publish_module)
 ADMIN_SITE = cfg.get("admin_site", "")
 APACHE_SITES = "/etc/apache2/sites-available"
 APACHE_ENABLED = "/etc/apache2/sites-enabled"
@@ -456,6 +459,21 @@ def site_info(name, states):
                                  "port": prod["PROD_PORT_HTTP"], "path": "", "host": prod["PROD_IP"], "user": prod["PROD_USER"],
                                  "ssh_port": prod["PROD_SSH_PORT"], "folder": prod["PROD_FOLDER"], "environment": "Unknown",
                                  **remote_status(name)})
+
+    if projects:
+        try:
+            current = _publish_module.fingerprint(root)
+        except (OSError, ValueError) as exc:
+            app.logger.warning("Could not read publish status for %s: %s", name, exc)
+            current = None
+        for environment in environments:
+            scope = "prod" if environment["key"] == "prod" else "test"
+            environment["publish_status"] = "unknown"
+            if current is not None:
+                try:
+                    environment["publish_status"] = _publish_module.status(root, scope, current)
+                except (OSError, ValueError) as exc:
+                    app.logger.warning("Could not read %s publish status for %s: %s", scope, name, exc)
 
     return {
         "name": name,
@@ -907,12 +925,14 @@ def build_command(data):
                       if os.path.isfile(os.path.join(folder, name))), None)
         if not local:
             abort(400, "This site has no test publish script")
-        _, local_argv, cwd = build_command({"kind": "script", "site": site, "script": local})
-        _, prod_argv, _ = build_command({"kind": "script", "site": site, "script": "publish_prod.sh"})
+        build_command({"kind": "script", "site": site, "script": local})
+        build_command({"kind": "script", "site": site, "script": "publish_prod.sh"})
+        root = os.path.join(WEB_ROOT, site)
         return "Publish both: " + site, [
-            bash, "-c", '/bin/bash "$1" && /bin/bash "$2"',
-            "publish-both", local_argv[1], prod_argv[1],
-        ], cwd
+            sys.executable, os.path.join(APACHE_DIR, "lib", "publish_status.py"),
+            "both", root, os.path.realpath(os.path.join(folder, local)),
+            os.path.realpath(os.path.join(folder, "publish_prod.sh")),
+        ], root
     if kind == "script":
         site = site_arg(data)
         script = data.get("script", "")
@@ -920,7 +940,12 @@ def build_command(data):
         path = os.path.realpath(os.path.join(folder, script))
         if not SCRIPT_RE.match(script) or os.path.dirname(path) != os.path.realpath(folder) or not os.path.isfile(path):
             abort(400, "Unknown script")
-        return "%s: %s" % (site, script), [bash, path], folder
+        argv = [bash, path]
+        root = os.path.join(WEB_ROOT, site)
+        if script in ("publish.sh", "publish_local.sh", "publish_prod.sh") and glob.glob(os.path.join(root, "*.csproj")):
+            argv = [sys.executable, os.path.join(APACHE_DIR, "lib", "publish_status.py"),
+                    "run", root, "prod" if script == "publish_prod.sh" else "test", *argv]
+        return "%s: %s" % (site, script), argv, folder
     if kind == "dotnet_package":
         site = site_arg(data)
         if site_info(site, {})["kind"] not in ("csharp", "umbraco"):

@@ -4,6 +4,9 @@
 # After create_prod.sh has run this script is called publish_local.sh.
 set -euo pipefail
 [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
+if [[ ${VNS_PUBLISH_TRACKED:-} != test ]]; then
+	exec python3 "@APACHE_DIR@/lib/publish_status.py" run "$(cd "$(dirname "$0")/.." && pwd)" test /bin/bash "$(realpath "$0")" "$@"
+fi
 cd "$(dirname "$0")"
 cd ..
 

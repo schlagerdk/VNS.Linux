@@ -390,6 +390,13 @@ function environmentLabel(site, env) {
 	return site.kind === "python" ? "Live" : env.environment || (site.kind === "csharp" || site.kind === "umbraco" ? "Unknown" : env.label);
 }
 
+function publishBadge(env) {
+	const labels = { pending: "Publish pending", unknown: "Publish status unknown" };
+	const label = labels[env.publish_status];
+	return label ? el("span", { className: "badge publish-" + env.publish_status, textContent: label,
+		title: env.publish_status === "pending" ? "Project or package configuration has changed since this environment's last successful publish." : "Publish this environment to establish its package baseline." }) : null;
+}
+
 function siteCard(site) {
 	const state = siteState(site);
 	const actions = el("div", { className: "site-links" });
@@ -400,6 +407,8 @@ function siteCard(site) {
 		const heading = el("div", { className: "site-environment-head" },
 			el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 		if (env.mode === "remote") heading.append(remoteIcon(env));
+		const pending = publishBadge(env);
+		if (pending) heading.append(pending);
 		group.append(heading);
 		const links = el("div", { className: "site-environment-links" });
 		const scheme = env.scheme || "https";
@@ -571,6 +580,8 @@ function envPanel(site, env) {
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
 	const environment = site.kind === "python" ? "Live" : env.environment;
 	if (environment) heading.append(el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
+	const pending = publishBadge(env);
+	if (pending) heading.append(pending);
 	heading.append(httpsLock(env.https));
 	if (env.mode === "remote") heading.append(remoteIcon(env));
 

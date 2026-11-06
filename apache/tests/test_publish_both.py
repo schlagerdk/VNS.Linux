@@ -1,8 +1,10 @@
 import ast
+import glob
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -23,7 +25,9 @@ class PublishBothTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
         self.scripts = self.root / "example.test/scripts"
         self.scripts.mkdir(parents=True)
+        (self.scripts.parent / "Example.csproj").write_text("<Project />")
         self.ns = {"os": os, "abort": abort, "WEB_ROOT": str(self.root),
+                   "glob": glob, "sys": sys, "APACHE_DIR": str(APP.parents[2]),
                    "SCRIPT_RE": re.compile(r"^[A-Za-z0-9_.-]+\.sh$"),
                    "site_arg": lambda data: "example.test"}
         exec(compile(ast.Module(body=nodes, type_ignores=[]), "publish both", "exec"), self.ns)
@@ -39,9 +43,9 @@ class PublishBothTests(unittest.TestCase):
                 title, argv, cwd = self.command()
                 self.assertEqual(title, "Publish both: example.test")
                 subprocess.run(argv, cwd=cwd, check=True, capture_output=True)
-                self.assertEqual((self.scripts / "order").read_text(), "test\nproduction\n")
+                self.assertEqual((self.scripts.parent / "order").read_text(), "test\nproduction\n")
                 (self.scripts / local).unlink()
-                (self.scripts / "order").unlink()
+                (self.scripts.parent / "order").unlink()
 
     def test_test_failure_skips_production_and_preserves_exit_code(self):
         (self.scripts / "publish_local.sh").write_text("exit 7\n")
@@ -49,13 +53,22 @@ class PublishBothTests(unittest.TestCase):
         _, argv, cwd = self.command()
         result = subprocess.run(argv, cwd=cwd, capture_output=True)
         self.assertEqual(result.returncode, 7)
-        self.assertFalse((self.scripts / "production-ran").exists())
+        self.assertFalse((self.scripts.parent / "production-ran").exists())
 
     def test_production_failure_preserves_exit_code(self):
         (self.scripts / "publish_local.sh").write_text("exit 0\n")
         (self.scripts / "publish_prod.sh").write_text("exit 9\n")
         _, argv, cwd = self.command()
         self.assertEqual(subprocess.run(argv, cwd=cwd, capture_output=True).returncode, 9)
+
+    def test_existing_individual_scripts_are_tracked_through_admin(self):
+        for script, scope in (("publish.sh", "test"), ("publish_local.sh", "test"), ("publish_prod.sh", "prod")):
+            with self.subTest(script=script):
+                (self.scripts / script).write_text("exit 0\n")
+                _, argv, cwd = self.ns["build_command"](
+                    {"kind": "script", "site": "example.test", "script": script})
+                subprocess.run(argv, cwd=cwd, check=True, capture_output=True)
+                self.assertTrue((self.scripts.parent / ".vns-publish" / (scope + ".json")).is_file())
 
     def test_missing_or_escaping_scripts_are_rejected(self):
         with self.assertRaises(BadRequest):

@@ -3,6 +3,8 @@
 # Templates live in solutionfiles/ and use @PLACEHOLDERS@ that are replaced by render().
 
 _apacheDir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Installed create_prod.sh scripts render current templates using exported R_* values.
+export R_APACHE_DIR="${_apacheDir}"
 _solutionFolder="${_apacheDir}/solutionfiles"
 _portReservationDir=/run/lock/vns-apache-port-reservations
 _portAllocationLock=/run/lock/vns-apache-port-allocation.lock
