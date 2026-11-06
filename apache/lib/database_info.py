@@ -80,6 +80,7 @@ def database_details(root, environment="", variables=None):
                    if key.startswith("connectionstrings__") and isinstance(value, str)}
     providers = set()
     names = set()
+    servers = set()
     for key, value in connections.items():
         if not value.strip():
             continue
@@ -96,10 +97,16 @@ def database_details(root, environment="", variables=None):
                 name = str(Path(root) / name)
         else:
             name = fields.get("initial catalog") or fields.get("database", "")
+            if kind in ("MS SQL", "SQL Express", "Azure SQL"):
+                server = next((fields[key] for key in ("server", "data source", "address", "addr", "network address")
+                               if fields.get(key)), "")
+                if server:
+                    servers.add(server)
         if name:
             names.add(name)
     return {"database": next(iter(providers)) if len(providers) == 1 else "Unknown",
-            "database_name": " / ".join(sorted(names))}
+            "database_name": " / ".join(sorted(names)),
+            "database_server": " / ".join(sorted(servers))}
 
 
 def database_type(root, environment="", variables=None):

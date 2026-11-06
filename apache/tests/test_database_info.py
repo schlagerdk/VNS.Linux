@@ -152,7 +152,21 @@ with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch
                 self.settings(connection, provider)
                 self.assertEqual(database.database_details(self.root)["database_name"], expected)
         self.settings("Server=example;User ID=Example", "Microsoft.Data.SqlClient")
-        self.assertEqual(database.database_details(self.root), {"database": "MS SQL", "database_name": ""})
+        self.assertEqual(database.database_details(self.root), {
+            "database": "MS SQL", "database_name": "", "database_server": "example"})
+
+    def test_server_aliases_instances_ports_and_sqlite(self):
+        for connection, provider, expected in (
+            ("Server=172.23.3.21;Database=App;User ID=Example", None, "172.23.3.21"),
+            (r"Data Source=Host\SQLEXPRESS,1433;Database=App", None, r"Host\SQLEXPRESS,1433"),
+            ("Address=tcp:Example.database.windows.net,1433;Database=App", "Microsoft.Data.SqlClient",
+             "tcp:Example.database.windows.net,1433"),
+            ("Data Source=App.db", "Microsoft.Data.Sqlite", ""),
+            ("Host=custom;Database=App", "Npgsql", ""),
+        ):
+            with self.subTest(connection=connection):
+                self.settings(connection, provider)
+                self.assertEqual(database.database_details(self.root)["database_server"], expected)
 
     def test_names_respect_environment_and_service_overrides(self):
         self.settings("Server=example;Database=BaseApp")
@@ -175,14 +189,14 @@ const assert = require("node:assert/strict");
 const el = (tag, properties) => ({tag, ...properties});
 for (const kind of ["csharp", "umbraco", "python", "html"]) {
     for (const database of ["MS SQL", "SQL Express", "SQLite", "Azure SQL", "Unknown", undefined]) {
-        const site = {kind}, env = {database, database_name: "MyApplication"};
+        const site = {kind}, env = {database, database_name: "MyApplication", database_server: database === "SQLite" ? "" : "172.23.3.21"};
         const meta = {children: [], append(...items) {this.children.push(...items);}};
         ROW
         if (kind === "csharp" || kind === "umbraco") {
             assert.equal(meta.children[0].tag, "dt");
             assert.equal(meta.children[0].textContent, "Datasource");
             assert.equal(meta.children[1].tag, "dd");
-            assert.equal(meta.children[1].textContent, database || "Unknown");
+            assert.equal(meta.children[1].textContent, (database || "Unknown") + (env.database_server ? " (172.23.3.21)" : ""));
             assert.equal(meta.children[2].textContent, "Database");
             assert.equal(meta.children[3].textContent, "MyApplication");
         } else assert.equal(meta.children.length, 0);

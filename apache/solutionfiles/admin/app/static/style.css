@@ -212,6 +212,7 @@ body.login { display: grid; place-items: center; min-height: 100vh; background: 
 .env.prod { border-top-color: var(--orange); }
 .env-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .env-head h3 { margin: 0; font-size: 18px; }
+.env-head .create-production { margin-left: auto; }
 .env .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
 
 #dock { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(1, 4, 9, .72); backdrop-filter: blur(3px); }

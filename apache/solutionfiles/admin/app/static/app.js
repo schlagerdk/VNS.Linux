@@ -516,9 +516,6 @@ function renderSite(name) {
 	const actions = el("div", { className: "actions" });
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: className || "", onclick: () => run(handler) }));
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
-	if (!hasProd(site) && site.scripts.includes("create_prod.sh")) {
-		add("Create production site", () => openCreateProdDialog(site));
-	}
 	if (hasProd(site) && site.scripts.includes("publish_prod.sh") && ["publish_local.sh", "publish.sh"].some((file) => site.scripts.includes(file))) {
 		add("Publish both", async () => {
 			if (await ask({ title: "Publish both?", message: "Publish the test site first, then production (local or remote). Both services are restarted. If test publishing fails, production is not published.", input: false, ok: "Publish both" })) {
@@ -613,6 +610,10 @@ function envPanel(site, env) {
 	if (environment) heading.append(el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 	heading.append(httpsLock(env.https));
 	if (env.mode === "remote") heading.append(remoteIcon(env));
+	if (env.key !== "prod" && !hasProd(site) && site.scripts.includes("create_prod.sh")) {
+		heading.append(el("button", { textContent: "Create production site", className: "small create-production",
+			onclick: () => run(() => openCreateProdDialog(site)) }));
+	}
 	const pending = publishBadge(env);
 	if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 
@@ -624,7 +625,8 @@ function envPanel(site, env) {
 	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(env.binding + "/umbraco", scheme + "://" + env.binding + "/umbraco")));
 	if (site.kind === "csharp" || site.kind === "umbraco") {
 		meta.append(el("dt", { textContent: "Datasource" }), el("dd", {
-			textContent: env.database || "Unknown",
+			className: "database-name",
+			textContent: (env.database || "Unknown") + (env.database_server ? ` (${env.database_server})` : ""),
 			title: "Inferred from database configuration; connection and server edition are not tested.",
 		}));
 		if (env.database_name) meta.append(el("dt", { textContent: "Database" }), el("dd", {
