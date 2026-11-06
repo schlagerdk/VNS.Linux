@@ -303,7 +303,7 @@ const iconPaths = {
 // label (exact, or a prefix ending in "*") -> [icon, tone]
 const buttonStyles = {
 	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
-	"Publish": ["upload", "green"], "Sync to*": ["sync", "green"], "Start": ["play", "green"],
+	"Publish": ["upload", "green"], "Publish both": ["upload", "green"], "Sync to*": ["sync", "green"], "Start": ["play", "green"],
 	"Add package": ["download", "green"], "Remove package": ["trash", "red"],
 	"Fix permissions": ["shield", "teal"], "Update Python packages": ["sync", "blue"],
 	"Create production site": ["server", "purple"],
@@ -478,6 +478,13 @@ function renderSite(name) {
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
 	if (!hasProd(site) && site.scripts.includes("create_prod.sh")) {
 		add("Create production site", () => openCreateProdDialog(site));
+	}
+	if (hasProd(site) && site.scripts.includes("publish_prod.sh") && ["publish_local.sh", "publish.sh"].some((file) => site.scripts.includes(file))) {
+		add("Publish both", async () => {
+			if (await ask({ title: "Publish both?", message: "Publish the test site first, then production (local or remote). Both services are restarted. If test publishing fails, production is not published.", input: false, ok: "Publish both" })) {
+				await openTask({ kind: "publish_both", site: site.name });
+			}
+		});
 	}
 	if (site.kind !== "csharp" && site.kind !== "umbraco" && site.scripts.includes("outdated.sh")) {
 		actions.append(el("button", { textContent: "Check outdated", title: "outdated.sh", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));

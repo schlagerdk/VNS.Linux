@@ -24,7 +24,7 @@ class TerminalCompletionTests(unittest.TestCase):
     def test_mutations_close_and_diagnostics_remain(self):
         auto_close = self.ns["terminal_auto_close"]
         for kind in ("create_site", "delete_site", "create_prod", "change_binding", "prod_action",
-                     "shell", "dotnet_package"):
+                     "shell", "dotnet_package", "publish_both"):
             self.assertTrue(auto_close({"kind": kind}), kind)
         for script in ("publish.sh", "publish_local.sh", "publish_prod.sh", "sync_prod.sh",
                        "change_env.sh", "clear_logs.sh", "outdated.sh"):

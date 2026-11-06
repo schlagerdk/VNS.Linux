@@ -629,7 +629,7 @@ DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 def terminal_auto_close(payload):
     kind = payload.get("kind")
-    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions"):
+    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions", "publish_both"):
         return True
     if kind == "remote_tool":
         return payload.get("tool") == "shell"
@@ -876,7 +876,7 @@ def render_create_prod_script(site):
 
 
 def build_command(data):
-    """Validate a terminal request and return (title, argv, cwd). Nothing is passed through a shell."""
+    """Validate a terminal request and return (title, argv, cwd). User input is never shell code."""
     kind = data.get("kind")
     bash = "/bin/bash"
     if kind == "remote_tool":
@@ -900,6 +900,19 @@ def build_command(data):
                 title = "Shell: " + (data.get("label") or rel(cwd))[:60]
             return title, [bash, "-l"], cwd
         return "Shell: server", [bash, "-l"], WEB_ROOT
+    if kind == "publish_both":
+        site = site_arg(data)
+        folder = os.path.join(WEB_ROOT, site, "scripts")
+        local = next((name for name in ("publish_local.sh", "publish.sh")
+                      if os.path.isfile(os.path.join(folder, name))), None)
+        if not local:
+            abort(400, "This site has no test publish script")
+        _, local_argv, cwd = build_command({"kind": "script", "site": site, "script": local})
+        _, prod_argv, _ = build_command({"kind": "script", "site": site, "script": "publish_prod.sh"})
+        return "Publish both: " + site, [
+            bash, "-c", '/bin/bash "$1" && /bin/bash "$2"',
+            "publish-both", local_argv[1], prod_argv[1],
+        ], cwd
     if kind == "script":
         site = site_arg(data)
         script = data.get("script", "")
