@@ -98,7 +98,7 @@ if ((_local)); then
 fi
 
 echo "Publish (Release)"
-dotnet publish "${_projectName}.csproj" -c Release -p:PublishDir="${_publishFolder}" --runtime "${_runtimeIdentifier}" --self-contained false --nologo
+dotnet publish "${_projectName}.csproj" -c Release -p:PublishDir="${_publishFolder}" -p:CustomAfterMicrosoftCommonTargets="@APACHE_DIR@/lib/publish.targets" --runtime "${_runtimeIdentifier}" --self-contained false --nologo
 if [[ ! -f ${_publishFolder}/${_projectName}.dll ]]; then
 	echo "Publish failed: ${_projectName}.dll not found in the output" >&2
 	exit 1

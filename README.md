@@ -6,6 +6,8 @@ Everything is deployed to `/vns` on the server.
 
 C# site publishes remain framework-dependent and target the destination Linux architecture (`linux-x64` or `linux-arm64`), so NuGet runtime assets for unrelated platforms are not copied into each publish folder. Production publishing detects the target architecture over SSH.
 
+Publish uses `apache/lib/publish.targets` to always refresh assemblies, even when an existing DLL has a newer timestamp. This prevents an old portable SQL client placeholder from surviving a Linux-specific publish. Existing sites can update their publish commands by running `sudo /vns/apache/update_admin_site.sh --update-csharp-publish-scripts` again; publish each affected site afterward. This does not delete settings or site data.
+
 ## Installation
 
 Run as a user with `sudo` privileges:

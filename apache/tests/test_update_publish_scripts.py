@@ -64,6 +64,7 @@ class UpdatePublishScriptsTests(unittest.TestCase):
         self.assertIn("source " + shlex.quote(str(self.apache / "lib/dotnet.sh")), local)
         self.assertIn('rm -rf "${_publishFolder}/runtimes"', local)
         self.assertIn('--runtime "$(linux_runtime_identifier)" --self-contained false', local)
+        self.assertIn("CustomAfterMicrosoftCommonTargets=" + str(self.apache / "lib/publish.targets"), local)
         self.assertEqual(self.local.stat().st_mode & 0o777, 0o700)
         self.assertIn('--runtime "$(linux_runtime_identifier)"', self.local_prod.read_text())
 
@@ -85,6 +86,23 @@ class UpdatePublishScriptsTests(unittest.TestCase):
         self.assertEqual(second.returncode, 0, second.stderr)
         self.assertIn("Already current", second.stdout)
         self.assertEqual(contents, [path.read_text() for path in (self.local, self.local_prod, self.remote)])
+
+    def test_already_migrated_script_gets_assembly_refresh_without_duplicate_source(self):
+        for path in (self.local, self.local_prod):
+            text = path.read_text().replace(
+                "dotnet publish", f'source "{self.apache}/lib/dotnet.sh"\ndotnet publish'
+            ).replace("--self-contained false", '--runtime "$(linux_runtime_identifier)" --self-contained false')
+            path.write_text(text)
+        result = self.run_updater()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for path in (self.local, self.local_prod):
+            text = path.read_text()
+            self.assertEqual(text.count("/lib/dotnet.sh"), 1)
+            self.assertEqual(text.count("CustomAfterMicrosoftCommonTargets="), 1)
+        contents = self.local.read_text()
+        result = self.run_updater()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(contents, self.local.read_text())
 
 
 if __name__ == "__main__":

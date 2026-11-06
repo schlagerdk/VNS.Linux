@@ -48,7 +48,9 @@ def update_publish_script(path, production):
             ('--runtime "${_runtimeIdentifier}"' if production
              else '--runtime "$(linux_runtime_identifier)"') + " --self-contained false",
         )
-        text = text[:match.start()] + command + text[match.end():]
+    if "CustomAfterMicrosoftCommonTargets=" not in command:
+        command += " -p:CustomAfterMicrosoftCommonTargets=" + shlex.quote(str(apache / "lib/publish.targets"))
+    text = text[:match.start()] + command + text[match.end():]
 
     if production:
         remote_definition = re.search(r"(?m)^remote\(\) \{[^\n]*\}$", text)
@@ -57,13 +59,13 @@ def update_publish_script(path, production):
         if "_runtimeIdentifier=$(linux_runtime_identifier)" not in text:
             text = text[:remote_definition.end()] + "\n" + production_runtime + text[remote_definition.end():]
             remote_definition = re.search(r"(?m)^remote\(\) \{[^\n]*\}$", text)
-        if not re.search(r"(?m)^source .*/lib/dotnet\.sh$", text):
+        if not re.search(r"""(?m)^source .*/lib/dotnet\.sh["']?$""", text):
             text = text[:remote_definition.start()] + production_source + text[remote_definition.start():]
     else:
         publish = re.search(r"(?m)^([ \t]*)dotnet publish\b[^\n]*$", text)
         prefix = publish.group(1)
         additions = ""
-        if not re.search(r"(?m)^source .*/lib/dotnet\.sh$", text):
+        if not re.search(r"""(?m)^source .*/lib/dotnet\.sh["']?$""", text):
             additions += prefix + local_source
         if not re.search(r'(?m)^rm -rf "\$\{_publishFolder\}/runtimes"$', text):
             additions += prefix + 'rm -rf "${_publishFolder}/runtimes"\n'

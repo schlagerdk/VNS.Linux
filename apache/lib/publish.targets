@@ -1,0 +1,12 @@
+<Project>
+  <Target Name="VnsRefreshPublishedAssemblies" BeforeTargets="_ComputeResolvedFilesToPublishTypes">
+    <ItemGroup>
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.dll'">
+        <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <PropertyGroup>
+      <SkipCopyUnchangedFiles>false</SkipCopyUnchangedFiles>
+    </PropertyGroup>
+  </Target>
+</Project>
