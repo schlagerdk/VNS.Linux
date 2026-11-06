@@ -29,10 +29,13 @@ echo "The new domain must resolve to ${_target} and be reachable on HTTP/port 80
 read -r -p "Change production binding ${_oldBinding} to ${_newBinding} on ${_target}, issue a new certificate, and remove the old one if unused? [y/N]: " _confirm
 [[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
 
-_vars="SITE='${PROD_FOLDER}' OLD='${_oldBinding}' NEW='${_newBinding}' ROOT='${_root}' ACME_SERVER='${_acmeServer}'"
+_umbraco=n
+[[ -f ${_siteRoot}/scripts/sync_prod.sh ]] && _umbraco=1
+_vars="SITE='${PROD_FOLDER}' OLD='${_oldBinding}' NEW='${_newBinding}' ROOT='${_root}' ACME_SERVER='${_acmeServer}' MAIL='${PROD_ADMIN_MAIL:-${_adminMail}}' UMBRACO='${_umbraco}'"
 
 prod_run "${_vars}" <<'REMOTE'
 set -euo pipefail
+source /vns/apache/lib/common.sh
 conf=/etc/apache2/sites-available/${SITE}.conf
 acme=/etc/acmesh/acme.sh
 oldcert=/etc/ssl/certs/${OLD}_ecc
@@ -113,6 +116,8 @@ sed -i "s|${oldcert}/fullchain.cer|${newcert}/fullchain.cer|g; s|${oldcert}/${OL
 if [[ -f ${settings} ]] && grep -q "UmbracoApplicationUrl" "${settings}"; then
 	sed -i -E "s|(\"UmbracoApplicationUrl\"[[:space:]]*:[[:space:]]*\")[^\"]*|\1https://${NEW}|" "${settings}"
 fi
+ensure_production_tls_config "${conf}" "/etc/systemd/system/${SITE}.service" "${SITE}" \
+	"${NEW}" "${ROOT}" "${newcert}" "${MAIL}" "${UMBRACO}" || { rollback; exit 1; }
 apache2ctl configtest || { rollback; exit 1; }
 systemctl reload apache2
 if [[ -f ${backup}/appsettings.json ]] && ! cmp -s "${backup}/appsettings.json" "${settings}"; then

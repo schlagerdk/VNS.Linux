@@ -22,30 +22,33 @@ case "${_action}" in
 			read -r -p "Issue a new certificate for ${PROD_BINDING} on ${_target}? [y/N]: " _confirm
 		fi
 		[[ ${_confirm} == [yY] || ${_confirm} == [yY][eE][sS] ]] || { echo "Aborted"; exit 1; }
-		prod_run "SITE='${PROD_FOLDER}' BINDING='${PROD_BINDING,,}' ACME_SERVER='${_acmeServer}'" <<'REMOTE'
+		_umbraco=n
+		[[ -f ${_siteRoot}/scripts/sync_prod.sh ]] && _umbraco=1
+		prod_run "SITE='${PROD_FOLDER}' BINDING='${PROD_BINDING,,}' ACME_SERVER='${_acmeServer}' ROOT='${_root}' MAIL='${PROD_ADMIN_MAIL:-${_adminMail}}' UMBRACO='${_umbraco}'" <<'REMOTE'
 set -euo pipefail
 acme=/etc/acmesh/acme.sh
 certdir=/etc/ssl/certs/${BINDING}_ecc
-		conf=/etc/apache2/sites-available/${SITE}.conf
-		[[ -x ${acme} ]] || { echo "acme.sh not found (${acme}). Run apache/init.sh there first." >&2; exit 1; }
-		[[ -f ${conf} ]] || { echo "Apache config for ${SITE} not found. Publish to production first." >&2; exit 1; }
-		domains=("${BINDING}")
-		while IFS= read -r alias; do
-			[[ -n ${alias} ]] || continue
-			alias=${alias,,}
-			[[ ${alias} =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ && ${#alias} -le 253 ]] || {
-				echo "Invalid ServerAlias '${alias}' in ${conf}; certificate issuance stopped." >&2
-				exit 1
-			}
-			found=0
-			for domain in "${domains[@]}"; do [[ ${domain} == "${alias}" ]] && found=1; done
-			((found)) || domains+=("${alias}")
-		done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${conf}")
-		domain_args=()
-		for domain in "${domains[@]}"; do domain_args+=(-d "${domain}"); done
-		printf 'Issue certificate for: %s\n' "${domains[*]}"
-		rc=0
-		"${acme}" --issue --apache --force --server "${ACME_SERVER}" "${domain_args[@]}" || rc=$?
+source /vns/apache/lib/common.sh
+conf=/etc/apache2/sites-available/${SITE}.conf
+[[ -x ${acme} ]] || { echo "acme.sh not found (${acme}). Run apache/init.sh there first." >&2; exit 1; }
+[[ -f ${conf} ]] || { echo "Apache config for ${SITE} not found. Publish to production first." >&2; exit 1; }
+domains=("${BINDING}")
+while IFS= read -r alias; do
+	[[ -n ${alias} ]] || continue
+	alias=${alias,,}
+	[[ ${alias} =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ && ${#alias} -le 253 ]] || {
+		echo "Invalid ServerAlias '${alias}' in ${conf}; certificate issuance stopped." >&2
+		exit 1
+	}
+	found=0
+	for domain in "${domains[@]}"; do [[ ${domain} == "${alias}" ]] && found=1; done
+	((found)) || domains+=("${alias}")
+done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${conf}")
+domain_args=()
+for domain in "${domains[@]}"; do domain_args+=(-d "${domain}"); done
+printf 'Issue certificate for: %s\n' "${domains[*]}"
+rc=0
+"${acme}" --issue --apache --force --server "${ACME_SERVER}" "${domain_args[@]}" || rc=$?
 if [[ ${rc} -ne 0 && ${rc} -ne 2 ]]; then
 	echo "Certificate issue failed. Check that DNS for ${BINDING} points to this server." >&2
 	exit 1
@@ -53,6 +56,10 @@ fi
 mkdir -p "${certdir}"
 "${acme}" --install-cert -d "${BINDING}" --key-file "${certdir}/${BINDING}.key" \
 	--fullchain-file "${certdir}/fullchain.cer" --reloadcmd "systemctl reload apache2"
+ensure_production_tls_config "${conf}" "/etc/systemd/system/${SITE}.service" "${SITE}" \
+	"${BINDING}" "${ROOT}" "${certdir}" "${MAIL}" "${UMBRACO}"
+apache2ctl configtest
+systemctl reload apache2
 echo "Certificate installed in ${certdir}"
 REMOTE
 		;;

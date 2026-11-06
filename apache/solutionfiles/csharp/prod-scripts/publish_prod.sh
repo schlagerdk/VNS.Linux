@@ -182,26 +182,27 @@ EOF
 	systemctl enable "${SITE}"
 fi
 
+server_aliases=()
+if [[ -f ${conf} ]]; then
+	while IFS= read -r alias; do
+		[[ -n ${alias} ]] || continue
+		alias=${alias,,}
+		[[ ${alias} =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ && ${#alias} -le 253 ]] || {
+			echo "Invalid ServerAlias '${alias}' in ${conf}; certificate issuance stopped." >&2
+			exit 1
+		}
+		found=0
+		for domain in "${BINDING}" "${server_aliases[@]}"; do [[ ${domain} == "${alias}" ]] && found=1; done
+		((found)) || server_aliases+=("${alias}")
+	done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${conf}")
+fi
+server_alias_line=""
+if ((${#server_aliases[@]})); then
+	printf -v server_alias_line '  ServerAlias %s' "${server_aliases[*]}"
+fi
+
 if [[ ! -e ${certdir}/fullchain.cer ]]; then
 	[[ -x ${acme} ]] || { echo "acme.sh not found on prod (${acme}). Run apache/init.sh there first." >&2; exit 1; }
-	server_aliases=()
-	if [[ -f ${conf} ]]; then
-		while IFS= read -r alias; do
-			[[ -n ${alias} ]] || continue
-			alias=${alias,,}
-			[[ ${alias} =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ && ${#alias} -le 253 ]] || {
-				echo "Invalid ServerAlias '${alias}' in ${conf}; certificate issuance stopped." >&2
-				exit 1
-			}
-			found=0
-			for domain in "${BINDING}" "${server_aliases[@]}"; do [[ ${domain} == "${alias}" ]] && found=1; done
-			((found)) || server_aliases+=("${alias}")
-		done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${conf}")
-	fi
-	server_alias_line=""
-	if ((${#server_aliases[@]})); then
-		printf -v server_alias_line '  ServerAlias %s' "${server_aliases[*]}"
-	fi
 	certificate_domains=("${BINDING}" "${server_aliases[@]}")
 	certificate_args=()
 	for domain in "${certificate_domains[@]}"; do certificate_args+=(-d "${domain}"); done

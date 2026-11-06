@@ -42,6 +42,59 @@ class CertificateAliasTests(unittest.TestCase):
                 self.assertIn("certificate issuance stopped", result.stderr)
                 self.assertNotIn("args=", result.stdout)
 
+    def test_http_only_production_config_is_upgraded_after_certificate_issue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "site.conf"
+            config.write_text(
+                "<VirtualHost *:80>\n"
+                "  ServerName old.example.test\n"
+                "  ServerAlias WWW.EXAMPLE.TEST api.example.test www.example.test\n"
+                "</VirtualHost>\n")
+            service = root / "site.service"
+            service.write_text('ExecStart=/usr/bin/dotnet app.dll --urls "http://localhost:4003"\n')
+            common = (APACHE / "lib/common.sh").read_text()
+            functions = "\n".join(
+                shell_function(common, name) for name in ("validate_binding", "ensure_production_tls_config"))
+            command = (
+                "set -euo pipefail\n" + functions
+                + '\nensure_production_tls_config "$1" "$2" example.test example.test /srv/site '
+                  '/etc/ssl/certs/example.test_ecc admin@example.test 1\n')
+            result = subprocess.run(
+                ["bash", "-c", command, "test", str(config), str(service)],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rewritten = config.read_text()
+            self.assertEqual(rewritten.count("ServerAlias www.example.test api.example.test"), 2)
+            self.assertIn("RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI}", rewritten)
+            self.assertIn("ws://localhost:4003/$1", rewritten)
+            self.assertIn("ProxyPass / http://localhost:4003/ nocanon", rewritten)
+            self.assertIn("SSLCertificateFile /etc/ssl/certs/example.test_ecc/fullchain.cer", rewritten)
+            self.assertIn("SSLCertificateKeyFile /etc/ssl/certs/example.test_ecc/example.test.key", rewritten)
+            self.assertIn("ProxyPass /robots.txt http://localhost:4003/seo_robots_txt", rewritten)
+            self.assertIn("ProxyPass /sitemap.xml http://localhost:4003/seo_sitemap_xml", rewritten)
+
+    def test_tls_config_recovery_preserves_existing_custom_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "site.conf"
+            config.write_text("<VirtualHost *:443>\n  SSLEngine On\n  CustomSetting kept\n</VirtualHost>\n")
+            original = config.read_text()
+            service = root / "site.service"
+            service.write_text("ExecStart=dotnet app.dll --urls http://localhost:4003\n")
+            common = (APACHE / "lib/common.sh").read_text()
+            functions = "\n".join(
+                shell_function(common, name) for name in ("validate_binding", "ensure_production_tls_config"))
+            command = (
+                "set -euo pipefail\n" + functions
+                + '\nensure_production_tls_config "$1" "$2" example.test example.test /srv/site '
+                  '/etc/ssl/certs/example.test_ecc admin@example.test 0\n')
+            result = subprocess.run(
+                ["bash", "-c", command, "test", str(config), str(service)],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(config.read_text(), original)
+
     def test_aliases_are_used_by_every_supported_certificate_flow(self):
         common = (APACHE / "lib/common.sh").read_text()
         test_action = (APACHE / "test_action.sh").read_text()
@@ -62,6 +115,9 @@ class CertificateAliasTests(unittest.TestCase):
         self.assertIn('awk \'$1 == "ServerAlias"', publish)
         self.assertIn('"${certificate_args[@]}"', publish)
         self.assertIn('${server_alias_line}', publish)
+        self.assertLess(publish.index('server_alias_line=""'), publish.index('if [[ ! -e ${certdir}/fullchain.cer ]]'))
+        self.assertIn("ensure_production_tls_config", prod_action)
+        self.assertIn("ensure_production_tls_config", change_remote)
         self.assertIn('set_certificate_domains "${_configPath}" "${_binding}"', legacy)
         self.assertIn('"${_certificateDomainArgs[@]}"', legacy)
 

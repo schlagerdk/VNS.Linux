@@ -59,6 +59,89 @@ validate_binding() {
 	done
 }
 
+ensure_production_tls_config() {
+	local _config=$1 _service=$2 _site=$3 _binding=$4 _root=$5 _certdir=$6 _mail=$7 _umbraco=$8
+	local _port _alias _candidate _found _normalizedBinding _aliases="" _aliasLine="" _extra=""
+
+	[[ -f ${_config} ]] || { echo "Apache config not found: ${_config}" >&2; return 1; }
+	if grep -Eq '^[[:space:]]*SSLEngine[[:space:]]+On([[:space:]]|$)' "${_config}"; then
+		return 0
+	fi
+	[[ -f ${_service} ]] || { echo "Production service not found: ${_service}" >&2; return 1; }
+	_port=$(grep '^ExecStart=' "${_service}" | grep -oE '(localhost|127\.0\.0\.1|\*):[0-9]+' | head -n 1 | cut -d: -f2 || true)
+	[[ ${_port} =~ ^[0-9]+$ ]] || { echo "Could not determine the production port from ${_service}." >&2; return 1; }
+	_normalizedBinding=$(printf '%s' "${_binding}" | tr '[:upper:]' '[:lower:]')
+
+	while IFS= read -r _alias; do
+		[[ -n ${_alias} ]] || continue
+		_alias=$(printf '%s' "${_alias}" | tr '[:upper:]' '[:lower:]')
+		validate_binding "${_alias}" || {
+			echo "Invalid ServerAlias '${_alias}' in ${_config}; refusing to build the HTTPS config." >&2
+			return 1
+		}
+		_found=0
+		[[ ${_alias} == "${_normalizedBinding}" ]] && _found=1
+		for _candidate in ${_aliases}; do [[ ${_candidate} == "${_alias}" ]] && _found=1; done
+		if ((!_found)); then
+			_aliases="${_aliases:+${_aliases} }${_alias}"
+		fi
+	done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${_config}")
+	if [[ -n ${_aliases} ]]; then
+		_aliasLine="  ServerAlias ${_aliases}"
+	fi
+	if [[ ${_umbraco} == 1 ]]; then
+		_extra="
+  ProxyPass /robots.txt http://localhost:${_port}/seo_robots_txt
+  ProxyPassReverse /robots.txt http://localhost:${_port}/seo_robots_txt
+
+  ProxyPass /sitemap.xml http://localhost:${_port}/seo_sitemap_xml
+  ProxyPassReverse /sitemap.xml http://localhost:${_port}/seo_sitemap_xml
+"
+	fi
+
+	cat >"${_config}" <<EOF
+<VirtualHost *:80>
+  ServerAdmin ${_mail}
+  ServerName ${_binding}
+${_aliasLine}
+  DocumentRoot ${_root}/wwwroot
+
+  RewriteEngine On
+  RewriteCond %{REQUEST_URI} !^/.well-known/acme-challenge/
+  RewriteRule ^(.*)\$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  ErrorLog /var/log/apache2/${_site}-rewrite-error.log
+</VirtualHost>
+
+<VirtualHost *:443>
+  ServerAdmin ${_mail}
+  ServerName ${_binding}
+${_aliasLine}
+  DocumentRoot ${_root}/wwwroot
+
+  AllowEncodedSlashes NoDecode
+
+  RewriteEngine On
+  RewriteCond %{HTTP:Upgrade} =websocket [NC]
+  RewriteCond %{HTTP:Connection} upgrade [NC]
+  RewriteRule /(.*) ws://localhost:${_port}/\$1 [P,L]
+
+  ProxyPreserveHost On
+  ProxyRequests Off
+  RequestHeader set X-Forwarded-Proto "https"
+${_extra}
+  ProxyPass / http://localhost:${_port}/ nocanon
+  ProxyPassReverse / http://localhost:${_port}/
+
+  SSLEngine On
+  SSLCertificateFile ${_certdir}/fullchain.cer
+  SSLCertificateKeyFile ${_certdir}/${_binding}.key
+
+  ErrorLog /var/log/apache2/${_site}-443-error.log
+</VirtualHost>
+EOF
+}
+
 set_certificate_domains() {
 	local _config=$1 _primary _alias _domain _found _candidate
 	local -a _seen
