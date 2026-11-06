@@ -1,14 +1,16 @@
 #!/bin/bash
-# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding] [publish-folder] [Debug|Release] [y|n certificate]
+# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding] [publish-folder] [Debug|Release] [y|n certificate] [template-name]
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
+source lib/dotnet.sh
 
 trap 'echo "FAILED at ${BASH_SOURCE[0]}:${LINENO} (exit $?): ${BASH_COMMAND}" >&2; echo "Site is incomplete - run ./delete_site.sh ${_site:-<site>} n to clean up" >&2' ERR
 trap 'release_port_reservation' EXIT
 set -o errtrace
 
 _defaultUmbracoVersion=18.3.1
+_defaultUmbraco13Version=13.16.4
 _dotNetVersion=net10.0
 
 _site=${1:-}
@@ -20,6 +22,9 @@ _binding=${6:-}
 _publishArg=${7:-}
 _buildConfig=${8:-}
 _createCertificate=${9:-}
+_templateName=${10:-}
+_templateProvided=n
+[[ $# -lt 10 ]] || _templateProvided=y
 ask _createCertificate "Create an HTTPS certificate? (y/n)" y
 case "${_createCertificate,,}" in
 	y | yes) _createCertificate=y ;;
@@ -95,6 +100,10 @@ create_csharp() {
 	local _kindFolder="${_solutionFolder}/csharp"
 	local _project="${_siteRoot}/${_projectName}.csproj"
 	ask _csharpKind "C# site kind (umbraco/empty)" umbraco
+	case "${_csharpKind}" in
+		umbraco | empty) ;;
+		*) echo "C# site kind must be umbraco or empty." >&2; exit 1 ;;
+	esac
 	ask _publishArg "Enter local publish folder" "${_publishFolder}"
 	validate_publish_folder "${_publishArg}"
 	_publishFolder=${_publishArg}
@@ -109,6 +118,23 @@ create_csharp() {
 	if [[ ${_csharpKind} == umbraco ]]; then
 		ask _umbracoVersion "Set umbraco version" "${_defaultUmbracoVersion}"
 		_kindFolder="${_solutionFolder}/csharp/umbraco"
+		if [[ ${_umbracoVersion} == 13 || ${_umbracoVersion} == 13.* ]]; then
+			[[ ${_umbracoVersion} != 13 ]] || _umbracoVersion=${_defaultUmbraco13Version}
+			if [[ ! ${_umbracoVersion} =~ ^13\.([0-9]+)\.([0-9]+)$ ]] ||
+				((10#${BASH_REMATCH[1]} < 3 || (10#${BASH_REMATCH[1]} == 3 && 10#${BASH_REMATCH[2]} < 2))); then
+				echo "Umbraco 13 requires version 13.3.2 or newer for VNS.Umbraco." >&2
+				exit 1
+			fi
+			_dotNetVersion=net8.0
+			ensure_dotnet_channel 8.0
+		fi
+	else
+		[[ ${_templateProvided} == y ]] || ask _templateName "Template name (optional)" web
+		_templateName=${_templateName:-web}
+		if [[ ! ${_templateName} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+			echo "Invalid template name. Use letters, numbers, dots, hyphens or underscores." >&2
+			exit 1
+		fi
 	fi
 
 	allocate_ports
@@ -123,10 +149,17 @@ create_csharp() {
 
 	cd "${_siteRoot}"
 	if [[ ${_csharpKind} == umbraco ]]; then
+		if [[ ${_dotNetVersion} == net8.0 ]]; then
+			printf '%s\n' '{"sdk":{"version":"8.0.100","rollForward":"latestFeature","allowPrerelease":false}}' | sudo tee global.json >/dev/null
+		fi
 		create_umbraco_project
 	else
-		echo "Create empty ASP.NET Core project"
-		sudo dotnet new web --name "${_projectName}" --output . --force
+		echo "Create .NET project from template: ${_templateName}"
+		sudo dotnet new "${_templateName}" --name "${_projectName}" --output . --force
+		if [[ ! -f ${_project} ]]; then
+			echo "Template '${_templateName}' did not create ${_projectName}.csproj; a runnable C# site project is required." >&2
+			exit 1
+		fi
 		exclude_from_build "${_project}" "${_publishFolder}"
 		sudo dotnet publish -c "${_buildConfig}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
 		sudo rm -rf bin obj
@@ -160,12 +193,18 @@ create_umbraco_project() {
 	sudo sed -i "s|UmbracoCoreInstallVersion|${_umbracoVersion}|g; s|DotNetVersion|${_dotNetVersion}|g" "${_project}"
 	exclude_from_build "${_project}" "${_publishFolder}"
 
-	# Needed for umbraco version 17+
-	sudo dotnet add package Umbraco.Cms.DevelopmentMode.Backoffice -v "${_umbracoVersion}"
+	if [[ ${_umbracoVersion%%.*} -ge 17 ]]; then
+		sudo dotnet add package Umbraco.Cms.DevelopmentMode.Backoffice -v "${_umbracoVersion}"
+	fi
 
 	echo "Install VNS Umbraco and uSync package"
-	sudo dotnet add package VNS.Umbraco
-	sudo dotnet add package uSync
+	if [[ ${_dotNetVersion} == net8.0 ]]; then
+		sudo dotnet add package VNS.Umbraco -v 13.0.0
+		sudo dotnet add package uSync -v 13.0.0
+	else
+		sudo dotnet add package VNS.Umbraco
+		sudo dotnet add package uSync
+	fi
 
 	echo "Delete default wwwroot, views and default settings"
 	sudo rm -rf wwwroot Views Properties .gitignore appsettings.json appsettings.Development.json \

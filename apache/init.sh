@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")"
+source lib/dotnet.sh
 clear
 
 _adminMail=mhs@vns.dk
@@ -40,13 +41,14 @@ sudo /etc/acmesh/acme.sh --set-default-ca --server letsencrypt
 echo Add cron job for acme
 sudo /etc/acmesh/acme.sh --install-cronjob
 
-# Only .NET ${_dotnetChannel} (SDK + ASP.NET Core runtime, the SDK also bundles the base runtime)
+# Install the default SDK and runtime, plus .NET 8 for Umbraco 13.
 echo "Install .NET ${_dotnetChannel} SDK and ASP.NET Core runtime"
 sudo mkdir -p "${_dotnetDir}"
 curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
 sudo bash /tmp/dotnet-install.sh --channel "${_dotnetChannel}" --install-dir "${_dotnetDir}"
 sudo bash /tmp/dotnet-install.sh --channel "${_dotnetChannel}" --runtime aspnetcore --install-dir "${_dotnetDir}"
 rm -f /tmp/dotnet-install.sh
+ensure_dotnet_channel 8.0
 
 # The generated systemd services use /usr/bin/dotnet
 sudo ln -sf "${_dotnetDir}/dotnet" /usr/bin/dotnet

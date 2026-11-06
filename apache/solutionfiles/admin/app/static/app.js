@@ -724,9 +724,15 @@ profileForm.onsubmit = (event) => {
 const dialog = $("#dlg-site");
 const siteForm = $("#form-site");
 function syncSiteForm() {
-	$("#csharp-options").hidden = siteForm.type.value !== "csharp";
+	const csharp = siteForm.type.value === "csharp";
+	const umbraco = siteForm.csharp.value === "umbraco";
+	$("#csharp-options").hidden = !csharp;
+	$("#umbraco-version-option").hidden = !umbraco;
+	$("#template-name-option").hidden = umbraco;
+	siteForm.version.disabled = !csharp || !umbraco;
+	siteForm.elements.template.disabled = !csharp || umbraco;
 }
-siteForm.addEventListener("change", (event) => { if (event.target.name === "type") syncSiteForm(); });
+siteForm.addEventListener("change", (event) => { if (["type", "csharp"].includes(event.target.name)) syncSiteForm(); });
 siteForm.site.oninput = () => { if (!siteForm.binding.dataset.edited) siteForm.binding.value = siteForm.site.value; };
 siteForm.binding.oninput = () => { siteForm.binding.dataset.edited = "1"; };
 $("#btn-new-site").onclick = () => { siteForm.reset(); siteForm.version.value = defaultUmbracoVersion; delete siteForm.binding.dataset.edited; syncSiteForm(); dialog.showModal(); siteForm.site.focus(); };

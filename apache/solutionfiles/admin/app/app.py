@@ -899,13 +899,16 @@ def build_command(data):
             publish = data.get("publish") or "_publish"
             build = data.get("build") or "Debug"
             version = data.get("version") or ""
+            template = (data.get("template") or "").strip() if csharp == "empty" else ""
             if csharp not in ("umbraco", "empty") or build not in ("Debug", "Release"):
                 abort(400, "Invalid C# options")
             if not PROJECT_RE.match(project) or not FOLDER_RE.match(publish):
                 abort(400, "Invalid project name or publish folder")
             if csharp == "umbraco" and version and not VERSION_RE.match(version):
                 abort(400, "Invalid Umbraco version")
-            args = [site, site_type, csharp, version if csharp == "umbraco" else "", project, binding, publish, build, certificate]
+            if template and not PROJECT_RE.fullmatch(template):
+                abort(400, "Invalid template name")
+            args = [site, site_type, csharp, version if csharp == "umbraco" else "", project, binding, publish, build, certificate, template]
         return "Create: " + site, [bash, os.path.join(APACHE_DIR, "create_site.sh"), *args], APACHE_DIR
     if kind == "change_binding":
         site = site_arg(data)
