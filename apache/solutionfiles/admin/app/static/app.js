@@ -234,9 +234,10 @@ function siteState(site) {
 const hasProd = (site) => site.environments.some((e) => e.key === "prod");
 
 function renderStats() {
-	const count = (test) => listedSites().filter(test).length;
+	const searched = listedSites().filter(matchesQuery);
+	const count = (test) => searched.filter(test).length;
 	const chips = [
-		["all", "All", listedSites().length],
+		["all", "All", searched.length],
 		["running", "Running", count((s) => siteState(s) === "active")],
 		["stopped", "Stopped", count((s) => siteState(s) === "inactive")],
 		["prod", "With prod", count(hasProd)],
@@ -249,10 +250,16 @@ function renderStats() {
 	const box = $("#stats");
 	box.replaceChildren();
 	for (const [key, label, n] of chips) {
-		if (!n) continue;
+		if (!n && key !== "all") continue;
 		box.append(el("div", { className: "chip" + (filter === key ? " active" : ""), onclick: () => { filter = key; renderSites(); } },
 			el("b", { textContent: n }), el("span", { textContent: label })));
 	}
+}
+
+function matchesQuery(site) {
+	const text = query.trim().toLowerCase();
+	const haystack = site.name + " " + site.environments.map((e) => e.binding + " " + (e.host || "")).join(" ");
+	return !text || haystack.toLowerCase().includes(text);
 }
 
 function matches(site) {
@@ -261,9 +268,7 @@ function matches(site) {
 	if (filter === "stopped" && state !== "inactive") return false;
 	if (filter === "prod" && !hasProd(site)) return false;
 	if (kindLabel[filter] && site.kind !== filter) return false;
-	const text = query.trim().toLowerCase();
-	const haystack = site.name + " " + site.environments.map((e) => e.binding + " " + (e.host || "")).join(" ");
-	return !text || haystack.toLowerCase().includes(text);
+	return matchesQuery(site);
 }
 
 
@@ -480,7 +485,7 @@ function renderSite(name) {
 		actions.append(el("button", { textContent: "Check outdated", title: "outdated.sh", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));
 	}
 	if (site.kind === "python") {
-		for (const [script, label] of [["fix_permissions.sh", "Fix permissions"], ["update_packages.sh", "Update Python packages"]]) {
+		for (const [script, label] of [["update_packages.sh", "Update Python packages"]]) {
 			if (site.scripts.includes(script)) {
 				add(label, () => openTask({ kind: "script", site: site.name, script }));
 			}
@@ -595,6 +600,13 @@ function envPanel(site, env) {
 	const settings = el("div", { className: "actions quick" });
 	settings.setAttribute("role", "group");
 	settings.setAttribute("aria-label", "Environment settings");
+	if (!site.admin) {
+		settings.append(el("button", { textContent: "Fix permissions", className: "small", onclick: () => run(async () => {
+			if (await ask({ title: "Fix permissions?", message: "Restore www-data ownership and content access for this environment. Scripts and symbolic links are skipped. No service restart is needed.", input: false, ok: "Fix permissions" })) {
+				await openTask({ kind: "fix_permissions", site: site.name, scope: env.key === "prod" ? "prod" : "test" });
+			}
+		}) }));
+	}
 	if (!hasProd(site) || !site.admin) {
 		settings.append(el("button", { textContent: "Change binding", className: "small", onclick: () => run(() => changeBinding(site, env.key === "prod" ? "prod" : "test", env)) }));
 	}

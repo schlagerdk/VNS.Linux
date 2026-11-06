@@ -593,7 +593,7 @@ DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 def terminal_auto_close(payload):
     kind = payload.get("kind")
-    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package"):
+    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions"):
         return True
     if kind == "remote_tool":
         return payload.get("tool") == "shell"
@@ -953,6 +953,14 @@ def build_command(data):
                 abort(400, "Invalid template name")
             args = [site, site_type, csharp, version if csharp == "umbraco" else "", project, binding, publish, build, certificate, template, environment]
         return "Create: " + site, [bash, os.path.join(APACHE_DIR, "create_site.sh"), *args], APACHE_DIR
+    if kind == "fix_permissions":
+        site = site_arg(data)
+        scope = data.get("scope", "test")
+        if scope not in ("test", "prod") or site == ADMIN_SITE:
+            abort(400, "Invalid permissions target")
+        if scope == "prod" and not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
+            abort(400, "This site has no production site")
+        return "Fix permissions: " + site, [bash, os.path.join(APACHE_DIR, "fix_permissions.sh"), site, scope], APACHE_DIR
     if kind == "change_binding":
         site = site_arg(data)
         binding = (data.get("binding") or "").lower()
