@@ -59,6 +59,36 @@ validate_binding() {
 	done
 }
 
+set_certificate_domains() {
+	local _config=$1 _primary _alias _domain _found _candidate
+	local -a _seen
+	_primary=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')
+	_certificateDomainArgs=(-d "${_primary}")
+	_certificateDomainAliases=()
+	_certificateDomains=("${_primary}")
+	_seen=("${_primary}")
+	_certificateDomainNames="${_primary}"
+	[[ -f ${_config} ]] || return 0
+	while IFS= read -r _alias; do
+		[[ -n ${_alias} ]] || continue
+		_domain=$(printf '%s' "${_alias}" | tr '[:upper:]' '[:lower:]')
+		if ! validate_binding "${_domain}"; then
+			echo "Invalid ServerAlias '${_alias}' in ${_config}; certificate issuance stopped." >&2
+			return 1
+		fi
+		_found=0
+		for _candidate in "${_seen[@]}"; do
+			[[ ${_candidate} == "${_domain}" ]] && _found=1
+		done
+		((_found)) && continue
+		_seen+=("${_domain}")
+		_certificateDomainArgs+=(-d "${_domain}")
+		_certificateDomainAliases+=("${_domain}")
+		_certificateDomains+=("${_domain}")
+		_certificateDomainNames+=" ${_domain}"
+	done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${_config}")
+}
+
 validate_project_name() {
 	if [[ ! $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
 		echo "Invalid C# project name. Use letters, numbers, dots, hyphens or underscores." >&2
@@ -225,19 +255,24 @@ clean_stale_acme() {
 # Temporary HTTP-only vhost, then issue and install the certificate. Requires _docRoot to exist.
 issue_certificate() {
 	require_acme
+	set_certificate_domains "${_configPath}" "${_binding}"
 	echo "Create temporary HTTP-only config for certificate validation"
 	sudo mkdir -p "${_docRoot}"
 	render_to "${_solutionFolder}/common/apache-temp.conf.tpl" "${_configPath}"
+	if ((${#_certificateDomainAliases[@]})); then
+		printf '  ServerAlias %s\n' "${_certificateDomainAliases[*]}" | sudo tee -a "${_configPath}" >/dev/null
+	fi
 
 	sudo a2enmod ssl
 	sudo apache2ctl configtest
 	[[ -e "/etc/apache2/sites-enabled/${_site}.conf" ]] || sudo a2ensite "${_site}.conf"
 	sudo systemctl reload apache2
 
-	clean_stale_acme "${_binding}"
+	for _domain in "${_certificateDomains[@]}"; do clean_stale_acme "${_domain}"; done
 	echo "Issue certificate"
+	echo "Certificate domains: ${_certificateDomainNames}"
 	# acme.sh returns 2 when a still-valid certificate is skipped
-	sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" -d "${_binding}" || {
+	sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" "${_certificateDomainArgs[@]}" || {
 		local _status=$?
 		[[ ${_status} -eq 2 ]] || return "${_status}"
 	}

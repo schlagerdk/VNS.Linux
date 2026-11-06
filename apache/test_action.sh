@@ -18,15 +18,17 @@ case "${_action}" in
 		_binding=$(awk '$1 == "ServerName" { print $2; exit }' "${_configPath}")
 		[[ -n ${_binding} ]] || { echo "Could not determine ServerName in ${_configPath}" >&2; exit 1; }
 		_binding=${_binding,,}
+		set_certificate_domains "${_configPath}" "${_binding}"
 		_confirm=y
 		if [[ ${3:-} != --yes ]]; then
-			read -r -p "Issue a new certificate for ${_binding}? [y/N]: " _confirm
+			read -r -p "Issue a new certificate for ${_certificateDomainNames}? [y/N]: " _confirm
 		fi
 		[[ ${_confirm} == [yY] || ${_confirm} == [yY][eE][sS] ]] || { echo "Aborted"; exit 1; }
 		require_acme
-		echo "Issue certificate for ${_binding}"
+		echo "Issue certificate for ${_certificateDomainNames}"
+		for _domain in "${_certificateDomains[@]}"; do clean_stale_acme "${_domain}"; done
 		_status=0
-		sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" -d "${_binding}" || _status=$?
+		sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" "${_certificateDomainArgs[@]}" || _status=$?
 		if [[ ${_status} -ne 0 && ${_status} -ne 2 ]]; then
 			echo "Certificate issue failed. Check that DNS for ${_binding} points to this server." >&2
 			exit 1

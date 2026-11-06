@@ -66,6 +66,9 @@ trap 'rm -rf "${_backupDir}"' EXIT
 sudo cp "${_configPath}" "${_backupDir}/site.conf"
 sudo cp "${_certificateFile}" "${_backupDir}/fullchain.cer"
 sudo cp "${_keyFile}" "${_backupDir}/site.key"
+if ! set_certificate_domains "${_backupDir}/site.conf" "${_newBinding}"; then
+	exit 1
+fi
 if [[ -f ${_appSettings} ]]; then
 	sudo cp "${_appSettings}" "${_backupDir}/appsettings.json"
 fi
@@ -105,14 +108,17 @@ if ! render_to "${_solutionFolder}/common/apache-temp.conf.tpl" "${_configPath}"
 	_rollback
 	exit 1
 fi
+if ((${#_certificateDomainAliases[@]})); then
+	printf '  ServerAlias %s\n' "${_certificateDomainAliases[*]}" | sudo tee -a "${_configPath}" >/dev/null
+fi
 if ! sudo apache2ctl configtest || ! sudo systemctl reload apache2; then
 	_rollback
 	exit 1
 fi
 
-echo "Issue certificate for ${_newBinding}"
-clean_stale_acme "${_newBinding}"
-if sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" -d "${_newBinding}"; then
+echo "Issue certificate for ${_certificateDomainNames}"
+for _domain in "${_certificateDomains[@]}"; do clean_stale_acme "${_domain}"; done
+if sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" "${_certificateDomainArgs[@]}"; then
 	:
 else
 	_status=$?

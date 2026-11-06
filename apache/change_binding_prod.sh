@@ -77,13 +77,28 @@ apache2ctl configtest || { rollback; exit 1; }
 systemctl reload apache2
 
 # 2. Issue the certificate for the new name
-echo "Issue certificate for ${NEW}"
+domains=("${NEW}")
+while IFS= read -r alias; do
+	[[ -n ${alias} ]] || continue
+	alias=${alias,,}
+	[[ ${alias} =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ && ${#alias} -le 253 ]] || {
+		echo "Invalid ServerAlias '${alias}' in ${conf}; certificate issuance stopped." >&2
+		rollback
+		exit 1
+	}
+	found=0
+	for domain in "${domains[@]}"; do [[ ${domain} == "${alias}" ]] && found=1; done
+	((found)) || domains+=("${alias}")
+done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${conf}")
+domain_args=()
+for domain in "${domains[@]}"; do domain_args+=(-d "${domain}"); done
+printf 'Issue certificate for: %s\n' "${domains[*]}"
 if ! used_by_other "${NEW}"; then
 	"${acme}" --remove -d "${NEW}" >/dev/null 2>&1 || true
 	rm -rf "/etc/ssl/certs/${NEW}" "${newcert}"
 fi
 rc=0
-"${acme}" --issue --apache --force --server "${ACME_SERVER}" -d "${NEW}" || rc=$?
+"${acme}" --issue --apache --force --server "${ACME_SERVER}" "${domain_args[@]}" || rc=$?
 if [[ ${rc} -ne 0 && ${rc} -ne 2 ]]; then
 	echo "Certificate issue failed. Check that DNS for ${NEW} points to this server." >&2
 	rollback

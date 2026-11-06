@@ -1,0 +1,70 @@
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+
+APACHE = Path(__file__).resolve().parents[1]
+
+
+def shell_function(source, name):
+    start = source.index(name + "() {")
+    return source[start:source.index("\n}", start) + 2]
+
+
+class CertificateAliasTests(unittest.TestCase):
+    def run_domains(self, config, primary="Example.test"):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "site.conf"
+            path.write_text(config)
+            common = (APACHE / "lib/common.sh").read_text()
+            code = "\n".join(shell_function(common, name) for name in ("validate_binding", "set_certificate_domains"))
+            code += '\nset -e\nset_certificate_domains "$1" "$2"\nprintf "names=%s\\n" "$_certificateDomainNames"\nprintf "args=%s\\n" "${_certificateDomainArgs[*]}"\nprintf "aliases=%s\\n" "${_certificateDomainAliases[*]}"\n'
+            return subprocess.run(["bash", "-c", code, "test", str(path), primary],
+                                  capture_output=True, text=True)
+
+    def test_primary_and_all_aliases_are_normalized_deduplicated_and_comment_safe(self):
+        result = self.run_domains(
+            "ServerName example.test\n"
+            "ServerAlias WWW.EXAMPLE.TEST api.example.test www.example.test # ignored.test\n"
+            "<VirtualHost *:443>\nServerAlias api.example.test cdn.example.test\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("names=example.test www.example.test api.example.test cdn.example.test", result.stdout)
+        self.assertIn("args=-d example.test -d www.example.test -d api.example.test -d cdn.example.test", result.stdout)
+        self.assertIn("aliases=www.example.test api.example.test cdn.example.test", result.stdout)
+
+    def test_invalid_and_wildcard_aliases_fail_before_acme(self):
+        for alias in ("*.example.test", "https://example.test", "localhost", "-bad.example.test",
+                      "bad..example.test", "a" * 64 + ".example.test"):
+            with self.subTest(alias=alias):
+                result = self.run_domains("ServerAlias " + alias + "\n")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("certificate issuance stopped", result.stderr)
+                self.assertNotIn("args=", result.stdout)
+
+    def test_aliases_are_used_by_every_supported_certificate_flow(self):
+        common = (APACHE / "lib/common.sh").read_text()
+        test_action = (APACHE / "test_action.sh").read_text()
+        prod_action = (APACHE / "prod_action.sh").read_text()
+        change_local = (APACHE / "change_binding.sh").read_text()
+        change_remote = (APACHE / "change_binding_prod.sh").read_text()
+        publish = (APACHE / "solutionfiles/csharp/prod-scripts/publish_prod.sh").read_text()
+        legacy = (APACHE / "solutionfiles/common/scripts/issue_certificat.sh").read_text()
+        self.assertIn('"${_certificateDomainArgs[@]}"', common)
+        self.assertIn('set_certificate_domains "${_configPath}" "${_binding}"', test_action)
+        self.assertIn('"${_certificateDomainArgs[@]}"', test_action)
+        self.assertIn('awk \'$1 == "ServerAlias"', prod_action)
+        self.assertIn('"${domain_args[@]}"', prod_action)
+        self.assertIn('set_certificate_domains "${_backupDir}/site.conf" "${_newBinding}"', change_local)
+        self.assertIn('"${_certificateDomainArgs[@]}"', change_local)
+        self.assertIn('awk \'$1 == "ServerAlias"', change_remote)
+        self.assertIn('"${domain_args[@]}"', change_remote)
+        self.assertIn('awk \'$1 == "ServerAlias"', publish)
+        self.assertIn('"${certificate_args[@]}"', publish)
+        self.assertIn('${server_alias_line}', publish)
+        self.assertIn('set_certificate_domains "${_configPath}" "${_binding}"', legacy)
+        self.assertIn('"${_certificateDomainArgs[@]}"', legacy)
+
+
+if __name__ == "__main__":
+    unittest.main()

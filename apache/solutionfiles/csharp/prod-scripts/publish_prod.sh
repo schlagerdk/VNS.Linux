@@ -183,12 +183,34 @@ EOF
 fi
 
 if [[ ! -e ${certdir}/fullchain.cer ]]; then
-	echo "Issue certificate for ${BINDING}"
 	[[ -x ${acme} ]] || { echo "acme.sh not found on prod (${acme}). Run apache/init.sh there first." >&2; exit 1; }
+	server_aliases=()
+	if [[ -f ${conf} ]]; then
+		while IFS= read -r alias; do
+			[[ -n ${alias} ]] || continue
+			alias=${alias,,}
+			[[ ${alias} =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ && ${#alias} -le 253 ]] || {
+				echo "Invalid ServerAlias '${alias}' in ${conf}; certificate issuance stopped." >&2
+				exit 1
+			}
+			found=0
+			for domain in "${BINDING}" "${server_aliases[@]}"; do [[ ${domain} == "${alias}" ]] && found=1; done
+			((found)) || server_aliases+=("${alias}")
+		done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${conf}")
+	fi
+	server_alias_line=""
+	if ((${#server_aliases[@]})); then
+		printf -v server_alias_line '  ServerAlias %s' "${server_aliases[*]}"
+	fi
+	certificate_domains=("${BINDING}" "${server_aliases[@]}")
+	certificate_args=()
+	for domain in "${certificate_domains[@]}"; do certificate_args+=(-d "${domain}"); done
+	printf 'Issue certificate for: %s\n' "${certificate_domains[*]}"
 	cat >"${conf}" <<EOF
 <VirtualHost *:80>
   ServerAdmin ${MAIL}
   ServerName ${BINDING}
+${server_alias_line}
   DocumentRoot ${docroot}
   ErrorLog /var/log/apache2/${SITE}-80-error.log
   <Directory ${docroot}>
@@ -212,7 +234,7 @@ EOF
 		rm -rf "/etc/ssl/certs/${BINDING}" "/etc/ssl/certs/${BINDING}_ecc"
 	fi
 	rc=0
-	"${acme}" --issue --apache --force --server letsencrypt -d "${BINDING}" || rc=$?
+	"${acme}" --issue --apache --force --server letsencrypt "${certificate_args[@]}" || rc=$?
 	if [[ ${rc} -ne 0 && ${rc} -ne 2 ]]; then
 		echo "Certificate issue failed. Check that DNS for ${BINDING} points to this server." >&2
 		exit 1
@@ -238,6 +260,7 @@ if ! grep -q "SSLEngine" "${conf}" 2>/dev/null; then
 <VirtualHost *:80>
   ServerAdmin ${MAIL}
   ServerName ${BINDING}
+${server_alias_line}
   DocumentRoot ${docroot}
 
   RewriteEngine On
@@ -250,6 +273,7 @@ if ! grep -q "SSLEngine" "${conf}" 2>/dev/null; then
 <VirtualHost *:443>
   ServerAdmin ${MAIL}
   ServerName ${BINDING}
+${server_alias_line}
   DocumentRoot ${docroot}
 
   AllowEncodedSlashes NoDecode
