@@ -17,6 +17,43 @@ def shell_function(source, name):
 
 
 class CertificateAliasTests(unittest.TestCase):
+    def test_initial_certificate_keeps_aliases_inside_temporary_virtualhost(self):
+        common = (APACHE / "lib/common.sh").read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template = root / "temporary.conf"
+            template.write_text((APACHE / "solutionfiles/common/apache-temp.conf.tpl").read_text())
+            config = root / "site.conf"
+            command = (
+                "set -euo pipefail\n"
+                + shell_function(common, "issue_certificate")
+                + '\nsudo() { "$@"; }\n'
+                  'require_acme() { :; }\n'
+                  'set_certificate_domains() {\n'
+                  '  _certificateDomainAliases=(www.example.test api.example.test)\n'
+                  '  _certificateDomains=(example.test www.example.test api.example.test)\n'
+                  '  _certificateDomainArgs=(-d example.test -d www.example.test -d api.example.test)\n'
+                  '  _certificateDomainNames="example.test www.example.test api.example.test"\n'
+                  '}\n'
+                  'render_to() { cp "$TEMPLATE" "$2"; }\n'
+                  'a2enmod() { :; }\na2ensite() { :; }\nsystemctl() { :; }\n'
+                  'clean_stale_acme() { :; }\n'
+                  'apache2ctl() {\n'
+                  '  awk \'/<VirtualHost[[:space:]]/ { inside=1 } /<\\/VirtualHost>/ { inside=0 }\n'
+                  '  $1 == "ServerAlias" && !inside { invalid=1 } END { exit invalid }\' "$_configPath"\n'
+                  '}\n'
+                  'issue_certificate\n')
+            env = os.environ | {
+                "_apacheDir": str(APACHE), "_configPath": str(config), "_binding": "example.test",
+                "_docRoot": str(root), "_solutionFolder": str(root), "_site": "example.test",
+                "_acme": "/usr/bin/true", "_acmeServer": "letsencrypt",
+                "_certificateDirectory": str(root), "_keyFile": str(root / "key"),
+                "_certificateFile": str(root / "cert"), "TEMPLATE": str(template),
+            }
+            result = subprocess.run(["bash", "-c", command], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertIn("ServerAlias www.example.test api.example.test", config.read_text())
+
     def test_binding_changes_preserve_http_and_https_modes(self):
         for production in (False, True):
             for https in (False, True):
@@ -67,7 +104,13 @@ class CertificateAliasTests(unittest.TestCase):
                             "WorkingDirectory=" + str(settings.parent) + "\n")
                         for name, body in (
                             ("sudo", 'exec "$@"'),
-                            ("apache2ctl", 'echo "configtest" >> "$CALLS"'),
+                            ("apache2ctl", 'echo "configtest" >> "$CALLS"\n'
+                             'awk \'\n'
+                             '/<VirtualHost[[:space:]]/ { inside = 1 }\n'
+                             '/<\\/VirtualHost>/ { inside = 0 }\n'
+                             '$1 == "ServerAlias" && !inside { print "ServerAlias only used in <VirtualHost>" > "/dev/stderr"; invalid = 1 }\n'
+                             'END { exit invalid }\n'
+                             '\' "$APACHE_CONFIG"'),
                             ("systemctl", 'echo "systemctl:$*" >> "$CALLS"'),
                             ("acme", 'echo "acme:$*" >> "$CALLS"\n'
                              '[[ "$1" != --issue || "${FAIL_CERT:-0}" != 1 ]] || exit 1\n'
@@ -90,6 +133,7 @@ class CertificateAliasTests(unittest.TestCase):
                         calls = root / "calls"
                         env = os.environ | {
                             "PATH": str(root / "bin") + ":" + os.environ["PATH"], "CALLS": str(calls),
+                            "APACHE_CONFIG": str(config),
                             "SITE": "example.test", "OLD": "example.test", "NEW": new,
                             "ALIASES": "api.example.test", "ROOT": str(settings.parent),
                             "ACME_SERVER": "letsencrypt", "MAIL": "admin@example.test", "UMBRACO": "1",

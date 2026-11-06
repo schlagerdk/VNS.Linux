@@ -146,8 +146,9 @@ if [[ ${_scheme} == https ]]; then
 		_rollback
 		exit 1
 	fi
-	if ((${#_certificateDomainAliases[@]})); then
-		printf '  ServerAlias %s\n' "${_certificateDomainAliases[*]}" | sudo tee -a "${_configPath}" >/dev/null
+	if ! sudo env NEW_ALIASES="${_newAliases}" bash -c 'source "$1"; replace_server_aliases "$2" "$NEW_ALIASES"' _ "${_apacheDir}/lib/common.sh" "${_configPath}"; then
+		_rollback
+		exit 1
 	fi
 	if ! sudo apache2ctl configtest || ! sudo systemctl reload apache2; then
 		_rollback

@@ -388,7 +388,7 @@ issue_certificate() {
 	sudo mkdir -p "${_docRoot}"
 	render_to "${_solutionFolder}/common/apache-temp.conf.tpl" "${_configPath}"
 	if ((${#_certificateDomainAliases[@]})); then
-		printf '  ServerAlias %s\n' "${_certificateDomainAliases[*]}" | sudo tee -a "${_configPath}" >/dev/null
+		sudo env NEW_ALIASES="${_certificateDomainAliases[*]}" bash -c 'source "$1"; replace_server_aliases "$2" "$NEW_ALIASES"' _ "${_apacheDir}/lib/common.sh" "${_configPath}"
 	fi
 
 	sudo a2enmod ssl
