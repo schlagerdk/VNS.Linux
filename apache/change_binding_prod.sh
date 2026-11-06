@@ -17,21 +17,36 @@ set_site_vars
 load_prod_settings
 
 _oldBinding=${PROD_BINDING,,}
+validate_binding "${_oldBinding}"
 ask _newBinding "Enter new production binding" "${_oldBinding}"
 validate_binding "${_newBinding}"
 _newBinding=${_newBinding,,}
-if [[ ${_newBinding} == "${_oldBinding}" ]]; then
-	echo "The binding is unchanged."
+_remoteConf="/etc/apache2/sites-available/${PROD_FOLDER}.conf"
+_oldAliases=$(prod_exec "bash -c 'source /vns/apache/lib/common.sh; server_aliases_from_config ${_remoteConf} ${_oldBinding}'")
+echo "Current aliases: ${_oldAliases:-none}"
+_aliasInput=""
+read -r -p "New aliases, comma-separated (Enter keeps current; - removes all): " _aliasInput
+if [[ -z ${_aliasInput} ]]; then
+	_aliasInput=${_oldAliases}
+elif [[ ${_aliasInput} == "-" ]]; then
+	_aliasInput=""
+fi
+normalize_server_aliases "${_newBinding}" "${_aliasInput}"
+_newAliases=${_normalizedAliases}
+normalize_server_aliases "${_oldBinding}" "${_oldAliases}"
+_oldAliasesForCompare=${_normalizedAliases}
+if [[ ${_newBinding} == "${_oldBinding}" && ${_newAliases} == "${_oldAliasesForCompare}" ]]; then
+	echo "The binding and aliases are unchanged."
 	exit 0
 fi
 
 echo "The new domain must resolve to ${_target} and be reachable on HTTP/port 80."
-read -r -p "Change production binding ${_oldBinding} to ${_newBinding} on ${_target}, issue a new certificate, and remove the old one if unused? [y/N]: " _confirm
+read -r -p "Change production bindings to ${_newBinding} (aliases: ${_newAliases:-none}) on ${_target}, issue a new certificate, and remove the old one if unused? [y/N]: " _confirm
 [[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
 
 _umbraco=n
 [[ -f ${_siteRoot}/scripts/sync_prod.sh ]] && _umbraco=1
-_vars="SITE='${PROD_FOLDER}' OLD='${_oldBinding}' NEW='${_newBinding}' ROOT='${_root}' ACME_SERVER='${_acmeServer}' MAIL='${PROD_ADMIN_MAIL:-${_adminMail}}' UMBRACO='${_umbraco}'"
+_vars="SITE='${PROD_FOLDER}' OLD='${_oldBinding}' NEW='${_newBinding}' ALIASES='${_newAliases}' ROOT='${_root}' ACME_SERVER='${_acmeServer}' MAIL='${PROD_ADMIN_MAIL:-${_adminMail}}' UMBRACO='${_umbraco}'"
 
 prod_run "${_vars}" <<'REMOTE'
 set -euo pipefail
@@ -58,6 +73,12 @@ if used_by_other "${NEW}"; then
 	echo "Binding ${NEW} is already used by another Apache site" >&2
 	exit 1
 fi
+for alias in ${ALIASES}; do
+	if used_by_other "${alias}"; then
+		echo "Alias ${alias} is already used by another Apache site" >&2
+		exit 1
+	fi
+done
 
 backup=$(mktemp -d)
 trap 'rm -rf "${backup}"' EXIT
@@ -76,6 +97,7 @@ rollback() {
 
 # 1. Serve the new name on port 80 (the certificate still points to the old one)
 sed -i -E "s/^([[:space:]]*ServerName[[:space:]]+)${OLD//./\\.}[[:space:]]*$/\1${NEW}/I" "${conf}"
+replace_server_aliases "${conf}" "${ALIASES}"
 apache2ctl configtest || { rollback; exit 1; }
 systemctl reload apache2
 
@@ -96,7 +118,7 @@ done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) prin
 domain_args=()
 for domain in "${domains[@]}"; do domain_args+=(-d "${domain}"); done
 printf 'Issue certificate for: %s\n' "${domains[*]}"
-if ! used_by_other "${NEW}"; then
+if [[ ${NEW} != "${OLD}" ]] && ! used_by_other "${NEW}"; then
 	"${acme}" --remove -d "${NEW}" >/dev/null 2>&1 || true
 	rm -rf "/etc/ssl/certs/${NEW}" "${newcert}"
 fi
@@ -126,15 +148,19 @@ if [[ -f ${backup}/appsettings.json ]] && ! cmp -s "${backup}/appsettings.json" 
 fi
 
 # 4. Remove the old certificate unless another site still uses that name
-if used_by_other "${OLD}"; then
-	echo "Previous binding ${OLD} is still used by another site; keeping its certificate."
-else
-	echo "Revoke and remove certificate for ${OLD}"
-	"${acme}" --revoke -d "${OLD}" || true
-	"${acme}" --remove -d "${OLD}" || true
-	rm -rf "/etc/ssl/certs/${OLD}" "${oldcert}"
+if [[ ${OLD} != "${NEW}" ]]; then
+	old_binding_in_use=n
+	for alias in ${ALIASES}; do [[ ${alias} == "${OLD}" ]] && old_binding_in_use=y; done
+	if [[ ${old_binding_in_use} == y ]] || used_by_other "${OLD}"; then
+		echo "Previous binding ${OLD} is still used; keeping its certificate."
+	else
+		echo "Revoke and remove certificate for ${OLD}"
+		"${acme}" --revoke -d "${OLD}" || true
+		"${acme}" --remove -d "${OLD}" || true
+		rm -rf "/etc/ssl/certs/${OLD}" "${oldcert}"
+	fi
 fi
-echo "Binding updated: https://${NEW}/"
+echo "Bindings updated: https://${NEW}/ (aliases: ${ALIASES:-none})"
 REMOTE
 
 # Keep the settings of this site in sync (quotes and the trailing comment are preserved)

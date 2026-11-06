@@ -339,7 +339,7 @@ const buttonStyles = {
 	"Create production site": ["server", "purple"],
 	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
 	"Stop": ["stop", "red"], "Clear logs": ["eraser", "gray"], "Logs": ["file", "gray"],
-	"Issue certificate": ["shield", "teal"], "Change environment": ["sliders", "purple"], "Change binding": ["globe", "blue"],
+	"Issue certificate": ["shield", "teal"], "Change environment": ["sliders", "purple"], "Change bindings": ["globe", "blue"],
 	"Check service": ["activity", "teal"], "Test Apache config": ["activity", "teal"], "Admin site": ["manage", "gray"],
 	"Edit service": ["pencil", "amber"], "Edit config": ["pencil", "amber"], "Edit appsettings.json": ["pencil", "amber"], "Edit web.config": ["pencil", "amber"], "Delete*": ["trash", "red"],
 };
@@ -677,7 +677,7 @@ function envPanel(site, env) {
 		}) }));
 	}
 	if (!hasProd(site) || !site.admin) {
-		settings.append(el("button", { textContent: "Change binding", className: "small", onclick: () => run(() => changeBinding(site, env.key === "prod" ? "prod" : "test", env)) }));
+		settings.append(el("button", { textContent: "Change bindings", className: "small", onclick: () => run(() => changeBinding(site, env.key === "prod" ? "prod" : "test", env)) }));
 	}
 	let extraTools = null;
 	for (const [files, label, confirm, action] of quickActions(env)) {
@@ -751,7 +751,7 @@ $("#logs-close").onclick = () => logsDialog.close();
 async function changeBinding(site, scope, env) {
 	const current = env ? env.binding : site.binding;
 	const label = scope === "prod" ? "production site" : "test site";
-	const binding = await ask({ title: `Change ${label} binding`, message: `New domain for the ${label} of ${site.name}`, value: current, ok: "Change" });
+	const binding = await ask({ title: `Change ${label} bindings`, message: `New domain for the ${label} of ${site.name}`, value: current, ok: "Change" });
 	if (binding && binding.trim() !== current) await openTask({ kind: "change_binding", site: site.name, binding: binding.trim(), scope });
 }
 

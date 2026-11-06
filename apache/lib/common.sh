@@ -59,6 +59,51 @@ validate_binding() {
 	done
 }
 
+normalize_server_aliases() {
+	local _primary=$1 _raw=${2//,/ } _alias _candidate _found _aliases=""
+	_normalizedAliases=""
+	_primary=$(printf '%s' "${_primary}" | tr '[:upper:]' '[:lower:]')
+	while IFS= read -r _alias; do
+		[[ -n ${_alias} ]] || continue
+		_alias=$(printf '%s' "${_alias}" | tr '[:upper:]' '[:lower:]')
+		validate_binding "${_alias}" || {
+			echo "Invalid alias '${_alias}'. Enter fully qualified DNS names separated by commas." >&2
+			return 1
+		}
+		[[ ${_alias} == "${_primary}" ]] && continue
+		_found=0
+		for _candidate in ${_aliases}; do [[ ${_candidate} == "${_alias}" ]] && _found=1; done
+		if ((!_found)); then
+			_aliases="${_aliases:+${_aliases} }${_alias}"
+		fi
+	done < <(printf '%s\n' "${_raw}" | tr '[:space:]' '\n')
+	_normalizedAliases=${_aliases}
+}
+
+server_aliases_from_config() {
+	local _config=$1 _primary=$2 _raw
+	_raw=$(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${_config}")
+	normalize_server_aliases "${_primary}" "${_raw}" || return 1
+	printf '%s' "${_normalizedAliases}"
+}
+
+replace_server_aliases() {
+	local _config=$1 _aliases=$2 _tmp
+	_tmp=$(mktemp)
+	if ! awk -v aliases="${_aliases}" '
+		/^[[:space:]]*ServerAlias[[:space:]]/ { next }
+		{
+			print
+			if ($1 == "ServerName" && aliases != "") print "  ServerAlias " aliases
+		}
+	' "${_config}" >"${_tmp}"; then
+		rm -f "${_tmp}"
+		return 1
+	fi
+	cat "${_tmp}" >"${_config}"
+	rm -f "${_tmp}"
+}
+
 ensure_production_tls_config() {
 	local _config=$1 _service=$2 _site=$3 _binding=$4 _root=$5 _certdir=$6 _mail=$7 _umbraco=$8
 	local _port _alias _candidate _found _normalizedBinding _aliases="" _aliasLine="" _extra=""

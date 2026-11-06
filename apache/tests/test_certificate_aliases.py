@@ -95,6 +95,54 @@ class CertificateAliasTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(config.read_text(), original)
 
+    def test_alias_list_normalization_and_config_replacement(self):
+        common = (APACHE / "lib/common.sh").read_text()
+        functions = "\n".join(shell_function(common, name) for name in (
+            "validate_binding", "normalize_server_aliases", "replace_server_aliases"))
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "site.conf"
+            config.write_text(
+                "<VirtualHost *:80>\n"
+                "  ServerName example.test\n"
+                "  ServerAlias OLD.example.test\n"
+                "</VirtualHost>\n"
+                "<VirtualHost *:443>\n"
+                "  ServerName example.test\n"
+                "  ServerAlias OLD.example.test\n"
+                "</VirtualHost>\n")
+            command = (
+                "set -euo pipefail\n" + functions
+                + '\nnormalize_server_aliases example.test "WWW.example.test, api.example.test www.example.test"\n'
+                  'printf "aliases=%s\\n" "${_normalizedAliases}"\n'
+                  'replace_server_aliases "$1" "${_normalizedAliases}"\n')
+            result = subprocess.run(
+                ["bash", "-c", command, "test", str(config)],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("aliases=www.example.test api.example.test", result.stdout)
+            self.assertEqual(config.read_text().count("ServerAlias www.example.test api.example.test"), 2)
+
+            command = (
+                "set -euo pipefail\n" + functions
+                + '\nnormalize_server_aliases example.test ""\n'
+                  'replace_server_aliases "$1" "${_normalizedAliases}"\n')
+            result = subprocess.run(
+                ["bash", "-c", command, "test", str(config)],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("ServerAlias", config.read_text())
+
+    def test_alias_normalization_rejects_invalid_domains(self):
+        common = (APACHE / "lib/common.sh").read_text()
+        functions = "\n".join(shell_function(common, name) for name in ("validate_binding", "normalize_server_aliases"))
+        for alias in ("*.example.test", "https://example.test", "localhost", "-bad.example.test"):
+            with self.subTest(alias=alias):
+                result = subprocess.run(
+                    ["bash", "-c", functions + '\nnormalize_server_aliases example.test "$1"', "test", alias],
+                    capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Invalid alias", result.stderr)
+
     def test_aliases_are_used_by_every_supported_certificate_flow(self):
         common = (APACHE / "lib/common.sh").read_text()
         test_action = (APACHE / "test_action.sh").read_text()
@@ -118,6 +166,12 @@ class CertificateAliasTests(unittest.TestCase):
         self.assertLess(publish.index('server_alias_line=""'), publish.index('if [[ ! -e ${certdir}/fullchain.cer ]]'))
         self.assertIn("ensure_production_tls_config", prod_action)
         self.assertIn("ensure_production_tls_config", change_remote)
+        for change in (change_local, change_remote):
+            self.assertIn("New aliases, comma-separated", change)
+            self.assertIn("normalize_server_aliases", change)
+            self.assertIn("replace_server_aliases", change)
+        self.assertIn('if [[ ${NEW} != "${OLD}" ]]', change_remote)
+        self.assertIn('if [[ ${_newBinding} != "${_oldBinding}" ]]', change_local)
         self.assertIn('set_certificate_domains "${_configPath}" "${_binding}"', legacy)
         self.assertIn('"${_certificateDomainArgs[@]}"', legacy)
 

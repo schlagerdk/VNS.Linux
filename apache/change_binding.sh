@@ -31,22 +31,37 @@ validate_binding "${_newBinding}"
 _newBinding=${_newBinding,,}
 _binding=${_newBinding}
 
-if [[ ${_newBinding} == "${_oldBinding}" ]]; then
-	echo "The binding is unchanged."
+_oldAliases=$(server_aliases_from_config "${_configPath}" "${_oldBinding}")
+echo "Current aliases: ${_oldAliases:-none}"
+_aliasInput=""
+read -r -p "New aliases, comma-separated (Enter keeps current; - removes all): " _aliasInput
+if [[ -z ${_aliasInput} ]]; then
+	_aliasInput=${_oldAliases}
+elif [[ ${_aliasInput} == "-" ]]; then
+	_aliasInput=""
+fi
+normalize_server_aliases "${_newBinding}" "${_aliasInput}"
+_newAliases=${_normalizedAliases}
+normalize_server_aliases "${_oldBinding}" "${_oldAliases}"
+_oldAliasesForCompare=${_normalizedAliases}
+if [[ ${_newBinding} == "${_oldBinding}" && ${_newAliases} == "${_oldAliasesForCompare}" ]]; then
+	echo "The binding and aliases are unchanged."
 	exit 0
 fi
 
-for _enabledConfig in /etc/apache2/sites-enabled/*.conf; do
-	[[ -e ${_enabledConfig} ]] || continue
-	[[ ${_enabledConfig} -ef ${_configPath} ]] && continue
-	if awk -v binding="${_newBinding}" '($1 == "ServerName" || $1 == "ServerAlias") { for (i = 2; i <= NF; i++) if (tolower($i) == tolower(binding)) found = 1 } END { exit !found }' "${_enabledConfig}"; then
-		echo "Binding ${_newBinding} is already used by ${_enabledConfig}" >&2
-		exit 1
-	fi
+for _domain in "${_newBinding}" ${_newAliases}; do
+	for _enabledConfig in /etc/apache2/sites-enabled/*.conf; do
+		[[ -e ${_enabledConfig} ]] || continue
+		[[ ${_enabledConfig} -ef ${_configPath} ]] && continue
+		if awk -v binding="${_domain}" '($1 == "ServerName" || $1 == "ServerAlias") { for (i = 2; i <= NF; i++) if (tolower($i) == tolower(binding)) found = 1 } END { exit !found }' "${_enabledConfig}"; then
+			echo "Binding or alias ${_domain} is already used by ${_enabledConfig}" >&2
+			exit 1
+		fi
+	done
 done
 
 echo "The new domain must resolve to this server and be reachable on HTTP/port 80."
-read -r -p "Change ${_oldBinding} to ${_newBinding}, issue a new certificate, and revoke the old one if unused? [y/N]: " _confirm
+read -r -p "Change bindings to ${_newBinding} (aliases: ${_newAliases:-none}), issue a new certificate, and revoke the old one if unused? [y/N]: " _confirm
 [[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
 
 require_acme
@@ -66,6 +81,10 @@ trap 'rm -rf "${_backupDir}"' EXIT
 sudo cp "${_configPath}" "${_backupDir}/site.conf"
 sudo cp "${_certificateFile}" "${_backupDir}/fullchain.cer"
 sudo cp "${_keyFile}" "${_backupDir}/site.key"
+if ! sudo env NEW_ALIASES="${_newAliases}" bash -c 'source "$1"; replace_server_aliases "$2" "$NEW_ALIASES"' _ "${_apacheDir}/lib/common.sh" "${_backupDir}/site.conf"; then
+	echo "Could not update aliases in the backup Apache config." >&2
+	exit 1
+fi
 if ! set_certificate_domains "${_backupDir}/site.conf" "${_newBinding}"; then
 	exit 1
 fi
@@ -90,6 +109,10 @@ _rollback() {
 }
 
 if ! sudo env OLD_BINDING="${_oldBinding}" NEW_BINDING="${_newBinding}" perl -pi -e 'if (/^\s*(?:ServerName|Redirect)\b/) { $count += s/\Q$ENV{OLD_BINDING}\E/$ENV{NEW_BINDING}/gi } END { die "No binding directive updated\n" unless $count }' "${_configPath}"; then
+	_rollback
+	exit 1
+fi
+if ! sudo env NEW_ALIASES="${_newAliases}" bash -c 'source "$1"; replace_server_aliases "$2" "$NEW_ALIASES"' _ "${_apacheDir}/lib/common.sh" "${_configPath}"; then
 	_rollback
 	exit 1
 fi
@@ -153,23 +176,26 @@ if [[ -f ${_backupDir}/appsettings.json ]] &&
 	fi
 fi
 
-_oldBindingInUse=0
-for _enabledConfig in /etc/apache2/sites-enabled/*.conf; do
-	[[ -e ${_enabledConfig} ]] || continue
-	[[ ${_enabledConfig} -ef ${_configPath} ]] && continue
-	if awk -v binding="${_oldBinding}" '($1 == "ServerName" || $1 == "ServerAlias") { for (i = 2; i <= NF; i++) if (tolower($i) == tolower(binding)) found = 1 } END { exit !found }' "${_enabledConfig}"; then
-		_oldBindingInUse=1
-		break
-	fi
-done
+if [[ ${_newBinding} != "${_oldBinding}" ]]; then
+	_oldBindingInUse=0
+	for _domain in ${_newAliases}; do [[ ${_domain} == "${_oldBinding}" ]] && _oldBindingInUse=1; done
+	for _enabledConfig in /etc/apache2/sites-enabled/*.conf; do
+		[[ -e ${_enabledConfig} ]] || continue
+		[[ ${_enabledConfig} -ef ${_configPath} ]] && continue
+		if awk -v binding="${_oldBinding}" '($1 == "ServerName" || $1 == "ServerAlias") { for (i = 2; i <= NF; i++) if (tolower($i) == tolower(binding)) found = 1 } END { exit !found }' "${_enabledConfig}"; then
+			_oldBindingInUse=1
+			break
+		fi
+	done
 
-if ((_oldBindingInUse)); then
-	echo "Previous binding ${_oldBinding} is still used by another site; keeping its certificate."
-else
-	echo "Revoke and remove certificate for ${_oldBinding}"
-	sudo "${_acme}" --revoke -d "${_oldBinding}"
-	sudo "${_acme}" --remove -d "${_oldBinding}"
-	clean_stale_acme "${_oldBinding}"
+	if ((_oldBindingInUse)); then
+		echo "Previous binding ${_oldBinding} is still used; keeping its certificate."
+	else
+		echo "Revoke and remove certificate for ${_oldBinding}"
+		sudo "${_acme}" --revoke -d "${_oldBinding}"
+		sudo "${_acme}" --remove -d "${_oldBinding}"
+		clean_stale_acme "${_oldBinding}"
+	fi
 fi
 
-echo "Binding updated: https://${_newBinding}/ (folder: ${_site})"
+echo "Bindings updated: https://${_newBinding}/ (aliases: ${_newAliases:-none}, folder: ${_site})"
