@@ -316,7 +316,8 @@ a.btn-link .ico { width: 13px; height: 13px; flex: none; }
 .site-link-group + .site-link-group { border-top: 1px solid var(--line); }
 .site-environment-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .site-environment-head .badge { font-size: 10px; padding: 4px 7px; }
-.site-environment-links { display: flex; flex-direction: column; align-items: stretch; gap: 6px; flex-shrink: 0; }
+.site-environment-links { display: flex; align-items: stretch; gap: 6px; flex-shrink: 0; }
+.site-links:has(.publish-status) .site-environment-links { flex-direction: column; }
 @media (max-width: 420px) {
 	.site { padding: 16px; }
 	.site-link-group { flex-wrap: wrap; }
