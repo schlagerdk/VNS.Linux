@@ -625,7 +625,10 @@ function envPanel(site, env) {
 	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, binding));
 	if (env.aliases && env.aliases.length) {
 		meta.append(el("dt", { textContent: "Aliases" }), el("dd", { className: "database-name aliases" },
-			...env.aliases.map((alias) => openLink(alias, scheme + "://" + alias + "/"))));
+			...env.aliases.flatMap((alias, index) => [
+				...(index ? [", "] : []),
+				openLink(alias, scheme + "://" + alias + "/"),
+			])));
 	}
 	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(env.binding + "/umbraco", scheme + "://" + env.binding + "/umbraco")));
 	if (site.kind === "csharp" || site.kind === "umbraco") {

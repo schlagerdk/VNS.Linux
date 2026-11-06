@@ -199,10 +199,11 @@ const env = {aliases: ["www.example.com", "shop.example.com"]};
 const meta = {children: [], append(...items) {this.children.push(...items);}};
 ALIASES
 assert.equal(meta.children[1].className, "database-name aliases");
-assert.deepEqual(meta.children[1].children, [
-    {tag: "a", textContent: "www.example.com", href: "https://www.example.com/"},
-    {tag: "a", textContent: "shop.example.com", href: "https://shop.example.com/"},
-]);
+assert.equal(meta.children[1].children[0].textContent, "www.example.com");
+assert.equal(meta.children[1].children[0].href, "https://www.example.com/");
+assert.equal(meta.children[1].children[1], ", ");
+assert.equal(meta.children[1].children[2].textContent, "shop.example.com");
+assert.equal(meta.children[1].children[2].href, "https://shop.example.com/");
 for (const kind of ["csharp", "umbraco", "python", "html"]) {
     for (const database of ["MS SQL", "SQL Express", "SQLite", "Azure SQL", "Unknown", undefined]) {
         const site = {kind}, env = {database, database_name: "MyApplication", database_server: database === "SQLite" ? "" : "172.23.3.21"};
