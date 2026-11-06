@@ -303,7 +303,7 @@ const iconPaths = {
 // label (exact, or a prefix ending in "*") -> [icon, tone]
 const buttonStyles = {
 	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
-	"Publish": ["upload", "green"], "Publish both": ["upload", "green"], "Sync to*": ["sync", "green"], "Start": ["play", "green"],
+	"Publish": ["upload", "green"], "Publish both": ["upload", "green"], "Sync to*": ["sync", "blue"], "Start": ["play", "green"],
 	"Add package": ["download", "green"], "Remove package": ["trash", "red"],
 	"Fix permissions": ["shield", "teal"], "Update Python packages": ["sync", "blue"],
 	"Create production site": ["server", "purple"],
