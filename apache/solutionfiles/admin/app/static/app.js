@@ -1033,11 +1033,15 @@ async function showInEditor(path, content) {
 	}
 	const previous = monacoEditor.getModel();
 	loadingContent = true;
-	const model = monaco.editor.createModel(content, languageFor(path), monaco.Uri.file("/" + path));
-	monacoEditor.setModel(model);
-	model.onDidChangeContent(() => { if (!loadingContent) setDirty(true); });
-	if (previous) previous.dispose();
-	loadingContent = false;
+	try {
+		monacoEditor.setModel(null);
+		if (previous) previous.dispose();
+		const model = monaco.editor.createModel(content, languageFor(path), monaco.Uri.file("/" + path));
+		monacoEditor.setModel(model);
+		model.onDidChangeContent(() => { if (!loadingContent) setDirty(true); });
+	} finally {
+		loadingContent = false;
+	}
 	monacoEditor.focus();
 }
 
