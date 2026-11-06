@@ -1157,6 +1157,7 @@ def build_command(data):
                 abort(400, "A certificate can include at most 99 aliases")
             aliases = " ".join(alias_names)
             argv.append(aliases)
+            argv.append("--yes")
         if data.get("scope") == "prod":
             if not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
                 abort(400, "This site has no production site")

@@ -45,7 +45,10 @@ if [[ ${_newBinding} == "${_oldBinding}" && ${_newAliases} == "${_oldAliasesForC
 fi
 
 echo "HTTP-only sites remain HTTP-only. For HTTPS sites the certificate will be updated; all names must resolve to ${_target} and be reachable on HTTP/port 80."
-read -r -p "Change production bindings to ${_newBinding} (aliases: ${_newAliases:-none}) on ${_target}? [y/N]: " _confirm
+_confirm=y
+if [[ ${4:-} != --yes ]]; then
+	read -r -p "Change production bindings to ${_newBinding} (aliases: ${_newAliases:-none}) on ${_target}? [y/N]: " _confirm
+fi
 [[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
 
 _umbraco=n

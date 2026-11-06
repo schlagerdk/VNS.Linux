@@ -76,7 +76,10 @@ if grep -Eq '^[[:space:]]*SSLEngine[[:space:]]+On([[:space:]]|$)' "${_configPath
 else
 	echo "HTTP-only site: no certificate will be issued."
 fi
-read -r -p "Change bindings to ${_scheme}://${_newBinding} (aliases: ${_newAliases:-none})? [y/N]: " _confirm
+_confirm=y
+if [[ ${4:-} != --yes ]]; then
+	read -r -p "Change bindings to ${_scheme}://${_newBinding} (aliases: ${_newAliases:-none})? [y/N]: " _confirm
+fi
 [[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
 
 # The publish folder is chosen per site; read it from the service's working directory

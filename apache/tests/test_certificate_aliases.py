@@ -106,7 +106,8 @@ class CertificateAliasTests(unittest.TestCase):
                             self.assertEqual((certificate / "fullchain.cer").read_text(), "old cert")
                             self.assertEqual((certificate / "example.test.key").read_text(), "old key")
                             calls.unlink()
-                        result = subprocess.run(["bash", str(script), *args], input="y\n", env=env,
+                        confirmed_args = args if production else [*args, "--yes"]
+                        result = subprocess.run(["bash", str(script), *confirmed_args], input="", env=env,
                                                 capture_output=True, text=True)
                         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
                         self.assertIn("ServerName " + new, config.read_text())
@@ -120,6 +121,23 @@ class CertificateAliasTests(unittest.TestCase):
                         if not https:
                             self.assertNotIn("acme:", actions)
                             self.assertEqual(list((root / "certs").iterdir()), [])
+
+    def test_ui_confirmation_skips_terminal_prompt_for_both_targets(self):
+        for name in ("change_binding.sh", "change_binding_prod.sh"):
+            source = (APACHE / name).read_text()
+            start = source.index("_confirm=y\n")
+            end = source.index('|| { echo "Aborted"; exit 1; }', start) + len('|| { echo "Aborted"; exit 1; }')
+            code = source[start:end].replace("${_confirm,,}", "${_confirm}")
+            for arguments, answer, expected in (
+                (["site.test", "new.test", "", "--yes"], "", 0),
+                (["site.test", "new.test", ""], "y\n", 0),
+                (["site.test", "new.test", ""], "n\n", 1),
+            ):
+                with self.subTest(script=name, arguments=arguments, answer=answer):
+                    result = subprocess.run(
+                        ["bash", "-c", "set -eu\n_scheme=http\n_newBinding=new.test\n_newAliases=''\n_target=server\n" + code,
+                         "test", *arguments], input=answer, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, expected, result.stderr)
 
     def run_domains(self, config, primary="Example.test"):
         with tempfile.TemporaryDirectory() as directory:

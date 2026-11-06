@@ -118,7 +118,7 @@ class SitePermissionsTests(unittest.TestCase):
                 "aliases": "WWW.example.test, api.example.test www.example.test", "scope": scope,
             })
             self.assertEqual(argv, ["/bin/bash", str(APACHE / script), "example.test",
-                                    "example.test", "www.example.test api.example.test"])
+                                    "example.test", "www.example.test api.example.test", "--yes"])
             self.assertIn("bindings", title.lower())
             self.assertEqual(cwd, str(APACHE))
             _, legacy_argv, _ = command({
