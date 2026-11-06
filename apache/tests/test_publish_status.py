@@ -131,7 +131,7 @@ class PublishStatusTests(unittest.TestCase):
                         baseline.unlink()
                     result = subprocess.run(
                         ["/bin/bash", "-c",
-                         'sudo() { "$@"; }\n' + command],
+                         f'source "{APACHE / "lib/dotnet.sh"}"\nsudo() {{ "$@"; }}\n' + command],
                         cwd=self.root, capture_output=True, text=True,
                         env=os.environ | {
                             "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
@@ -141,6 +141,7 @@ class PublishStatusTests(unittest.TestCase):
                         })
                     self.assertEqual(result.returncode, exit_code, result.stderr)
                     self.assertIn(str(self.project), result.stdout)
+                    self.assertRegex(result.stdout, r"--runtime\nlinux-(x64|arm64)\n")
                     self.assertEqual(self.status(), "current" if exit_code == 0 else "unknown")
 
     def test_site_api_exposes_per_environment_state_and_logs_corruption(self):

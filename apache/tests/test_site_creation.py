@@ -276,6 +276,25 @@ configure_project_dotnet "$1"
         for path in ("scripts/publish.sh", "prod-scripts/publish_prod.sh"):
             text = (APACHE / "solutionfiles/csharp" / path).read_text()
             self.assertIn('dotnet publish "${_projectName}.csproj"', text)
+            runtime_argument = '--runtime "${_runtimeIdentifier}"' if path.startswith("prod-") else '--runtime "$(linux_runtime_identifier)"'
+            self.assertIn(runtime_argument, text)
+            if path.startswith("prod-"):
+                self.assertIn('linux_runtime_identifier "$(remote uname -m)"', text)
+                self.assertIn('linux_runtime_identifier)', text)
+
+    def test_linux_runtime_identifier_maps_supported_architectures(self):
+        helper = APACHE / "lib/dotnet.sh"
+        for architecture, expected in (("x86_64", "linux-x64"), ("aarch64", "linux-arm64"), ("arm64", "linux-arm64")):
+            result = subprocess.run(
+                ["bash", "-c", f'source "{helper}"; linux_runtime_identifier "$1"', "test", architecture],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), expected)
+        result = subprocess.run(
+            ["bash", "-c", f'source "{helper}"; linux_runtime_identifier "$1"', "test", "i686"],
+            capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unsupported Linux architecture", result.stderr)
 
 
 if __name__ == "__main__":

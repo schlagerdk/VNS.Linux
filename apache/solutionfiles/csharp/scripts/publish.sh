@@ -9,6 +9,7 @@ if [[ ${VNS_PUBLISH_TRACKED:-} != test ]]; then
 fi
 cd "$(dirname "$0")"
 cd ..
+source "@APACHE_DIR@/lib/dotnet.sh"
 
 _site=@SITE@
 _projectName=@PROJECT_NAME@
@@ -35,7 +36,8 @@ systemctl stop "${_site}"
 _stopped=1
 
 echo "Publish (${_configuration})"
-dotnet publish "${_projectName}.csproj" -c "${_configuration}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
+rm -rf "${_publishFolder}/runtimes"
+dotnet publish "${_projectName}.csproj" -c "${_configuration}" -p:PublishDir="${_publishFolder}" --runtime "$(linux_runtime_identifier)" --self-contained false --nologo
 
 echo "Delete bin"
 rm -rf bin

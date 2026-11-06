@@ -12,6 +12,7 @@ fi
 cd "$(dirname "$0")"
 cd ..
 set -euo pipefail
+source "@APACHE_DIR@/lib/dotnet.sh"
 
 # ---- Production settings (filled in by create_prod.sh, edit if needed) -----
 PROD_LOCAL_PATH=@PROD_LOCAL_PATH@   # If set: publish to this local folder on this server instead of a remote server
@@ -66,6 +67,11 @@ if ((! _local)); then
 fi
 
 remote() { "${_ssh[@]}" "${_target}" "$@"; }
+if ((_local)); then
+	_runtimeIdentifier=$(linux_runtime_identifier)
+else
+	_runtimeIdentifier=$(linux_runtime_identifier "$(remote uname -m)")
+fi
 
 # Run the script from stdin as root on the target (this machine in local mode)
 run_script() {
@@ -92,7 +98,7 @@ if ((_local)); then
 fi
 
 echo "Publish (Release)"
-dotnet publish "${_projectName}.csproj" -c Release -p:PublishDir="${_publishFolder}" --self-contained false --nologo
+dotnet publish "${_projectName}.csproj" -c Release -p:PublishDir="${_publishFolder}" --runtime "${_runtimeIdentifier}" --self-contained false --nologo
 if [[ ! -f ${_publishFolder}/${_projectName}.dll ]]; then
 	echo "Publish failed: ${_projectName}.dll not found in the output" >&2
 	exit 1

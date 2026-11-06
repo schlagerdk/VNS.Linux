@@ -1,6 +1,15 @@
 #!/bin/bash
 
 # Keep SDKs and ASP.NET Core runtimes in the directory used by the site services.
+linux_runtime_identifier() {
+	local _architecture=${1:-$(uname -m)}
+	case "${_architecture}" in
+		x86_64) printf '%s\n' linux-x64 ;;
+		aarch64 | arm64) printf '%s\n' linux-arm64 ;;
+		*) echo "Unsupported Linux architecture for .NET publish: ${_architecture}" >&2; return 1 ;;
+	esac
+}
+
 ensure_dotnet_channel() (
 	set -euo pipefail
 	local _channel=$1 _dir=/usr/lib/dotnet _installer=""
