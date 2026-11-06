@@ -1034,7 +1034,7 @@ function syncMultiAction() {
 		prod: "Build and deploy each selected site's production environment.",
 		both: "Publish local, then production for each site. Sites run in parallel.",
 		outdated: "Run dotnet outdated --upgrade for every selected project. Review changes and publish afterward.",
-	}[action];
+	}[action] || "";
 	const packageAction = action === "add" || action === "remove";
 	$("#multi-package-fields").hidden = !packageAction;
 	multiForm.elements.namedItem("package").disabled = !packageAction;
@@ -1045,11 +1045,12 @@ function syncMultiAction() {
 		? selected.filter((site) => !site.scripts.includes("publish_prod.sh")) : [];
 	$("#multi-skipped").textContent = skipped.length
 		? "Will be skipped (no production): " + skipped.map((site) => site.name).join(", ") : "";
-	$("#multi-submit").disabled = !selected.length || skipped.length === selected.length;
+	$("#multi-submit").disabled = !action || submittingMulti || !selected.length || skipped.length === selected.length;
 }
 $("#btn-multi-action").onclick = () => {
 	multiForm.reset();
-	$("#multi-selection").textContent = Array.from(multiSites).join(", ");
+	$("#multi-selection").replaceChildren(...Array.from(multiSites, (name) =>
+		el("span", { className: "multi-site-tag", role: "listitem" }, svgIcon("globe"), el("span", { textContent: name }))));
 	syncMultiAction();
 	multiDialog.showModal();
 };
