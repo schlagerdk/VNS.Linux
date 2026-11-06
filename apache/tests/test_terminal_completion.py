@@ -27,9 +27,9 @@ class TerminalCompletionTests(unittest.TestCase):
                      "shell", "dotnet_package"):
             self.assertTrue(auto_close({"kind": kind}), kind)
         for script in ("publish.sh", "publish_local.sh", "publish_prod.sh", "sync_prod.sh",
-                       "change_env.sh", "clear_logs.sh"):
+                       "change_env.sh", "clear_logs.sh", "outdated.sh"):
             self.assertTrue(auto_close({"kind": "script", "script": script}), script)
-        for script in ("check_service.sh", "outdated.sh", "custom.sh", "edit_conf.sh"):
+        for script in ("check_service.sh", "custom.sh", "edit_conf.sh"):
             self.assertFalse(auto_close({"kind": "script", "script": script}), script)
         for kind in ("unit_tool", "remote_tool"):
             self.assertFalse(auto_close({"kind": kind, "tool": "check_service"}))
@@ -48,6 +48,23 @@ class TerminalCompletionTests(unittest.TestCase):
                      "/var/log/apache2/site-error.log", "ErrorLog /var/log/apache2/example.log"):
             self.assertFalse(problem(text), text)
 
+    def test_outdated_closes_after_declining_upgrade_without_errors(self):
+        self.assertTrue(self.ns["terminal_auto_close"]({"kind": "script", "script": "outdated.sh"}))
+        output = """Running dotnet outdated...
+Discovering projects...
+Analyzing dependencies...
+Umbraco.Cms 13.13.0 -> 14.3.4
+Version color legend:
+<red> : Major version update or pre-release version. Possible breaking changes.
+<yellow>: Minor version update. Backwards-compatible features added.
+<green> : Patch version update. Backwards-compatible bug fixes.
+Do you want to upgrade the packages? (y/n): n
+No upgrade performed.
+Done.
+"""
+        self.assertFalse(self.ns["terminal_output_problem"](output))
+        self.assertTrue(self.ns["terminal_output_problem"](output + "warning NU1903: vulnerable package"))
+
     def test_issue_certificate_auto_closes_for_test_and_production(self):
         auto_close = self.ns["terminal_auto_close"]
         for scope in ("test", "prod"):
@@ -58,6 +75,27 @@ class TerminalCompletionTests(unittest.TestCase):
         self.assertFalse(problem("Cert success.\nCertificate installed in /etc/ssl/certs/example.test_ecc"))
         self.assertTrue(problem("Warning: certificate renewal needs attention"))
         self.assertTrue(problem("Error: certificate issue failed"))
+
+    def test_acme_informational_error_mentions_are_not_failures(self):
+        problem = self.ns["terminal_output_problem"]
+        output = (
+            "[Fri Nov  6 09:51:45 CET 2026] Checking if there is an error in the Apache config file before starting.\r\n"
+            "Syntax OK\r\n"
+            "[Fri Nov  6 09:51:45 CET 2026] In case an error causes it to not be restored automatically, you can restore it yourself.\r\n"
+            "[Fri Nov  6 09:51:49 CET 2026] Cert success.\r\n"
+            "[Fri Nov  6 09:51:50 CET 2026] Reload successful\r\n"
+            "Certificate installed in /etc/ssl/certs/example.test_ecc\r\n"
+        )
+        self.assertFalse(problem(output))
+        for line in output.splitlines():
+            self.assertFalse(problem(line), line)
+        for failure in ("[Fri Nov  6 09:51:45 CET 2026] Error in Apache config",
+                        "Syntax error on line 10", "Warning: certificate installation incomplete",
+                        "Certificate reload failed"):
+            self.assertTrue(problem(output + failure), failure)
+        self.assertTrue(problem(output.replace(
+            "Checking if there is an error in the Apache config file before starting.",
+            "Checking if there is an error in the Apache config file before starting. ERROR: invalid config")))
 
     def test_problem_survives_replay_buffer_truncation_and_split_chunks(self):
         cls = self.ns["TermSession"]

@@ -604,13 +604,18 @@ def terminal_auto_close(payload):
             "publish.sh", "publish_local.sh", "publish_prod.sh", "create_prod.sh",
             "sync_prod.sh", "clear_logs.sh", "clear_logs_local.sh", "clear_logs_prod.sh",
             "issue_certificat.sh", "change_env.sh", "restart_service.sh", "restart_apache.sh",
-            "fix_permissions.sh", "update_packages.sh", "set_password.sh",
+            "fix_permissions.sh", "update_packages.sh", "set_password.sh", "outdated.sh",
         }
     return False
 
 
 def terminal_output_problem(text):
     text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)", "", text)
+    text = re.sub(
+        r"^(?:\[[^\]\r\n]+\] )?(?:"
+        r"Checking if there is an error in the Apache config file before starting\."
+        r"|In case an error causes it to not be restored automatically, you can restore it yourself\."
+        r")\r?$", "", text, flags=re.M)
     text = re.sub(r"\b(?:0|no)\s+(?:errors?|warnings?|failures?)(?:\(s\))?\b", "", text, flags=re.I)
     return bool(re.search(r"\b(?:errors?|failed|failure|fatal|\w*exception|traceback|warnings?)\b(?![/_-]|\.[A-Za-z0-9])", text, re.I))
 
