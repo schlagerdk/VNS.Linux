@@ -89,6 +89,7 @@ main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
 .meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
 .meta dt { color: var(--muted); }
 .meta .database-name { overflow-wrap: anywhere; min-width: 0; }
+.meta .aliases a { font-style: italic; }
 .meta dd { margin: 0; overflow-wrap: anywhere; }
 a.link { color: var(--blue); cursor: pointer; text-decoration: none; }
 a.link:hover { text-decoration: underline; }

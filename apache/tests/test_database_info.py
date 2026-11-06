@@ -183,12 +183,26 @@ with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch
         detail = source[source.index("function envPanel("):]
         self.assertNotIn('className: "badge database"', detail)
         self.assertIn('if (env.aliases && env.aliases.length)', detail)
-        self.assertIn('textContent: env.aliases.join(", ")', detail)
+        styles = (APACHE / "solutionfiles/admin/app/static/style.css").read_text()
+        self.assertIn(".meta .aliases a { font-style: italic; }", styles)
+        alias_row = detail[detail.index('if (env.aliases && env.aliases.length)'):
+                           detail.index('\n\tif (site.kind === "umbraco"', detail.index('if (env.aliases && env.aliases.length)'))]
+        self.assertIn('openLink(alias, scheme + "://" + alias + "/")', alias_row)
         start = detail.index('\tif (site.kind === "csharp" || site.kind === "umbraco")')
         row = detail[start:detail.index('\n\tif (env.port)', start)]
         harness = r"""
 const assert = require("node:assert/strict");
-const el = (tag, properties) => ({tag, ...properties});
+const el = (tag, properties, ...children) => ({tag, ...properties, children});
+const openLink = (text, url) => ({tag: "a", textContent: text, href: url});
+const scheme = "https";
+const env = {aliases: ["www.example.com", "shop.example.com"]};
+const meta = {children: [], append(...items) {this.children.push(...items);}};
+ALIASES
+assert.equal(meta.children[1].className, "database-name aliases");
+assert.deepEqual(meta.children[1].children, [
+    {tag: "a", textContent: "www.example.com", href: "https://www.example.com/"},
+    {tag: "a", textContent: "shop.example.com", href: "https://shop.example.com/"},
+]);
 for (const kind of ["csharp", "umbraco", "python", "html"]) {
     for (const database of ["MS SQL", "SQL Express", "SQLite", "Azure SQL", "Unknown", undefined]) {
         const site = {kind}, env = {database, database_name: "MyApplication", database_server: database === "SQLite" ? "" : "172.23.3.21"};
@@ -205,7 +219,7 @@ for (const kind of ["csharp", "umbraco", "python", "html"]) {
     }
 }
 """
-        result = subprocess.run(["node", "-e", harness.replace("ROW", row)], capture_output=True, text=True)
+        result = subprocess.run(["node", "-e", harness.replace("ALIASES", alias_row).replace("ROW", row)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
 

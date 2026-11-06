@@ -624,9 +624,8 @@ function envPanel(site, env) {
 		: openLink(env.binding, scheme + "://" + env.binding + "/");
 	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, binding));
 	if (env.aliases && env.aliases.length) {
-		meta.append(el("dt", { textContent: "Aliases" }), el("dd", {
-			className: "database-name", textContent: env.aliases.join(", "),
-		}));
+		meta.append(el("dt", { textContent: "Aliases" }), el("dd", { className: "database-name aliases" },
+			...env.aliases.map((alias) => openLink(alias, scheme + "://" + alias + "/"))));
 	}
 	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(env.binding + "/umbraco", scheme + "://" + env.binding + "/umbraco")));
 	if (site.kind === "csharp" || site.kind === "umbraco") {
