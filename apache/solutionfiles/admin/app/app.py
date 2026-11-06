@@ -49,6 +49,9 @@ contains_editable_files = _files_module.contains_editable_files
 _publish_spec = importlib.util.spec_from_file_location("vns_publish_status", os.path.join(APACHE_DIR, "lib", "publish_status.py"))
 _publish_module = importlib.util.module_from_spec(_publish_spec)
 _publish_spec.loader.exec_module(_publish_module)
+_database_spec = importlib.util.spec_from_file_location("vns_database_info", os.path.join(APACHE_DIR, "lib", "database_info.py"))
+_database_module = importlib.util.module_from_spec(_database_spec)
+_database_spec.loader.exec_module(_database_module)
 ADMIN_SITE = cfg.get("admin_site", "")
 APACHE_SITES = "/etc/apache2/sites-available"
 APACHE_ENABLED = "/etc/apache2/sites-enabled"
@@ -325,6 +328,17 @@ def environment_info(key, label, unit, binding, port, path, states, **extra):
                 info["publish_path"] = rel(working)
                 info["editable_configs"] = [filename for filename in ("appsettings.json", "web.config")
                                             if os.path.isfile(os.path.join(working, filename))]
+                try:
+                    if info["environment"] == "Unknown":
+                        raise ValueError("Service environment unavailable")
+                    settings = subprocess.run(
+                        ["systemctl", "show", unit + ".service", "--property=Environment", "--value"],
+                        capture_output=True, text=True, timeout=10, check=True)
+                    variables = dict(item.split("=", 1) for item in shlex.split(settings.stdout) if "=" in item)
+                    info["database"] = _database_module.database_type(working, info["environment"], variables)
+                except (OSError, subprocess.SubprocessError, ValueError):
+                    app.logger.warning("Could not read database configuration for %s", unit)
+                    info["database"] = "Database unknown"
     return info
 
 
@@ -460,12 +474,19 @@ def site_info(name, states):
                                  "ssh_port": prod["PROD_SSH_PORT"], "folder": prod["PROD_FOLDER"], "environment": "Unknown",
                                  **remote_status(name)})
 
+    updates = ""
     if projects:
         try:
             current = _publish_module.fingerprint(root)
         except (OSError, ValueError) as exc:
             app.logger.warning("Could not read publish status for %s: %s", name, exc)
             current = None
+        if current is not None:
+            try:
+                updates = _publish_module.updates_status(root, current)
+            except (OSError, ValueError):
+                app.logger.warning("Could not read package update status for %s", name)
+                updates = "error"
         for environment in environments:
             scope = "prod" if environment["key"] == "prod" else "test"
             environment["publish_status"] = "unknown"
@@ -479,6 +500,7 @@ def site_info(name, states):
         "name": name,
         "kind": kind,
         "has_project": bool(projects),
+        "updates": updates,
         "umbraco_version": umbraco,
         "packages": packages,
         "package_errors": package_errors,
@@ -521,6 +543,46 @@ def own_like_parent(path):
 
 # ----------------------------------------------------------------- sites API
 
+UPDATE_CHECK_LOCK = threading.Lock()
+UPDATE_CHECK = {"running": False, "completed": 0, "total": 0, "errors": []}
+
+
+def check_site_updates(name):
+    try:
+        _publish_module.check_updates(os.path.join(WEB_ROOT, name))
+    except (OSError, ValueError, RuntimeError) as exc:
+        app.logger.error("Package update check failed for %s: %s", name, exc, exc_info=True)
+        with UPDATE_CHECK_LOCK:
+            UPDATE_CHECK["errors"].append(name)
+    finally:
+        with UPDATE_CHECK_LOCK:
+            UPDATE_CHECK["completed"] += 1
+
+
+def check_all_updates(names):
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            list(executor.map(check_site_updates, names))
+    finally:
+        with UPDATE_CHECK_LOCK:
+            UPDATE_CHECK["running"] = False
+
+
+@app.route("/api/package-updates", methods=["GET", "POST"])
+def api_package_updates():
+    with UPDATE_CHECK_LOCK:
+        if request.method == "POST" and not UPDATE_CHECK["running"]:
+            names = [name for name in site_dirs() if name != ADMIN_SITE
+                     and glob.glob(os.path.join(WEB_ROOT, name, "*.csproj"))]
+            UPDATE_CHECK.update(running=True, completed=0, total=len(names), errors=[])
+            try:
+                threading.Thread(target=check_all_updates, args=(names,), daemon=True).start()
+            except RuntimeError:
+                UPDATE_CHECK["running"] = False
+                app.logger.exception("Could not start package update checks")
+                return error("Could not start package update checks", 500)
+        return jsonify(**UPDATE_CHECK)
+
 def default_umbraco_version():
     """The Umbraco version create_site.sh installs when none is given."""
     match = re.search(r"^_defaultUmbracoVersion=([0-9][0-9A-Za-z.\-]*)", read_text(os.path.join(APACHE_DIR, "create_site.sh")) or "", re.M)
@@ -536,7 +598,9 @@ def api_sites():
     states = service_states(units)
     with ThreadPoolExecutor(max_workers=8) as executor:
         sites = list(executor.map(lambda name: site_info(name, states), names))
-    return jsonify(sites=sites, defaults={"umbraco_version": default_umbraco_version()})
+    with UPDATE_CHECK_LOCK:
+        update_check = dict(UPDATE_CHECK)
+    return jsonify(sites=sites, defaults={"umbraco_version": default_umbraco_version()}, update_check=update_check)
 
 
 @app.route("/api/sites/<name>/service", methods=["POST"])
@@ -675,7 +739,7 @@ def terminal_output_problem(text):
 
 
 class TermSession:
-    def __init__(self, title, argv, cwd, extra_env=None, auto_close=False):
+    def __init__(self, title, argv, cwd, extra_env=None, auto_close=False, update_root=None):
         self.id = uuid.uuid4().hex[:12]
         self.title = title
         self.created = time.time()
@@ -683,6 +747,9 @@ class TermSession:
         self.auto_close = auto_close
         self.output_problem = False
         self.output_tail = ""
+        self.update_root = update_root
+        self.update_fingerprint = _publish_module.fingerprint(update_root) if update_root else None
+        self.no_outdated = False
         self.buffer = bytearray()
         self.subscribers = set()
         self.lock = threading.Lock()
@@ -712,6 +779,8 @@ class TermSession:
                 break
             lines = (self.output_tail + decoder.decode(data)).split("\n")
             self.output_tail = lines.pop()
+            if self.update_root:
+                self.no_outdated |= "No outdated dependencies were detected" in "\n".join(lines + [self.output_tail])
             self.output_problem |= any(terminal_output_problem(line) for line in lines)
             if len(self.output_tail) > BUFFER_MAX:
                 self.output_problem |= terminal_output_problem(self.output_tail)
@@ -729,6 +798,13 @@ class TermSession:
         self.output_problem |= terminal_output_problem(self.output_tail + decoder.decode(b"", final=True))
         status = self.proc.exitstatus
         self.exit = status if status is not None else -(self.proc.signalstatus or 1)
+        if getattr(self, "update_root", None):
+            update_status = "error" if self.exit != 0 or self.output_problem else "current" if self.no_outdated else "available"
+            try:
+                _publish_module.record(self.update_root, "updates", self.update_fingerprint, status=update_status)
+            except (OSError, ValueError):
+                app.logger.exception("Could not save package update status for %s", self.update_root)
+                self.output_problem = True
         REMOTE_STATUS.clear()
         with self.lock:
             for q in list(self.subscribers):
@@ -1103,7 +1179,8 @@ def api_term():
                 os.unlink(argv[1])
             return error("Too many running terminals. Close some first.")
         try:
-            session_obj = TermSession(title, argv, cwd, extra_env, auto_close=terminal_auto_close(payload))
+            update_root = os.path.join(WEB_ROOT, payload["site"]) if payload.get("kind") == "script" and payload.get("script") == "outdated.sh" and glob.glob(os.path.join(WEB_ROOT, payload["site"], "*.csproj")) else None
+            session_obj = TermSession(title, argv, cwd, extra_env, auto_close=terminal_auto_close(payload), update_root=update_root)
         except Exception:
             if extra_env is not None:
                 os.unlink(argv[1])

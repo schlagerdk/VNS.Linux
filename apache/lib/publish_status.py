@@ -1,4 +1,4 @@
-"""Track the project configuration used by each successful .NET publish."""
+"""Track .NET project configuration for publishes and package update checks."""
 import hashlib
 import json
 import os
@@ -39,18 +39,48 @@ def status(root, scope, current):
     return "current" if data["fingerprint"] == current else "pending"
 
 
-def record(root, scope, value):
+def record(root, scope, value, **metadata):
     folder = Path(root) / ".vns-publish"
     folder.mkdir(mode=0o700, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(dir=folder, prefix=scope + "-", suffix=".tmp")
     try:
         with os.fdopen(descriptor, "w") as stream:
-            json.dump({"fingerprint": value}, stream)
+            json.dump({"fingerprint": value, **metadata}, stream)
             stream.write("\n")
         os.replace(temporary, folder / (scope + ".json"))
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def updates_status(root, current):
+    try:
+        data = json.loads((Path(root) / ".vns-publish/updates.json").read_text())
+    except FileNotFoundError:
+        return ""
+    if not isinstance(data, dict) or not isinstance(data.get("fingerprint"), str) or data.get("status") not in ("current", "available", "error"):
+        raise ValueError("Invalid package update status")
+    return data["status"] if data.get("fingerprint") == current else ""
+
+
+def check_updates(root):
+    value = fingerprint(root)
+    available = False
+    try:
+        for project in sorted(Path(root).glob("*.csproj")):
+            result = subprocess.run(
+                ["dotnet", "list", str(project), "package", "--outdated"],
+                cwd=root, env=os.environ | {"DOTNET_CLI_UI_LANGUAGE": "en-US", "VSLANG": "1033"},
+                capture_output=True, text=True, timeout=180, check=True)
+            if not result.stdout.strip():
+                raise ValueError("Package update check returned no output")
+            available |= "has no updates given the current sources" not in result.stdout.lower()
+        state = "available" if available else "current"
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        record(root, "updates", value, status="error")
+        raise RuntimeError("Package update check failed for " + Path(root).name) from exc
+    record(root, "updates", value, status=state)
+    return state
 
 
 def run_publish(root, scope, command):

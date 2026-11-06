@@ -17,6 +17,8 @@ validate_site_name "${PROD_FOLDER}"
 printf -v _vars 'SITE=%q' "${PROD_FOLDER}"
 case "${_action}" in
 	status)
+		_database_code=$(cat lib/database_info.py)
+		printf -v _vars '%s DATABASE_CODE=%q' "${_vars}" "${_database_code}"
 		prod_run "${_vars}" <<'REMOTE'
 set -euo pipefail
 python3 - <<'PY'
@@ -37,6 +39,7 @@ if state.returncode not in (0, 3, 4):
 secure = bool(re.search(r"<VirtualHost\s+[^>]*:443>", text))
 certificate = re.search(r'^\s*SSLCertificateFile\s+"?([^"\s]+)', text, re.M)
 environment = ""
+variables = {}
 if service.is_file():
     settings = subprocess.run(["systemctl", "show", site + ".service", "--property=Environment", "--value"],
                               capture_output=True, text=True, check=True)
@@ -44,6 +47,13 @@ if service.is_file():
     environment = variables.get("DOTNET_ENVIRONMENT") or variables.get("ASPNETCORE_ENVIRONMENT", "")
 port = re.search(r"(?:localhost|127\.0\.0\.1):(\d+)", service_text)
 binding = re.search(r"^\s*ServerName\s+(\S+)", text, re.M)
+exec(os.environ.pop("DATABASE_CODE"))
+database = ""
+try:
+    database = database_type(Path("/var/www", site), environment, variables)
+except (OSError, ValueError):
+    print("Could not read remote database configuration", file=__import__("sys").stderr)
+    database = "Database unknown"
 print(json.dumps({
     "unit": site if service.is_file() else "",
     "state": state.stdout.strip() if service.is_file() else "",
@@ -51,6 +61,7 @@ print(json.dumps({
     "scheme": "https" if secure else "http",
     "https": secure and bool(certificate and Path(certificate.group(1)).is_file()),
     "environment": environment,
+    "database": database,
     "binding": binding.group(1) if binding else "",
     "port": port.group(1) if port else "",
 }))

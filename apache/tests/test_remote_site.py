@@ -24,6 +24,9 @@ APP_SOURCE = APACHE / "solutionfiles/admin/app/app.py"
 spec = importlib.util.spec_from_file_location("remote_files", APACHE / "lib/remote_files.py")
 remote_files = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(remote_files)
+database_spec = importlib.util.spec_from_file_location("database_info", APACHE / "lib/database_info.py")
+database_info = importlib.util.module_from_spec(database_spec)
+database_spec.loader.exec_module(database_info)
 
 
 class RemoteFilesTests(unittest.TestCase):
@@ -83,6 +86,7 @@ class RemoteApiTests(unittest.TestCase):
         self.app.config["TESTING"] = True
         self.ns = dict(
             app=self.app, os=os, json=json, subprocess=subprocess, time=time, shlex=shlex,
+            _database_module=database_info,
             re=re, SERVICE_DIR="/etc/systemd/system", read_text=lambda path: "",
             base64=base64, abort=abort, jsonify=jsonify, request=request,
             io=io, send_file=send_file, sys=sys, site_units=lambda site: [site, "local-prod.test"],
@@ -164,14 +168,18 @@ class RemoteApiTests(unittest.TestCase):
             publish = root / "example.test/_custom"
             publish.mkdir(parents=True)
             (publish / "appsettings.json").write_text("{}")
+            (publish / "appsettings.Test.json").write_text(
+                '{"ConnectionStrings":{"umbracoDbDSN":"Data Source=app.db","umbracoDbDSN_ProviderName":"Microsoft.Data.Sqlite"}}')
             self.ns.update(WEB_ROOT=str(root), unit_of=lambda unit: True,
                            service_environment=lambda unit: "Test",
                            https_status=lambda unit: {},
                            read_text=lambda path: 'WorkingDirectory="%s"' % publish)
-            info = self.ns["environment_info"]("main", "Test", "example.test",
-                                              "example.test", "", "example.test", {})
+            with patch("subprocess.run", return_value=Mock(stdout="")):
+                info = self.ns["environment_info"]("main", "Test", "example.test",
+                                                  "example.test", "", "example.test", {})
             self.assertEqual(info["publish_path"], str(publish))
             self.assertEqual(info["editable_configs"], ["appsettings.json"])
+            self.assertEqual(info["database"], "SQLite")
 
     def test_remote_file_routes_and_binary_transfer(self):
         command = Mock(return_value=Mock(stdout=b'{"ok": true}'))
@@ -228,6 +236,7 @@ class RemoteApiTests(unittest.TestCase):
 
 class RemoteStatusTests(unittest.TestCase):
     def test_https_is_read_from_remote_configuration(self):
+        helper = (APACHE / "lib/database_info.py").read_text().replace("from pathlib import Path", "")
         source = (APACHE / "remote_site.sh").read_text().split("python3 - <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
         tree = ast.parse(source)
         tree.body = [node for node in tree.body if not isinstance(node, ast.ImportFrom)]
@@ -246,7 +255,7 @@ class RemoteStatusTests(unittest.TestCase):
                 if not has_certificate:
                     certificate.unlink()
                 output = io.StringIO()
-                with patch.dict(os.environ, SITE="production.test"), redirect_stdout(output), \
+                with patch.dict(os.environ, SITE="production.test", DATABASE_CODE=helper), redirect_stdout(output), \
                         patch("subprocess.run", side_effect=[
                             Mock(returncode=0, stdout="active\n"),
                             Mock(stdout='"ASPNETCORE_ENVIRONMENT=Production" "DOTNET_ENVIRONMENT=Production"\n')]):
@@ -266,7 +275,7 @@ class RemoteStatusTests(unittest.TestCase):
             ):
                 with self.subTest(environment=expected):
                     output = io.StringIO()
-                    with patch.dict(os.environ, SITE="production.test"), redirect_stdout(output), \
+                    with patch.dict(os.environ, SITE="production.test", DATABASE_CODE=helper), redirect_stdout(output), \
                             patch("subprocess.run", side_effect=[
                                 Mock(returncode=0, stdout="active\n"), Mock(stdout=variables)]) as run:
                         exec(compile(tree, "remote status", "exec"), {"Path": remote_path})
@@ -285,7 +294,7 @@ class RemoteTransportTests(unittest.TestCase):
             (root / "remote_site.sh").write_text((APACHE / "remote_site.sh").read_text())
             (root / "lib/common.sh").write_text((APACHE / "lib/common.sh").read_text()
                                                    + '\n_rootPath="' + str(root / "sites") + '"\n')
-            for name in ("prod.sh", "remote_files.py", "managed_config.py"):
+            for name in ("prod.sh", "remote_files.py", "managed_config.py", "database_info.py"):
                 (root / "lib" / name).write_text((APACHE / "lib" / name).read_text())
             # macOS Bash cannot source a process substitution; test transport with trusted fixture settings.
             with (root / "lib/prod.sh").open("a") as source:

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 cd "$(dirname "$0")"
 cd ..
 clear
@@ -19,7 +20,7 @@ fi
 echo "Running dotnet outdated..."
 _output=$(mktemp)
 trap 'rm -f "${_output}"' EXIT
-dotnet outdated 2>&1 | tee "${_output}" || true
+dotnet outdated 2>&1 | tee "${_output}"
 
 if grep -q "No outdated dependencies were detected" "${_output}"; then
     echo

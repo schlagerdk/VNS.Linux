@@ -108,6 +108,7 @@ Done.
                 session = cls.__new__(cls)
                 session.id, session.title, session.auto_close = "test", "Create site", True
                 session.output_tail, session.output_problem = "", False
+                session.update_root = None
                 session.buffer, session.lock, session.subscribers = bytearray(), threading.Lock(), set()
                 session.proc = SimpleNamespace(fd=1, wait=Mock(), exitstatus=0)
                 self.ns["os"].read.side_effect = output + [b""]
@@ -118,6 +119,25 @@ Done.
                 self.assertTrue(metadata["auto_close"])
                 self.assertEqual(metadata["output_problem"], expected)
                 self.assertEqual(metadata["exit"], 0)
+
+    def test_outdated_output_updates_shared_flag_after_completion(self):
+        record = Mock()
+        self.ns["_publish_module"] = SimpleNamespace(record=record)
+        for output, exit_code, expected in (
+            ([b"No outdated depen", b"dencies were detected\n"], 0, "current"),
+            ([b"Example 1.0 -> 2.0\n", b"No upgrade performed.\n"], 0, "available"),
+            ([b"error: feed unavailable\n"], 1, "error"),
+        ):
+            with self.subTest(expected=expected):
+                session = self.ns["TermSession"].__new__(self.ns["TermSession"])
+                session.output_tail, session.output_problem = "", False
+                session.update_root, session.update_fingerprint = "/var/www/example.test", "before-upgrade"
+                session.no_outdated = False
+                session.buffer, session.lock, session.subscribers = bytearray(), threading.Lock(), set()
+                session.proc = SimpleNamespace(fd=1, wait=Mock(), exitstatus=exit_code)
+                self.ns["os"].read.side_effect = output + [b""]
+                session._read()
+                record.assert_called_with("/var/www/example.test", "updates", "before-upgrade", status=expected)
 
     def test_browser_closes_only_clean_successful_mutations(self):
         source = (APP / "static/app.js").read_text()

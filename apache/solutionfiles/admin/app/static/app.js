@@ -214,10 +214,38 @@ const kindLabel = { umbraco: "Umbraco", csharp: "C# / .NET", python: "Python", h
 
 let defaultUmbracoVersion = "";
 let sitesLoaded = false;
+let updateCheckTimer = null;
+function monitorUpdateCheck(state) {
+	const button = $("#btn-check-updates");
+	button.disabled = state.running;
+	button.replaceChildren(svgIcon("download"), el("span", { textContent: state.running ? `Checking updates (${state.completed}/${state.total})…` : "Check for updates" }));
+	if (state.running && !updateCheckTimer) {
+		updateCheckTimer = setTimeout(() => {
+			updateCheckTimer = null;
+			run(async () => {
+				let result;
+				try {
+					result = await api("/api/package-updates");
+				} catch (error) {
+					monitorUpdateCheck({ running: false });
+					throw error;
+				}
+				monitorUpdateCheck(result);
+				if (!result.running) {
+					await loadSites();
+					if (result.errors.length) toast("Update checks failed: " + result.errors.join(", "), "error");
+					else toast(`Checked ${result.total} sites for package updates.`, "ok");
+				}
+			});
+		}, 2000);
+	}
+}
+
 async function loadSites() {
 	const data = await api("/api/sites");
 	allSites = data.sites;
 	sitesLoaded = true;
+	if (data.update_check) monitorUpdateCheck(data.update_check);
 	$("#settings-admin-site").hidden = !allSites.some((s) => s.admin);
 	$("#settings-admin-group").hidden = $("#settings-admin-site").hidden;
 	defaultUmbracoVersion = (data.defaults || {}).umbraco_version || "";
@@ -304,6 +332,7 @@ const iconPaths = {
 const buttonStyles = {
 	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
 	"Publish": ["upload", "green"], "Publish both": ["upload", "green"], "Sync to*": ["sync", "blue"], "Start": ["play", "green"],
+	"Check for updates": ["download", "amber"],
 	"Add package": ["download", "green"], "Remove package": ["trash", "red"],
 	"Fix permissions": ["shield", "teal"], "Update Python packages": ["sync", "blue"],
 	"Create production site": ["server", "purple"],
@@ -374,6 +403,8 @@ function kindBadges(site) {
 		badges.append(badge);
 	}
 	if (site.admin) badges.append(el("span", { className: "badge admin", textContent: "this admin site" }));
+	if (site.updates === "available") badges.append(el("span", { className: "badge updates-available", textContent: "Updates available", title: "NuGet updates were found. Install package updates, then publish the site." }));
+	if (site.updates === "error") badges.append(el("span", { className: "badge updates-error", textContent: "Update check failed", title: "Run Check for updates again. See server logs for details." }));
 	return badges;
 }
 
@@ -407,6 +438,7 @@ function siteCard(site) {
 		const heading = el("div", { className: "site-environment-head" },
 			el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 		if (env.mode === "remote") heading.append(remoteIcon(env));
+		if (env.database) heading.append(el("span", { className: "badge database", textContent: env.database, title: "Configured database provider (connection not tested)" }));
 		const pending = publishBadge(env);
 		if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 		group.append(heading);
@@ -580,10 +612,11 @@ function envPanel(site, env) {
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
 	const environment = site.kind === "python" ? "Live" : env.environment;
 	if (environment) heading.append(el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
-	const pending = publishBadge(env);
-	if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 	heading.append(httpsLock(env.https));
 	if (env.mode === "remote") heading.append(remoteIcon(env));
+	if (env.database) heading.append(el("span", { className: "badge database", textContent: env.database, title: "Configured database provider (connection not tested)" }));
+	const pending = publishBadge(env);
+	if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 
 	const scheme = env.scheme || "https";
 	const binding = !env.binding ? bindingLink("") : site.admin && env.key !== "prod"
@@ -746,6 +779,15 @@ $("#search").oninput = (event) => {
 };
 $("#btn-server-shell").onclick = () => run(() => openTask({ kind: "shell" }));
 $("#btn-browse").onclick = () => run(() => openFiles(""));
+$("#btn-check-updates").onclick = () => run(async () => {
+	$("#btn-check-updates").disabled = true;
+	try {
+		monitorUpdateCheck(await api("/api/package-updates", { method: "POST" }));
+	} catch (error) {
+		$("#btn-check-updates").disabled = false;
+		throw error;
+	}
+});
 document.addEventListener("keydown", (event) => {
 	const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
 	if (event.key === "/" && !typing && !$("#search").hidden) { event.preventDefault(); if (currentView !== "sites") go("sites"); $("#search").focus(); }
