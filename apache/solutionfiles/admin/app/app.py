@@ -366,6 +366,30 @@ def package_references(projects):
     return [{"name": name, "version": version} for name, version in sorted(packages.items(), key=lambda item: item[0].lower())], errors
 
 
+def published_project_info(root, service_text):
+    candidates = []
+    match = re.search(r"^ExecStart=(.+)$", service_text, re.M)
+    if match:
+        for argument in shlex.split(match.group(1)):
+            if argument.endswith(".dll") and os.path.isabs(argument):
+                candidates.append(argument[:-4] + ".deps.json")
+    if not candidates:
+        candidates = sorted(glob.glob(os.path.join(root, "*.deps.json")))
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path) as stream:
+                data = json.load(stream)
+            libraries = data.get("libraries", {})
+            version = next((name.split("/", 1)[1] for name in libraries
+                            if name.startswith("Umbraco.Cms/")), "")
+            return {"kind": "umbraco" if version else "csharp", "umbraco_version": version}
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            app.logger.warning("Could not read published project metadata %s: %s", path, exc)
+    return None
+
+
 def site_info(name, states):
     root = os.path.join(WEB_ROOT, name)
     conf = os.path.join(APACHE_SITES, name + ".conf")
@@ -394,7 +418,9 @@ def site_info(name, states):
     elif os.path.isfile(os.path.join(root, "app", "app.py")):
         kind = "python"
     else:
-        kind = "html"
+        published = published_project_info(root, service_text)
+        kind = published["kind"] if published else "html"
+        umbraco = published["umbraco_version"] if published else ""
 
     scripts = []
     scripts_dir = os.path.join(root, "scripts")

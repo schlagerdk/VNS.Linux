@@ -475,8 +475,6 @@ function renderSite(name) {
 	}
 	const actions = el("div", { className: "actions" });
 	const add = (label, handler, className) => actions.append(el("button", { textContent: label, className: className || "", onclick: () => run(handler) }));
-	add("Shell", () => openTask({ kind: "shell", site: site.name }), "primary");
-	add("Files", () => openFiles(site.name));
 	if (site.scripts.some((f) => !buttonScripts.has(f))) actions.append(scriptSelect(site));
 	if (!hasProd(site) && site.scripts.includes("create_prod.sh")) {
 		add("Create production site", () => openCreateProdDialog(site));
@@ -594,6 +592,9 @@ function envPanel(site, env) {
 	if (env.mode === "remote") {
 		add("Shell", () => openTask({ kind: "remote_tool", site: site.name, tool: "shell" }));
 		add("Files", () => openFiles("", site.name));
+	} else {
+		add("Shell", () => openTask({ kind: "shell", site: site.name, path: env.path }));
+		add("Files", () => openFiles(env.path));
 	}
 
 	const quick = el("div", { className: "actions quick" });
