@@ -26,3 +26,25 @@ ensure_dotnet_channel() (
 	sudo bash "${_installer}" --channel "${_channel}" --install-dir "${_dir}" "$@"
 	sudo bash "${_installer}" --channel "${_channel}" --runtime aspnetcore --install-dir "${_dir}" "$@"
 )
+
+configure_project_dotnet() {
+	local _project=$1 _framework
+	_framework=$(python3 - "${_project}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+frameworks = [
+    (node.text or "").strip()
+    for node in root.iter()
+    if node.tag.rsplit("}", 1)[-1] == "TargetFramework"
+]
+print(frameworks[0] if len(frameworks) == 1 else "")
+PY
+	)
+	if [[ ${_framework} == net8.0 ]]; then
+		ensure_dotnet_channel 8.0
+		printf '%s\n' '{"sdk":{"version":"8.0.100","rollForward":"latestFeature","allowPrerelease":false}}' |
+			sudo tee "$(dirname "${_project}")/global.json" >/dev/null
+	fi
+}

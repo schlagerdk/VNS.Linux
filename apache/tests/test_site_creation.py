@@ -84,6 +84,7 @@ validate_publish_folder() { :; }
 allocate_ports() { :; }
 install_scripts() { :; }
 exclude_from_build() { :; }
+configure_project_dotnet() { echo "configure:$1"; }
 install_apache_config() { :; }
 install_service() { :; }
 ensure_dotnet_channel() { echo "ensure:$1"; }
@@ -119,6 +120,9 @@ sudo() {
                                       extra='exclude_from_build() { [[ $PWD == "$_siteRoot" ]]; }')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("<dotnet> <new> <webapi>", result.stdout)
+        self.assertIn("<dotnet> <publish> <", result.stdout)
+        self.assertIn("/Example.csproj> <-c>", result.stdout)
+        self.assertIn("configure:", result.stdout)
 
     def test_invalid_template_fails_before_creating_site(self):
         result, _ = self.run_creation(template="--help")
@@ -209,6 +213,38 @@ ensure_dotnet_channel 8.0
         self.assertIn("download", result.stdout)
         self.assertIn("<--channel> <8.0> <--install-dir>", result.stdout)
         self.assertIn("<--channel> <8.0> <--runtime> <aspnetcore>", result.stdout)
+
+
+class ProjectRuntimeTests(unittest.TestCase):
+    def test_net8_templates_install_and_select_net8(self):
+        helper = (APACHE / "lib/dotnet.sh").read_text()
+        for framework in ("net8.0", "net10.0"):
+            with self.subTest(framework=framework), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                project = root / "example-site.csproj"
+                project.write_text("<Project><PropertyGroup><TargetFramework>" + framework +
+                                   "</TargetFramework></PropertyGroup></Project>")
+                script = helper + """
+set -euo pipefail
+ensure_dotnet_channel() { echo "ensure:$1"; }
+sudo() { "$@"; }
+configure_project_dotnet "$1"
+"""
+                result = subprocess.run(["bash", "-c", script, "test", str(project)],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                if framework == "net8.0":
+                    self.assertIn("ensure:8.0", result.stdout)
+                    self.assertEqual(json.loads((root / "global.json").read_text())["sdk"]["version"],
+                                     "8.0.100")
+                else:
+                    self.assertNotIn("ensure:", result.stdout)
+                    self.assertFalse((root / "global.json").exists())
+
+    def test_all_publish_paths_select_the_project(self):
+        for path in ("scripts/publish.sh", "prod-scripts/publish_prod.sh"):
+            text = (APACHE / "solutionfiles/csharp" / path).read_text()
+            self.assertIn('dotnet publish "${_projectName}.csproj"', text)
 
 
 if __name__ == "__main__":

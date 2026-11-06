@@ -181,6 +181,7 @@ fi
 
 echo "Reload daemon"
 sudo systemctl daemon-reload
-echo "Restart apache2"
-sudo systemctl restart apache2
+echo "Test and reload apache2"
+sudo apache2ctl configtest
+sudo systemctl reload apache2
 echo "All is removed!"

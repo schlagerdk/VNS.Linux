@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 cd ..
 
 _site=@SITE@
+_projectName=@PROJECT_NAME@
 _publishFolder=@PUBLISH_FOLDER@
 _configuration=${1:-@BUILD_CONFIG@}
 
@@ -31,7 +32,7 @@ systemctl stop "${_site}"
 _stopped=1
 
 echo "Publish (${_configuration})"
-dotnet publish -c "${_configuration}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
+dotnet publish "${_projectName}.csproj" -c "${_configuration}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
 
 echo "Delete bin"
 rm -rf bin

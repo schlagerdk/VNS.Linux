@@ -161,7 +161,8 @@ create_csharp() {
 			exit 1
 		fi
 		exclude_from_build "${_project}" "${_publishFolder}"
-		sudo dotnet publish -c "${_buildConfig}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
+		configure_project_dotnet "${_project}"
+		sudo dotnet publish "${_project}" -c "${_buildConfig}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
 		sudo rm -rf bin obj
 	fi
 	cd "${_apacheDir}"
@@ -194,7 +195,7 @@ create_umbraco_project() {
 	exclude_from_build "${_project}" "${_publishFolder}"
 
 	if [[ ${_umbracoVersion%%.*} -ge 17 ]]; then
-		sudo dotnet add package Umbraco.Cms.DevelopmentMode.Backoffice -v "${_umbracoVersion}"
+			sudo dotnet add package Umbraco.Cms.DevelopmentMode.Backoffice -v "${_umbracoVersion}"
 	fi
 
 	echo "Install VNS Umbraco and uSync package"
@@ -211,7 +212,7 @@ create_umbraco_project() {
 		appsettings-schema.json appsettings-schema.Umbraco.Cms.json umbraco-package-schema.json
 
 	echo "Publish site"
-	sudo dotnet publish -c "${_buildConfig}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
+	sudo dotnet publish "${_project}" -c "${_buildConfig}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
 
 	echo "Delete bin and schema files"
 	sudo rm -rf bin
