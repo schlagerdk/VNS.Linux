@@ -437,6 +437,16 @@ const bindingLink = (binding, asButton) => binding
 	: el("span", { className: "muted", textContent: "no binding" });
 const backofficeLink = (binding, asButton) => openLink(binding + "/umbraco", "https://" + binding + "/umbraco", "Umbraco backoffice", asButton);
 
+function environmentAddress(env) {
+	const hostname = env.binding || (env.mode === "remote" ? env.host : $("meta[name=server-hostname]")?.content) || "";
+	const authority = hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
+	return {
+		hostname,
+		url: hostname ? `${env.scheme || "https"}://${authority}/` : "",
+		title: env.binding ? hostname : `Default / wildcard: ${hostname}. Apache chooses the site for this address.`,
+	};
+}
+
 const versionColors = 8; // majors 18, 19, 20 … get different colours (see .badge.version[data-major] in style.css)
 
 function kindBadges(site) {
@@ -488,21 +498,22 @@ function siteCard(site) {
 		if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 		group.append(heading);
 		const links = el("div", { className: "site-environment-links" });
-		const scheme = env.scheme || "https";
-		if (!env.binding) {
+		const address = environmentAddress(env);
+		if (!address.url) {
 			group.append(el("span", { className: "muted", textContent: "No binding configured" }));
 			actions.append(group);
 			continue;
 		}
-		const frontend = openLink("Frontend", scheme + "://" + env.binding + "/", environment + ": " + env.binding, true);
+		const frontend = openLink("Frontend", address.url, environment + ": " + address.title, true);
 		frontend.classList.add("frontend");
 		links.append(frontend);
 		if (site.kind === "umbraco") {
-			const backend = openLink("Backend", scheme + "://" + env.binding + "/umbraco", environment + " backoffice: " + env.binding, true);
+			const backend = openLink("Backend", address.url + "umbraco", environment + " backoffice: " + address.title, true);
 			backend.classList.add("backend");
 			links.append(backend);
 		}
 		group.append(links);
+		if (!env.binding) group.append(el("span", { className: "muted", textContent: "Default / wildcard", title: address.title }));
 		actions.append(group);
 	}
 
@@ -696,9 +707,10 @@ function envPanel(site, env) {
 	if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 
 	const scheme = env.scheme || "https";
-	const binding = !env.binding ? bindingLink("") : site.admin && env.key !== "prod"
+	const address = environmentAddress(env);
+	const binding = !address.url ? bindingLink("") : site.admin && env.key !== "prod"
 		? el("span", { textContent: env.binding })
-		: openLink(env.binding, scheme + "://" + env.binding + "/");
+		: openLink(env.binding || `Default / wildcard (${address.hostname})`, address.url, address.title);
 	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, binding));
 	if (env.aliases && env.aliases.length) {
 		meta.append(el("dt", { textContent: "Aliases" }), el("dd", { className: "database-name aliases" },
@@ -707,7 +719,7 @@ function envPanel(site, env) {
 				openLink(alias, scheme + "://" + alias + "/"),
 			])));
 	}
-	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(env.binding + "/umbraco", scheme + "://" + env.binding + "/umbraco")));
+	if (site.kind === "umbraco" && address.url) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(address.hostname + "/umbraco", address.url + "umbraco", address.title)));
 	if (site.kind === "csharp" || site.kind === "umbraco") {
 		meta.append(el("dt", { textContent: "Datasource" }), el("dd", {
 			className: "database-name",
