@@ -898,6 +898,9 @@ def build_command(data):
             project = data.get("project") or site
             publish = data.get("publish") or "_publish"
             build = data.get("build") or "Debug"
+            environment = data.get("environment") or ("Production" if build == "Release" else "Test")
+            if environment not in ("Development", "Test", "Staging", "Production"):
+                abort(400, "Invalid environment")
             version = data.get("version") or ""
             template = (data.get("template") or "").strip() if csharp == "empty" else ""
             if csharp not in ("umbraco", "empty") or build not in ("Debug", "Release"):
@@ -908,7 +911,7 @@ def build_command(data):
                 abort(400, "Invalid Umbraco version")
             if template and not PROJECT_RE.fullmatch(template):
                 abort(400, "Invalid template name")
-            args = [site, site_type, csharp, version if csharp == "umbraco" else "", project, binding, publish, build, certificate, template]
+            args = [site, site_type, csharp, version if csharp == "umbraco" else "", project, binding, publish, build, certificate, template, environment]
         return "Create: " + site, [bash, os.path.join(APACHE_DIR, "create_site.sh"), *args], APACHE_DIR
     if kind == "change_binding":
         site = site_arg(data)

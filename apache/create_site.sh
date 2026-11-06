@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding] [publish-folder] [Debug|Release] [y|n certificate] [template-name]
+# Usage: create_site.sh [folder] [html|python|csharp] [umbraco|empty] [umbraco-version] [project-name] [binding] [publish-folder] [Debug|Release] [y|n certificate] [template-name] [Development|Test|Staging|Production]
 set -euo pipefail
 cd "$(dirname "$0")"
 source lib/common.sh
@@ -23,6 +23,7 @@ _publishArg=${7:-}
 _buildConfig=${8:-}
 _createCertificate=${9:-}
 _templateName=${10:-}
+_environmentArg=${11:-}
 _templateProvided=n
 [[ $# -lt 10 ]] || _templateProvided=y
 ask _createCertificate "Create an HTTPS certificate? (y/n)" y
@@ -112,6 +113,11 @@ create_csharp() {
 		Debug) _environment=Test ;;
 		Release) _environment=Production ;;
 		*) echo "Build configuration must be Debug or Release" >&2; exit 1 ;;
+	esac
+	_environment=${_environmentArg:-${_environment}}
+	case "${_environment}" in
+		Development | Test | Staging | Production) ;;
+		*) echo "Environment must be Development, Test, Staging or Production." >&2; exit 1 ;;
 	esac
 	_docRoot="${_siteRoot}/${_publishFolder}/wwwroot"
 

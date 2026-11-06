@@ -42,13 +42,22 @@ class CreateCommandTests(unittest.TestCase):
     def test_custom_template_is_a_separate_argument(self):
         args = self.command(template="webapi", version="18.3.1")
         self.assertEqual(args[2:], ["example.test", "csharp", "empty", "",
-                                   "example.test", "example.test", "_publish", "Debug", "n", "webapi"])
+                                   "example.test", "example.test", "_publish", "Debug", "n", "webapi", "Test"])
 
     def test_blank_template_preserves_default(self):
-        self.assertEqual(self.command(template="  ")[-1], "")
+        self.assertEqual(self.command(template="  ")[-2], "")
 
     def test_umbraco_ignores_hidden_template(self):
-        self.assertEqual(self.command(csharp="umbraco", version="13.3.2", template="bad name")[-1], "")
+        self.assertEqual(self.command(csharp="umbraco", version="13.3.2", template="bad name")[-2], "")
+
+    def test_environment_is_independent_of_build(self):
+        for build in ("Debug", "Release"):
+            for environment in ("Development", "Test", "Staging", "Production"):
+                with self.subTest(build=build, environment=environment):
+                    self.assertEqual(self.command(build=build, environment=environment)[-1], environment)
+        self.assertEqual(self.command(build="Release")[-1], "Production")
+        with self.assertRaises(BadRequest):
+            self.command(environment="invalid")
 
     def test_invalid_templates_are_rejected(self):
         for value in ("--help", "../web", "web api", "web;echo", "web\napi"):
@@ -153,6 +162,18 @@ sudo() {
         self.assertIn("umbraco:net10.0:18.3.1", result.stdout)
         self.assertNotIn("ensure:8.0", result.stdout)
         self.assertIsNone(sdk)
+
+    def test_environment_reaches_the_service_template(self):
+        for environment in ("Development", "Test", "Staging", "Production"):
+            with self.subTest(environment=environment):
+                result, _ = self.run_creation(extra=(
+                    "_environmentArg=" + environment +
+                    '\ninstall_service() { echo "service-environment:${_environment}"; }'))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("service-environment:" + environment, result.stdout)
+        result, _ = self.run_creation(extra="_environmentArg=invalid")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Environment must be", result.stderr)
 
     def test_umbraco_packages_match_the_runtime(self):
         for version, target in (("13.3.2", "net8.0"), ("18.3.1", "net10.0")):
