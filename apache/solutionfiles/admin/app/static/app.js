@@ -311,7 +311,7 @@ const buttonStyles = {
 	"Stop": ["stop", "red"], "Clear logs": ["eraser", "gray"], "Logs": ["file", "gray"],
 	"Issue certificate": ["shield", "teal"], "Change environment": ["sliders", "purple"], "Change binding": ["globe", "blue"],
 	"Check service": ["activity", "teal"], "Test Apache config": ["activity", "teal"], "Admin site": ["manage", "gray"],
-	"Edit service": ["pencil", "amber"], "Edit config": ["pencil", "amber"], "Delete*": ["trash", "red"],
+	"Edit service": ["pencil", "amber"], "Edit config": ["pencil", "amber"], "Edit appsettings.json": ["pencil", "amber"], "Edit web.config": ["pencil", "amber"], "Delete*": ["trash", "red"],
 };
 
 function svgIcon(name) {
@@ -631,6 +631,13 @@ function envPanel(site, env) {
 			tools.append(el("button", { textContent: label, className: "small", onclick: () => run(() => tool === "check_service"
 				? openTask({ kind: env.mode === "remote" ? "remote_tool" : "unit_tool", site: site.name, unit: env.unit, tool })
 				: editConfiguration(site, env, tool === "edit_service" ? "service" : "conf")) }));
+		}
+		if (site.kind === "csharp" || site.kind === "umbraco") {
+			for (const filename of ["appsettings.json", "web.config"]) {
+				if (env.mode !== "remote" && !(env.editable_configs || []).includes(filename)) continue;
+				tools.append(el("button", { textContent: "Edit " + filename, className: "small", onclick: () => run(() =>
+					editFile(env.mode === "remote" ? filename : join(env.publish_path, filename), env.mode === "remote" ? site.name : "")) }));
+			}
 		}
 		extraTools = tools;
 	}
@@ -1049,10 +1056,11 @@ async function showInEditor(path, content) {
 
 const editorValue = () => (monacoEditor && !$("#editor-box").hidden ? monacoEditor.getValue() : $("#editor-text").value);
 
-async function editFile(path) {
+async function editFile(path, remoteSite = remoteFilesSite) {
 	if (!(await discardOk())) return;
-	const saveUrl = fsUrl("save");
-	const data = await api(fsUrl("read") + "?path=" + encodeURIComponent(path));
+	const base = remoteSite ? "/api/remote-fs/" + encodeURIComponent(remoteSite) + "/" : "/api/fs/";
+	const saveUrl = base + "save";
+	const data = await api(base + "read?path=" + encodeURIComponent(path));
 	openFile = path;
 	configurationEditor = null;
 	openFileSaveUrl = saveUrl;

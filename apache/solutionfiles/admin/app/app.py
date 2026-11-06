@@ -313,6 +313,15 @@ def environment_info(key, label, unit, binding, port, path, states, **extra):
     info.update(extra)
     info["environment"] = service_environment(unit) if service else ""
     info.update(https_status(unit=unit))
+    if service:
+        service_text = read_text(os.path.join(SERVICE_DIR, unit + ".service"))
+        match = re.search(r'^WorkingDirectory=(.+)$', service_text, re.M)
+        if match:
+            working = os.path.realpath(match.group(1).strip().strip('"'))
+            if working.startswith(WEB_ROOT + os.sep) and os.path.isdir(working):
+                info["publish_path"] = rel(working)
+                info["editable_configs"] = [filename for filename in ("appsettings.json", "web.config")
+                                            if os.path.isfile(os.path.join(working, filename))]
     return info
 
 

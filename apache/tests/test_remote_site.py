@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -82,6 +83,7 @@ class RemoteApiTests(unittest.TestCase):
         self.app.config["TESTING"] = True
         self.ns = dict(
             app=self.app, os=os, json=json, subprocess=subprocess, time=time, shlex=shlex,
+            re=re, SERVICE_DIR="/etc/systemd/system", read_text=lambda path: "",
             base64=base64, abort=abort, jsonify=jsonify, request=request,
             io=io, send_file=send_file, sys=sys, site_units=lambda site: [site, "local-prod.test"],
             Path=Path, editable_file=remote_files.editable_file,
@@ -155,6 +157,21 @@ class RemoteApiTests(unittest.TestCase):
         self.assertEqual(info["environment"], "Staging")
         self.assertEqual(run.call_args.args[0],
                          ["systemctl", "show", "prod.test.service", "--property=Environment", "--value"])
+
+    def test_config_shortcuts_use_service_publish_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            publish = root / "example.test/_custom"
+            publish.mkdir(parents=True)
+            (publish / "appsettings.json").write_text("{}")
+            self.ns.update(WEB_ROOT=str(root), unit_of=lambda unit: True,
+                           service_environment=lambda unit: "Test",
+                           https_status=lambda unit: {},
+                           read_text=lambda path: 'WorkingDirectory="%s"' % publish)
+            info = self.ns["environment_info"]("main", "Test", "example.test",
+                                              "example.test", "", "example.test", {})
+            self.assertEqual(info["publish_path"], str(publish))
+            self.assertEqual(info["editable_configs"], ["appsettings.json"])
 
     def test_remote_file_routes_and_binary_transfer(self):
         command = Mock(return_value=Mock(stdout=b'{"ok": true}'))
