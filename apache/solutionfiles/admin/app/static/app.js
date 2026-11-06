@@ -408,7 +408,7 @@ function siteCard(site) {
 			el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 		if (env.mode === "remote") heading.append(remoteIcon(env));
 		const pending = publishBadge(env);
-		if (pending) heading.append(pending);
+		if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 		group.append(heading);
 		const links = el("div", { className: "site-environment-links" });
 		const scheme = env.scheme || "https";
@@ -581,7 +581,7 @@ function envPanel(site, env) {
 	const environment = site.kind === "python" ? "Live" : env.environment;
 	if (environment) heading.append(el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 	const pending = publishBadge(env);
-	if (pending) heading.append(pending);
+	if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 	heading.append(httpsLock(env.https));
 	if (env.mode === "remote") heading.append(remoteIcon(env));
 
