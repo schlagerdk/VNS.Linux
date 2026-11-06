@@ -38,6 +38,28 @@ class ManagedConfigTests(unittest.TestCase):
         self.assertEqual([call.args[0] for call in run.call_args_list],
                          [["apache2ctl", "configtest"], ["systemctl", "reload", "apache2"]])
 
+    def test_legacy_bytes_require_explicit_encoding_without_modifying_file(self):
+        original = b"# Legacy \x84service\x94\n[Service]\n"
+        self.service.write_bytes(original)
+        result = config.handle("example.test", {"kind": "service", "action": "read"})
+        self.assertTrue(result["encoding_required"])
+        self.assertNotIn("content", result)
+        self.assertEqual(self.service.read_bytes(), original)
+        result = config.handle("example.test", {"kind": "service", "action": "read", "encoding": "cp1252"})
+        self.assertEqual(result["encoding"], "cp1252")
+        self.assertEqual(result["content"], original.decode("cp1252"))
+        config.handle("example.test", {"kind": "service", "action": "save", "content": result["content"]})
+        self.assertEqual(self.service.read_bytes(), original.decode("cp1252").encode("utf-8"))
+        self.assertEqual(config.handle("example.test", {"kind": "service", "action": "read"})["encoding"], "utf-8")
+
+    def test_explicit_decoding_is_strict_and_encodings_are_allowlisted(self):
+        self.conf.write_bytes(b"# \x81\n")
+        for encoding in ("cp1252", "unknown", "utf-16"):
+            with self.subTest(encoding=encoding), self.assertRaises(ValueError):
+                config.handle("example.test", {"kind": "conf", "action": "read", "encoding": encoding})
+        self.assertEqual(config.handle("example.test", {
+            "kind": "conf", "action": "read", "encoding": "cp850"})["content"], "# ü\n")
+
     def test_failed_config_test_never_reloads(self):
         with patch.object(config.subprocess, "run", side_effect=subprocess.CalledProcessError(
                 1, ["apache2ctl", "configtest"], stderr="Syntax error")) as run:

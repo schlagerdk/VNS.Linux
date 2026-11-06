@@ -216,6 +216,13 @@ class RemoteApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["content"], "remote config")
         self.assertEqual(command.call_args.args, ("example.test", "config"))
+        response = self.client.get("/api/sites/example.test/config/service?scope=remote&encoding=cp850")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(command.call_args.kwargs["input"])["encoding"], "cp850")
+        with patch("subprocess.run", return_value=Mock(returncode=0, stdout='{"encoding_required":true,"path":"/etc/test"}')) as run:
+            response = self.client.get("/api/sites/example.test/config/service?encoding=cp1252")
+        self.assertTrue(response.json["encoding_required"])
+        self.assertEqual(json.loads(run.call_args.kwargs["input"])["encoding"], "cp1252")
         with patch("subprocess.run", return_value=Mock(returncode=0, stdout='{"ok":true}')) as run:
             response = self.client.post("/api/sites/example.test/config/service?unit=local-prod.test",
                                         json={"action": "save", "content": "[Service]\n"})

@@ -9,9 +9,12 @@ source lib/admin_vendor.sh
 
 if [[ ${1:-} == "--update-csharp-publish-scripts" ]]; then
 	sudo python3 - "${_rootPath}" "${_apacheDir}" <<'PY'
+import os
 import re
 import shlex
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 root, apache = map(Path, sys.argv[1:])
@@ -29,11 +32,75 @@ planned = []
 unchanged = []
 
 
+def upgrade_legacy_local(path, text):
+    if not text.startswith("#!/bin/sh\n"):
+        return text
+    lines = [line.strip() for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    allowed = (
+        r"cd \.", r"cd \.\.", r"systemctl (?:stop|start|status) [A-Za-z0-9.-]+",
+        r"source .*/lib/dotnet\.sh", r'rm -rf "\$\{_publishFolder\}/runtimes"',
+        r"dotnet publish .*", r"echo Delete schema files and bin",
+        r"rm -f (?:appsettings-schema(?:\.usync|\.Umbraco\.Cms)?\.json|umbraco-package-schema\.json)",
+        r"rm -rf bin",
+    )
+    if any(not any(re.fullmatch(pattern, line) for pattern in allowed) for line in lines):
+        raise RuntimeError(f"Unrecognized legacy commands in {path}; refusing to overwrite custom behavior")
+    site = path.parent.parent
+    projects = sorted(site.glob("*.csproj"))
+    if len(projects) != 1:
+        raise RuntimeError(f"Expected exactly one C# project for legacy script {path}")
+    commands = re.findall(r"(?m)^systemctl (?:stop|start|status) (\S+)\s*$", text)
+    if len(commands) != 3 or any(unit != site.name for unit in commands) or (
+            lines[:3] != ["cd .", "cd ..", "systemctl stop " + site.name]
+            or lines[-2:] != ["systemctl start " + site.name, "systemctl status " + site.name]):
+        raise RuntimeError(f"Unrecognized service commands in {path}")
+    publish = re.findall(r"(?m)^dotnet publish .*$", text)
+    if len(publish) != 1:
+        raise RuntimeError(f"Expected one dotnet publish command in {path}")
+    args = shlex.split(publish[0])[2:]
+    configuration, folder, environment = None, None, None
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "-c" and index + 1 < len(args):
+            index += 1
+            configuration = args[index]
+        elif arg.lower().startswith(("-p:publishdir=", "/p:publishdir=")):
+            folder = arg.split("=", 1)[1]
+        elif arg.lower().startswith(("-p:environmentname=", "/p:environmentname=")):
+            environment = arg.split("=", 1)[1]
+        elif arg == "--self-contained" and args[index + 1:index + 2] == ["false"]:
+            index += 1
+        elif arg == "--runtime" and args[index + 1:index + 2] == ["$(linux_runtime_identifier)"]:
+            index += 1
+        elif arg == "--nologo" or arg.startswith("-p:CustomAfterMicrosoftCommonTargets="):
+            pass
+        else:
+            raise RuntimeError(f"Unrecognized publish argument {arg!r} in {path}")
+        index += 1
+    if configuration not in ("Debug", "Release") or not folder or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]*", folder):
+        raise RuntimeError(f"Cannot safely determine build configuration and publish folder in {path}")
+    if folder.lower() in ("bin", "obj", "wwwroot", "views", "usync", "scripts", "properties", "umbraco", "app_plugins"):
+        raise RuntimeError(f"Unsafe publish folder in {path}: {folder}")
+    if environment is not None and not re.fullmatch(r"[A-Za-z0-9_-]+", environment):
+        raise RuntimeError(f"Unrecognized environment name in {path}")
+    template = (apache / "solutionfiles/csharp/scripts/publish.sh").read_text()
+    values = {"SITE": shlex.quote(site.name), "PROJECT_NAME": shlex.quote(projects[0].stem),
+              "PUBLISH_FOLDER": shlex.quote(folder), "BUILD_CONFIG": configuration,
+              "APACHE_DIR": str(apache).replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")}
+    for key, value in values.items():
+        template = template.replace("@" + key + "@", value)
+    if environment:
+        template = template.replace(' -p:PublishDir="${_publishFolder}"',
+                                    ' -p:PublishDir="${_publishFolder}" -p:EnvironmentName=' + environment)
+    return template
+
+
 def update_publish_script(path, production):
     if path.is_symlink():
         raise RuntimeError(f"Refusing to modify symlink: {path}")
     original = path.read_text()
-    text = original
+    text = original if production else upgrade_legacy_local(path, original)
     publish_lines = list(re.finditer(r"(?m)^[ \t]*dotnet publish\b[^\n]*$", text))
     if len(publish_lines) != 1:
         raise RuntimeError(f"Expected one dotnet publish command in {path}")
@@ -90,9 +157,13 @@ for site in sorted(root.iterdir()):
 if not planned and not unchanged:
     print(f"No C# publish scripts found in {root}.")
 else:
+    print("Recognized legacy local scripts are upgraded to the current template; other scripts receive publish compatibility patches.")
     for path, text in planned:
+        descriptor, backup = tempfile.mkstemp(prefix=path.name + ".vns-backup-", dir=path.parent)
+        os.close(descriptor)
+        shutil.copy2(path, backup)
         path.write_text(text)
-        print(f"Updated {path}")
+        print(f"Updated {path} (backup: {backup})")
     for path, _ in unchanged:
         print(f"Already current: {path}")
     print(f"Updated {len(planned)} script(s); {len(unchanged)} already current.")

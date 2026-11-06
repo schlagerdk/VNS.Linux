@@ -1,5 +1,7 @@
+import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,6 +27,9 @@ class UpdatePublishScriptsTests(unittest.TestCase):
         self.root = Path(self.temp.name) / "www"
         self.apache = Path(self.temp.name) / "apache"
         self.apache.mkdir()
+        templates = self.apache / "solutionfiles/csharp/scripts"
+        templates.mkdir(parents=True)
+        shutil.copy(APACHE / "solutionfiles/csharp/scripts/publish.sh", templates)
         site = self.root / "example.test"
         (site / "scripts").mkdir(parents=True)
         (site / "Example.csproj").write_text("<Project />\n")
@@ -86,6 +91,97 @@ class UpdatePublishScriptsTests(unittest.TestCase):
         self.assertEqual(second.returncode, 0, second.stderr)
         self.assertIn("Already current", second.stdout)
         self.assertEqual(contents, [path.read_text() for path in (self.local, self.local_prod, self.remote)])
+
+    def legacy_script(self):
+        return (
+            "#!/bin/sh\ncd .\ncd ..\nsystemctl stop example.test\n"
+            "#dotnet publish -c Release -p:PublishDir=_Publish /p:EnvironmentName=Production --self-contained false --nologo\n"
+            f"source {self.apache}/lib/dotnet.sh\n"
+            'rm -rf "${_publishFolder}/runtimes"\n'
+            'dotnet publish -c Debug -p:PublishDir=_publish /p:EnvironmentName=Test '
+            '--runtime "$(linux_runtime_identifier)" --self-contained false --nologo '
+            f'-p:CustomAfterMicrosoftCommonTargets={self.apache}/lib/publish.targets\n'
+            "echo Delete schema files and bin\n"
+            "rm -f appsettings-schema.json\nrm -f appsettings-schema.usync.json\n"
+            "rm -f appsettings-schema.Umbraco.Cms.json\nrm -f umbraco-package-schema.json\n"
+            "rm -rf bin\nsystemctl start example.test\nsystemctl status example.test\n"
+        )
+
+    def test_legacy_script_is_upgraded_with_backup_and_preserved_settings(self):
+        original = self.legacy_script()
+        self.local.write_text(original)
+        result = self.run_updater()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.local.read_text()
+        self.assertTrue(text.startswith("#!/bin/bash\n"))
+        self.assertIn('cd "$(dirname "$0")"', text)
+        self.assertIn("_site=example.test", text)
+        self.assertIn("_projectName=Example", text)
+        self.assertIn("_publishFolder=_publish", text)
+        self.assertIn("_configuration=${1:-Debug}", text)
+        self.assertIn("-p:EnvironmentName=Test", text)
+        self.assertIn("trap start_service EXIT", text)
+        self.assertIn('dotnet publish "${_projectName}.csproj"', text)
+        self.assertIn("lib/publish_status.py", text)
+        self.assertEqual(self.local.stat().st_mode & 0o777, 0o700)
+        backups = list(self.local.parent.glob("publish.sh.vns-backup-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), original)
+        self.assertEqual(subprocess.run(["bash", "-n", str(self.local)]).returncode, 0)
+        self.assertEqual(self.run_updater().returncode, 0)
+        self.assertEqual(text, self.local.read_text())
+        self.assertEqual(len(list(self.local.parent.glob("publish.sh.vns-backup-*"))), 1)
+
+    def test_custom_legacy_commands_abort_before_any_scripts_are_written(self):
+        self.local.write_text(self.legacy_script() + "echo custom deployment action\n")
+        before = {path: path.read_bytes() for path in (self.local, self.local_prod, self.remote)}
+        result = self.run_updater()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refusing to overwrite custom behavior", result.stderr)
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+        self.assertEqual(list(self.local.parent.glob("*.vns-backup-*")), [])
+
+    def test_legacy_release_folder_and_environment_are_preserved(self):
+        self.local.write_text(self.legacy_script().replace(
+            "-c Debug -p:PublishDir=_publish /p:EnvironmentName=Test",
+            "-c Release -p:PublishDir=_Publish /p:EnvironmentName=Production"))
+        result = self.run_updater()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.local.read_text()
+        self.assertIn("_publishFolder=_Publish", text)
+        self.assertIn("_configuration=${1:-Release}", text)
+        self.assertIn("-p:EnvironmentName=Production", text)
+
+    def test_upgraded_legacy_script_restarts_service_after_failed_publish_from_other_directory(self):
+        self.local.write_text(self.legacy_script())
+        result = self.run_updater()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        helper = self.apache / "lib/dotnet.sh"
+        helper.parent.mkdir()
+        helper.write_text('linux_runtime_identifier() { echo linux-x64; }\n')
+        binary = self.apache / "bin"
+        binary.mkdir()
+        calls = self.apache / "calls"
+        for name, body in (
+                ("systemctl", 'printf "%s\\n" "$*" >> "$CALLS"'),
+                ("dotnet", 'printf "%s\\n" "$PWD" >> "$CALLS"\nexit 7')):
+            path = binary / name
+            path.write_text("#!/bin/bash\n" + body + "\n")
+            path.chmod(0o700)
+        runtime = self.local.parent.parent / "_publish/runtimes"
+        runtime.mkdir(parents=True)
+        (runtime / "old.dll").write_text("stale")
+        # Exercise the publish body without needing host root privileges.
+        runner = self.local.with_name("test-runner.sh")
+        runner.write_text(self.local.read_text().replace('[[ $EUID -eq 0 ]] || exec sudo "$0" "$@"\n', ""))
+        result = subprocess.run(["bash", str(runner)], cwd=self.apache,
+                                env=os.environ | {"VNS_PUBLISH_TRACKED": "test", "CALLS": str(calls),
+                                                  "PATH": str(binary) + ":" + os.environ["PATH"]},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 7, result.stderr + result.stdout)
+        self.assertEqual(calls.read_text().splitlines(),
+                         ["stop example.test", str(self.local.parent.parent), "start example.test"])
+        self.assertFalse(runtime.exists())
 
     def test_already_migrated_script_gets_assembly_refresh_without_duplicate_source(self):
         for path in (self.local, self.local_prod):

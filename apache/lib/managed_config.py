@@ -21,7 +21,17 @@ def handle(unit, data):
         raise ValueError("Configuration file not found: " + str(path))
     action = data.get("action")
     if action == "read":
-        return {"path": str(path), "content": path.read_text(encoding="utf-8")}
+        encoding = data.get("encoding", "utf-8")
+        if encoding not in ("utf-8", "cp1252", "cp850", "iso-8859-1"):
+            raise ValueError("Unsupported configuration encoding")
+        try:
+            content = path.read_text(encoding=encoding)
+        except UnicodeDecodeError as exc:
+            if encoding != "utf-8":
+                raise ValueError(f"Cannot decode this file as {encoding}. Select another encoding.") from exc
+            return {"path": str(path), "encoding_required": True,
+                    "message": f"This file is not valid UTF-8 (byte {exc.start}). Select its original encoding; no changes have been made."}
+        return {"path": str(path), "content": content, "encoding": encoding}
     if action == "save":
         content = data.get("content")
         if not isinstance(content, str) or "\0" in content:

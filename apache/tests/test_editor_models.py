@@ -4,6 +4,66 @@ import unittest
 
 
 class EditorModelTests(unittest.TestCase):
+    def test_configuration_encoding_choice_and_conversion_confirmation(self):
+        source = (Path(__file__).resolve().parents[1] /
+                  "solutionfiles/admin/app/static/app.js").read_text()
+        start = source.index("async function editConfiguration(")
+        functions = source[start:source.index("\nasync function createItem(", start)]
+        script = """
+const assert = require("node:assert/strict");
+let selection = "cp1252", confirmation = true, configurationEditor = null, openFile = null;
+let savingFile = false, calls = [], notices = [], shown = null, prompts = [], dirty = false;
+const nodes = new Map();
+const $ = key => {
+    if (!nodes.has(key)) nodes.set(key, {});
+    return nodes.get(key);
+};
+$("#config-encoding").value = "cp1252";
+$("#dlg-encoding").showModal = function() {this.returnValue = selection ? "open" : "cancel"; this.onclose();};
+const editorDialog = {open: false, showModal() {this.open = true;}};
+const discardOk = async () => true;
+const showInEditor = async (path, content) => {shown = content;};
+const setDirty = value => {dirty = value;};
+const editorValue = () => shown;
+const ask = async options => {prompts.push(options); return confirmation;};
+const toast = message => notices.push(message);
+const loadSites = async () => {};
+const api = async (url, options) => {
+    calls.push({url, options});
+    if (!options) return url.includes("encoding=")
+        ? {path: "/etc/example.service", content: "Decoded text", encoding: "cp1252"}
+        : {encoding_required: true, message: "Not UTF-8"};
+    return {ok: true};
+};
+""" + functions + """
+(async () => {
+    const site = {name:"example.test"}, env = {unit:"example.test",mode:"local"};
+    await editConfiguration(site, env, "service");
+    assert.equal(calls.length, 2);
+    assert.ok(calls[1].url.includes("encoding=cp1252"));
+    assert.equal(shown, "Decoded text");
+    assert.ok($("#editor-status").textContent.includes("Save converts"));
+    assert.equal(configurationEditor.encoding, "cp1252");
+    confirmation = false;
+    await saveFile();
+    assert.equal(calls.length, 2);
+    assert.equal(savingFile, false);
+    assert.equal(configurationEditor.encoding, "cp1252");
+    confirmation = true;
+    await saveFile();
+    assert.equal(calls[2].options.json.content, "Decoded text");
+    assert.equal(configurationEditor.encoding, "utf-8");
+    assert.equal(prompts[1].ok, "Save as UTF-8");
+    calls = []; shown = null; selection = null;
+    await editConfiguration(site, env, "service");
+    assert.equal(calls.length, 1);
+    assert.equal(shown, null);
+    assert.equal(notices.length, 0);
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_reopening_files_disposes_previous_model_before_creation(self):
         source = (Path(__file__).resolve().parents[1] /
                   "solutionfiles/admin/app/static/app.js").read_text()

@@ -215,7 +215,7 @@ const fsUrl = (action) => remoteFilesSite ? "/api/remote-fs/" + encodeURICompone
 
 let allSites = [];
 // The overview leaves out the Apache default site (/var/www/html) and the admin site itself (reached via Settings)
-const isListed = (s) => !s.admin && s.name !== "html";
+const isListed = (s) => !s.admin;
 const listedSites = () => allSites.filter(isListed);
 let filter = "all";
 let query = "";
@@ -1299,12 +1299,24 @@ async function editFile(path, remoteSite = remoteFilesSite) {
 async function editConfiguration(site, env, kind) {
 	if (!(await discardOk())) return;
 	const url = `/api/sites/${encodeURIComponent(site.name)}/config/${kind}?scope=${env.mode === "remote" ? "remote" : "local"}&unit=${encodeURIComponent(env.unit)}`;
-	const data = await api(url);
-	configurationEditor = { url, kind };
+	let data = await api(url);
+	if (data.encoding_required) {
+		const dialog = $("#dlg-encoding");
+		$("#encoding-message").textContent = data.message;
+		dialog.returnValue = "";
+		const encoding = await new Promise((resolve) => {
+			dialog.onclose = () => resolve(dialog.returnValue === "open" ? $("#config-encoding").value : null);
+			dialog.showModal();
+		});
+		if (!encoding) return;
+		data = await api(url + "&encoding=" + encodeURIComponent(encoding));
+	}
+	configurationEditor = { url, kind, encoding: data.encoding || "utf-8" };
 	openFile = data.path;
 	if (!editorDialog.open) editorDialog.showModal();
 	$("#editor-path").textContent = data.path + (env.mode === "remote" ? " · " + env.host : "");
-	$("#editor-status").textContent = "";
+	$("#editor-status").textContent = configurationEditor.encoding === "utf-8" ? ""
+		: `Opened as ${configurationEditor.encoding}. Check the characters before saving; Save converts this file to UTF-8.`;
 	await showInEditor(data.path, data.content);
 	setDirty(false);
 }
@@ -1316,9 +1328,15 @@ async function saveFile() {
 	try {
 		const configuration = configurationEditor;
 		const content = editorValue();
+		if (configuration && configuration.encoding !== "utf-8" && !(await ask({
+			title: "Convert configuration to UTF-8?",
+			message: `This file was opened as ${configuration.encoding}. Verify that its characters look correct. Saving converts the file to UTF-8.`,
+			input: false, ok: "Save as UTF-8",
+		}))) return;
 		await api(configuration ? configuration.url : openFileSaveUrl, {
 			json: { action: "save", path: openFile, content },
 		});
+		if (configuration) configuration.encoding = "utf-8";
 		setDirty(editorValue() !== content);
 		$("#editor-status").textContent = "Saved " + new Date().toLocaleTimeString();
 		if (configuration) {

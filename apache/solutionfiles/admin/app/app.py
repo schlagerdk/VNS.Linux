@@ -1380,6 +1380,8 @@ def managed_config(site, kind):
     if action not in ("read", "save", "apply"):
         abort(400, "Unknown configuration action")
     payload = {"kind": kind, "action": action, "content": data.get("content")}
+    if action == "read" and "encoding" in request.args:
+        payload["encoding"] = request.args["encoding"]
     scope = request.args.get("scope", "local")
     if scope not in ("local", "remote"):
         abort(400, "Unknown configuration scope")
@@ -1406,6 +1408,8 @@ def managed_config(site, kind):
     if result.returncode:
         app.logger.error("Configuration %s failed for %s: %s", action, site, response)
         abort(502, response.get("error", "Configuration operation failed"))
+    if response.get("encoding_required"):
+        app.logger.warning("Configuration for %s is not UTF-8; requesting an explicit encoding", site)
     if action == "apply":
         REMOTE_STATUS.pop(site, None)
     return jsonify(response)
