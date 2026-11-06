@@ -198,8 +198,11 @@ create_umbraco_project() {
 	echo "Remove central package management from template (our csproj sets versions itself)"
 	sudo rm -f Directory.Packages.props Directory.Build.props Directory.Build.targets
 
-	echo "Add Program.cs and project file (replace umbraco and .NET version)"
-	sudo cp -f "${_files}/Program.cs" "${_siteRoot}/Program.cs"
+	if [[ ${_umbracoVersion%%.*} -ge 18 ]]; then
+		echo "Add bundled Program.cs"
+		sudo cp -f "${_files}/Program.cs" "${_siteRoot}/Program.cs"
+	fi
+	echo "Add project file (replace umbraco and .NET version)"
 	sudo cp -f "${_files}/UmbracoCoreProjectName.csproj" "${_project}"
 	sudo sed -i "s|UmbracoCoreInstallVersion|${_umbracoVersion}|g; s|DotNetVersion|${_dotNetVersion}|g" "${_project}"
 	exclude_from_build "${_project}" "${_publishFolder}"
@@ -217,9 +220,12 @@ create_umbraco_project() {
 		sudo dotnet add package uSync
 	fi
 
-	echo "Delete default wwwroot, views and default settings"
-	sudo rm -rf wwwroot Views Properties .gitignore appsettings.json appsettings.Development.json \
-		appsettings-schema.json appsettings-schema.Umbraco.Cms.json umbraco-package-schema.json
+	if [[ ${_umbracoVersion%%.*} -ge 18 ]]; then
+		echo "Delete default wwwroot, views and default settings"
+		sudo rm -rf wwwroot Views appsettings.json appsettings.Development.json
+	fi
+	sudo rm -rf Properties .gitignore
+	sudo rm -f appsettings-schema.json appsettings-schema.Umbraco.Cms.json umbraco-package-schema.json
 
 	echo "Publish site"
 	sudo dotnet publish "${_project}" -c "${_buildConfig}" -p:PublishDir="${_publishFolder}" --self-contained false --nologo
@@ -229,17 +235,22 @@ create_umbraco_project() {
 	sudo rm -f appsettings-schema.json appsettings-schema.Umbraco.Cms.json appsettings-schema.usync.json umbraco-package-schema.json
 	sudo rm -f "${_publish}"/{appsettings-schema.json,appsettings-schema.Umbraco.Cms.json,appsettings-schema.usync.json,umbraco-package-schema.json}
 
-	echo "Add appsettings.json and web.config"
-	sudo cp -f "${_files}/appsettings.json" "${_publish}/appsettings.json"
-	sudo sed -i "s|FolderName|${_binding}|g; s|UUID|$(uuidgen)|g" "${_publish}/appsettings.json"
+	if [[ ${_umbracoVersion%%.*} -ge 18 ]]; then
+		echo "Add bundled appsettings.json"
+		sudo cp -f "${_files}/appsettings.json" "${_publish}/appsettings.json"
+		sudo sed -i "s|FolderName|${_binding}|g; s|UUID|$(uuidgen)|g" "${_publish}/appsettings.json"
+	fi
 	if [[ ${_createCertificate} == n ]]; then
 		configure_umbraco_https "${_publish}/appsettings.json" "${_binding}" n >/dev/null
 	fi
+	echo "Add web.config"
 	sudo cp -f "${_files}/web.config" "${_publish}/web.config"
 	sudo sed -i "s|UmbracoCoreProjectName|${_projectName}|g" "${_publish}/web.config"
 
-	echo "Add default wwwroot, views and uSync"
-	sudo cp -rf "${_files}/wwwroot" "${_files}/Views" "${_files}/uSync" "${_publish}/"
+	if [[ ${_umbracoVersion%%.*} -ge 18 ]]; then
+		echo "Add default wwwroot, views and uSync"
+		sudo cp -rf "${_files}/wwwroot" "${_files}/Views" "${_files}/uSync" "${_publish}/"
+	fi
 }
 
 case "${_type}" in

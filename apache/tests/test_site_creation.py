@@ -176,7 +176,9 @@ sudo() {
         self.assertIn("Environment must be", result.stderr)
 
     def test_umbraco_packages_match_the_runtime(self):
-        for version, target in (("13.3.2", "net8.0"), ("18.3.1", "net10.0")):
+        for version, target in (("13.3.2", "net8.0"), ("17.0.0", "net10.0"),
+                                ("18.0.0", "net10.0"), ("18.3.1", "net10.0"),
+                                ("19.0.0", "net10.0")):
             with self.subTest(version=version):
                 script = """
 set -euo pipefail
@@ -197,14 +199,19 @@ exclude_from_build() { :; }
                 result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("s|DotNetVersion|" + target + "|g", result.stdout)
+                for folder in ("wwwroot", "Views", "uSync", "Program.cs", "appsettings.json"):
+                    copy = "</templates/csharp/umbraco/project/" + folder + ">"
+                    self.assertEqual(copy in result.stdout, int(version.split(".")[0]) >= 18)
+                self.assertEqual("<rm> <-rf> <wwwroot> <Views> <appsettings.json> <appsettings.Development.json>"
+                                 in result.stdout, int(version.split(".")[0]) >= 18)
                 if target == "net8.0":
                     self.assertIn("<Umbraco.Templates::13.3.2>", result.stdout)
                     self.assertNotIn("Umbraco.Cms.DevelopmentMode.Backoffice", result.stdout)
                     for package in ("VNS.Umbraco", "uSync"):
                         self.assertIn("<package> <" + package + "> <-v> <13.0.0>", result.stdout)
                 else:
-                    self.assertIn("<Umbraco.Templates@18.3.1>", result.stdout)
-                    self.assertIn("<Umbraco.Cms.DevelopmentMode.Backoffice> <-v> <18.3.1>", result.stdout)
+                    self.assertIn("<Umbraco.Templates@" + version + ">", result.stdout)
+                    self.assertIn("<Umbraco.Cms.DevelopmentMode.Backoffice> <-v> <" + version + ">", result.stdout)
 
 
 class DotnetInstallationTests(unittest.TestCase):

@@ -48,6 +48,17 @@ class TerminalCompletionTests(unittest.TestCase):
                      "/var/log/apache2/site-error.log", "ErrorLog /var/log/apache2/example.log"):
             self.assertFalse(problem(text), text)
 
+    def test_issue_certificate_auto_closes_for_test_and_production(self):
+        auto_close = self.ns["terminal_auto_close"]
+        for scope in ("test", "prod"):
+            self.assertTrue(auto_close({"kind": "prod_action", "action": "issue_certificate",
+                                        "scope": scope}))
+        self.assertTrue(auto_close({"kind": "script", "script": "issue_certificat.sh"}))
+        problem = self.ns["terminal_output_problem"]
+        self.assertFalse(problem("Cert success.\nCertificate installed in /etc/ssl/certs/example.test_ecc"))
+        self.assertTrue(problem("Warning: certificate renewal needs attention"))
+        self.assertTrue(problem("Error: certificate issue failed"))
+
     def test_problem_survives_replay_buffer_truncation_and_split_chunks(self):
         cls = self.ns["TermSession"]
         for output, expected in (
