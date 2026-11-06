@@ -28,8 +28,8 @@ class DatabaseInfoTests(unittest.TestCase):
     def test_explicit_providers_and_no_connection_details_in_result(self):
         for provider, connection, expected in (
             ("Microsoft.Data.Sqlite", "Data Source=|DataDirectory|/Umbraco.sqlite.db;Cache=Shared", "SQLite"),
-            ("Microsoft.Data.SqlClient", "Server=private;Database=app;User Id=example", "SQL"),
-            ("System.Data.SqlClient", "Data Source=private;Initial Catalog=app", "SQL"),
+            ("Microsoft.Data.SqlClient", "Server=private;Database=app;User Id=example", "MS SQL"),
+            ("System.Data.SqlClient", "Data Source=private;Initial Catalog=app", "MS SQL"),
         ):
             self.settings(connection, provider)
             self.assertEqual(database.database_type(self.root), expected)
@@ -38,25 +38,25 @@ class DatabaseInfoTests(unittest.TestCase):
         self.settings("Data Source=app.db", "Microsoft.Data.Sqlite")
         self.settings("Server=sql;Database=app", "Microsoft.Data.SqlClient", "Production")
         self.assertEqual(database.database_type(self.root, "Test"), "SQLite")
-        self.assertEqual(database.database_type(self.root, "Production"), "SQL")
+        self.assertEqual(database.database_type(self.root, "Production"), "MS SQL")
         self.assertEqual(database.database_type(self.root, "Production", {
             "ConnectionStrings__umbracoDbDSN": "Data Source=override.db",
             "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.Sqlite",
         }), "SQLite")
-        self.assertEqual(database.database_type(self.root), "SQL")
+        self.assertEqual(database.database_type(self.root), "MS SQL")
 
     def test_inference_without_provider_and_unsupported_database(self):
         for value, expected in (
             ("Data Source=app.sqlite", "SQLite"),
             ("Data Source=:memory:", "SQLite"),
-            ("Server=example;Database=test", "SQL"),
-            ("Data Source=example;Initial Catalog=test", "SQL"),
-            ("Host=postgres;Username=example", "Custom"),
+            ("Server=example;Database=test", "MS SQL"),
+            ("Data Source=example;Initial Catalog=test", "MS SQL"),
+            ("Host=postgres;Username=example", "Unknown"),
         ):
             self.settings(value)
             self.assertEqual(database.database_type(self.root), expected)
         self.settings("Server=example;Database=test", "Npgsql")
-        self.assertEqual(database.database_type(self.root), "Custom")
+        self.assertEqual(database.database_type(self.root), "Unknown")
 
     def test_comments_trailing_commas_and_string_literals(self):
         text = '''{
@@ -67,14 +67,14 @@ class DatabaseInfoTests(unittest.TestCase):
             },
         }'''
         (self.root / "appsettings.json").write_text(text)
-        self.assertEqual(database.database_type(self.root), "SQL")
+        self.assertEqual(database.database_type(self.root), "MS SQL")
         parsed = database.configuration_json(text)
         self.assertIn("a//b/*c*/,}", parsed["ConnectionStrings"]["umbracoDbDSN"])
 
     def test_missing_empty_and_invalid_config(self):
-        self.assertEqual(database.database_type(self.root), "Custom")
+        self.assertEqual(database.database_type(self.root), "Unknown")
         self.settings("", "Microsoft.Data.Sqlite")
-        self.assertEqual(database.database_type(self.root), "Custom")
+        self.assertEqual(database.database_type(self.root), "Unknown")
         for text in ("{", "[]"):
             (self.root / "appsettings.json").write_text(text)
             with self.assertRaises(ValueError):
@@ -100,7 +100,7 @@ with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch
     exec(SCRIPT)
 '''
         for connection, expected in (
-            ("Server=remote;Database=prod", "SQL"),
+            ("Server=remote;Database=prod", "MS SQL"),
             (r"Server=remote\SQLEXPRESS;Database=prod", "SQL Express"),
             ("Server=tcp:example.database.windows.net,1433;Database=prod", "Azure SQL"),
         ):
@@ -119,10 +119,10 @@ with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch
             ("Server=tcp:example.database.windows.net,1433;Database=app", None, "Azure SQL"),
             ('Data Source="example.database.windows.net";Initial Catalog=app', "Microsoft.Data.SqlClient", "Azure SQL"),
             ("Server=example.database.usgovcloudapi.net;Database=app", None, "Azure SQL"),
-            ("Server=example.database.windows.net.evil.test;Database=app", None, "SQL"),
-            ("Server=private;Application Name='value;Server=example.database.windows.net';Database=app", None, "SQL"),
-            (r"Server=private;Application Name=SQLEXPRESS;Database=app", None, "SQL"),
-            ("Server=private;Database=app", "Npgsql", "Custom"),
+            ("Server=example.database.windows.net.evil.test;Database=app", None, "MS SQL"),
+            ("Server=private;Application Name='value;Server=example.database.windows.net';Database=app", None, "MS SQL"),
+            (r"Server=private;Application Name=SQLEXPRESS;Database=app", None, "MS SQL"),
+            ("Server=private;Database=app", "Npgsql", "Unknown"),
         ):
             with self.subTest(connection=connection):
                 self.settings(connection, provider)
@@ -133,7 +133,7 @@ with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch
             "first": "Server=example;Database=app",
             "second": "Data Source=app.db",
         }}))
-        self.assertEqual(database.database_type(self.root), "Custom")
+        self.assertEqual(database.database_type(self.root), "Unknown")
 
     def test_database_names_and_sqlite_paths_preserve_case(self):
         for connection, provider, expected in (
@@ -152,7 +152,7 @@ with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch
                 self.settings(connection, provider)
                 self.assertEqual(database.database_details(self.root)["database_name"], expected)
         self.settings("Server=example;User ID=Example", "Microsoft.Data.SqlClient")
-        self.assertEqual(database.database_details(self.root), {"database": "SQL", "database_name": ""})
+        self.assertEqual(database.database_details(self.root), {"database": "MS SQL", "database_name": ""})
 
     def test_names_respect_environment_and_service_overrides(self):
         self.settings("Server=example;Database=BaseApp")
@@ -174,7 +174,7 @@ with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch
 const assert = require("node:assert/strict");
 const el = (tag, properties) => ({tag, ...properties});
 for (const kind of ["csharp", "umbraco", "python", "html"]) {
-    for (const database of ["SQL", "SQL Express", "SQLite", "Azure SQL", "Custom", undefined]) {
+    for (const database of ["MS SQL", "SQL Express", "SQLite", "Azure SQL", "Unknown", undefined]) {
         const site = {kind}, env = {database, database_name: "MyApplication"};
         const meta = {children: [], append(...items) {this.children.push(...items);}};
         ROW
@@ -182,7 +182,7 @@ for (const kind of ["csharp", "umbraco", "python", "html"]) {
             assert.equal(meta.children[0].tag, "dt");
             assert.equal(meta.children[0].textContent, "Datasource");
             assert.equal(meta.children[1].tag, "dd");
-            assert.equal(meta.children[1].textContent, database || "Custom");
+            assert.equal(meta.children[1].textContent, database || "Unknown");
             assert.equal(meta.children[2].textContent, "Database");
             assert.equal(meta.children[3].textContent, "MyApplication");
         } else assert.equal(meta.children.length, 0);

@@ -183,6 +183,7 @@ sudo() {
                 script = """
 set -euo pipefail
 _solutionFolder=/templates
+_apacheDir=/apache
 _siteRoot=/site
 _project=/site/Example.csproj
 _projectName=Example

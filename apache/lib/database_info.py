@@ -33,7 +33,7 @@ def connection_type(connection, provider):
     if "sqlite" in provider:
         return "SQLite"
     if provider and not any(name in provider for name in ("sqlclient", "sqlserver")):
-        return "Custom"
+        return "Unknown"
     fields = {key: value.lower() for key, value in connection_fields(connection).items()}
     server = next((fields[key] for key in ("server", "data source", "datasource", "filename", "address", "addr", "network address")
                    if key in fields), "")
@@ -42,7 +42,7 @@ def connection_type(connection, provider):
     sql = bool(provider) or any(key in fields for key in (
         "server", "initial catalog", "database", "integrated security", "trusted_connection"))
     if not sql:
-        return "Custom"
+        return "Unknown"
     host = re.sub(r"^(?:tcp|np|lpc):", "", server).split(",", 1)[0].rstrip(".")
     if any(host.endswith(suffix) for suffix in (
             ".database.windows.net", ".database.usgovcloudapi.net",
@@ -50,7 +50,7 @@ def connection_type(connection, provider):
         return "Azure SQL"
     if re.search(r"\\sqlexpress(?:$|\\)", host):
         return "SQL Express"
-    return "SQL"
+    return "MS SQL"
 
 
 def database_details(root, environment="", variables=None):
@@ -98,7 +98,7 @@ def database_details(root, environment="", variables=None):
             name = fields.get("initial catalog") or fields.get("database", "")
         if name:
             names.add(name)
-    return {"database": next(iter(providers)) if len(providers) == 1 else "Custom",
+    return {"database": next(iter(providers)) if len(providers) == 1 else "Unknown",
             "database_name": " / ".join(sorted(names))}
 
 

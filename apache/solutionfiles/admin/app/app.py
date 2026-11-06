@@ -338,7 +338,7 @@ def environment_info(key, label, unit, binding, port, path, states, **extra):
                     info.update(_database_module.database_details(working, info["environment"], variables))
                 except (OSError, subprocess.SubprocessError, ValueError):
                     app.logger.warning("Could not read database configuration for %s", unit)
-                    info["database"] = "Custom"
+                    info["database"] = "Unknown"
     return info
 
 

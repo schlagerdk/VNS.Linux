@@ -114,6 +114,35 @@ class PublishStatusTests(unittest.TestCase):
         self.assertIn("ERROR: Publish tracking failed", result.stderr)
         self.assertNotIn("should not run", result.stderr)
 
+    def test_initial_site_creation_publishes_record_only_success(self):
+        source = (APACHE / "create_site.sh").read_text()
+        commands = [line.strip() for line in source.splitlines() if "dotnet publish " in line]
+        self.assertEqual(len(commands), 2)
+        bin_dir = self.root / "tools"
+        bin_dir.mkdir()
+        dotnet = bin_dir / "dotnet"
+        dotnet.write_text('#!/bin/bash\nprintf "%s\\n" "$@"\nexit "${PUBLISH_EXIT}"\n')
+        dotnet.chmod(0o700)
+        baseline = self.root / ".vns-publish/test.json"
+        for command in commands:
+            for exit_code in (7, 0):
+                with self.subTest(command=command, exit_code=exit_code):
+                    if baseline.exists():
+                        baseline.unlink()
+                    result = subprocess.run(
+                        ["/bin/bash", "-c",
+                         'sudo() { "$@"; }\n' + command],
+                        cwd=self.root, capture_output=True, text=True,
+                        env=os.environ | {
+                            "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                            "_apacheDir": str(APACHE), "_siteRoot": str(self.root),
+                            "_project": str(self.project), "_buildConfig": "Debug",
+                            "_publishFolder": "_publish", "PUBLISH_EXIT": str(exit_code),
+                        })
+                    self.assertEqual(result.returncode, exit_code, result.stderr)
+                    self.assertIn(str(self.project), result.stdout)
+                    self.assertEqual(self.status(), "current" if exit_code == 0 else "unknown")
+
     def test_site_api_exposes_per_environment_state_and_logs_corruption(self):
         nodes = [node for node in ast.parse((APP / "app.py").read_text()).body
                  if isinstance(node, ast.FunctionDef) and node.name == "site_info"]

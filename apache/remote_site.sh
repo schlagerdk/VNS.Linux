@@ -48,7 +48,7 @@ if service.is_file():
 port = re.search(r"(?:localhost|127\.0\.0\.1):(\d+)", service_text)
 binding = re.search(r"^\s*ServerName\s+(\S+)", text, re.M)
 exec(os.environ.pop("DATABASE_CODE"))
-database = {"database": "Custom", "database_name": ""}
+database = {"database": "Unknown", "database_name": ""}
 try:
     database = database_details(Path("/var/www", site), environment, variables)
 except (OSError, ValueError):

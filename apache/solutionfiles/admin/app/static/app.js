@@ -624,7 +624,7 @@ function envPanel(site, env) {
 	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(env.binding + "/umbraco", scheme + "://" + env.binding + "/umbraco")));
 	if (site.kind === "csharp" || site.kind === "umbraco") {
 		meta.append(el("dt", { textContent: "Datasource" }), el("dd", {
-			textContent: env.database || "Custom",
+			textContent: env.database || "Unknown",
 			title: "Inferred from database configuration; connection and server edition are not tested.",
 		}));
 		if (env.database_name) meta.append(el("dt", { textContent: "Database" }), el("dd", {
