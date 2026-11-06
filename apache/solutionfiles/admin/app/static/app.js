@@ -1379,8 +1379,10 @@ async function closeEditor() {
 	editorDialog.close();
 }
 $("#editor-close").onclick = closeEditor;
-// Esc must not close the editor; use the close button.
-editorDialog.addEventListener("cancel", (event) => event.preventDefault());
+editorDialog.addEventListener("cancel", (event) => {
+	event.preventDefault();
+	if (event.target === editorDialog && !dirty) run(closeEditor);
+});
 $("#editor-text").oninput = () => setDirty(true);
 $("#editor-text").onkeydown = (event) => {
 	if ((event.ctrlKey || event.metaKey) && event.key === "s") { event.preventDefault(); run(saveFile); }
