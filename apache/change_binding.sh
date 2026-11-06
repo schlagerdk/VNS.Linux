@@ -64,15 +64,21 @@ for _domain in "${_newBinding}" ${_newAliases}; do
 	done
 done
 
-echo "The new domain must resolve to this server and be reachable on HTTP/port 80."
-read -r -p "Change bindings to ${_newBinding} (aliases: ${_newAliases:-none}), issue a new certificate, and revoke the old one if unused? [y/N]: " _confirm
+_scheme=http
+if grep -Eq '^[[:space:]]*SSLEngine[[:space:]]+On([[:space:]]|$)' "${_configPath}"; then
+	_scheme=https
+	require_acme
+	if [[ ! -f ${_certificateFile} || ! -f ${_keyFile} ]]; then
+		echo "Current HTTPS certificate files are missing; refusing to replace the bindings." >&2
+		exit 1
+	fi
+	echo "HTTPS is enabled: the certificate will be updated. All names must resolve to this server and be reachable on HTTP/port 80."
+else
+	echo "HTTP-only site: no certificate will be issued."
+fi
+read -r -p "Change bindings to ${_scheme}://${_newBinding} (aliases: ${_newAliases:-none})? [y/N]: " _confirm
 [[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
 
-require_acme
-if [[ ! -f ${_certificateFile} || ! -f ${_keyFile} ]]; then
-	echo "Current certificate files are missing; refusing to replace the binding." >&2
-	exit 1
-fi
 # The publish folder is chosen per site; read it from the service's working directory
 if [[ -f ${_servicePath} ]]; then
 	_workingDir=$(awk -F= '$1 == "WorkingDirectory" { print $2; exit }' "${_servicePath}")
@@ -83,14 +89,9 @@ _appSettings="${_siteRoot}/${_publishFolder}/appsettings.json"
 _backupDir=$(mktemp -d)
 trap 'rm -rf "${_backupDir}"' EXIT
 sudo cp "${_configPath}" "${_backupDir}/site.conf"
-sudo cp "${_certificateFile}" "${_backupDir}/fullchain.cer"
-sudo cp "${_keyFile}" "${_backupDir}/site.key"
-if ! sudo env NEW_ALIASES="${_newAliases}" bash -c 'source "$1"; replace_server_aliases "$2" "$NEW_ALIASES"' _ "${_apacheDir}/lib/common.sh" "${_backupDir}/site.conf"; then
-	echo "Could not update aliases in the backup Apache config." >&2
-	exit 1
-fi
-if ! set_certificate_domains "${_backupDir}/site.conf" "${_newBinding}"; then
-	exit 1
+if [[ ${_scheme} == https ]]; then
+	sudo cp "${_certificateFile}" "${_backupDir}/fullchain.cer"
+	sudo cp "${_keyFile}" "${_backupDir}/site.key"
 fi
 if [[ -f ${_appSettings} ]]; then
 	sudo cp "${_appSettings}" "${_backupDir}/appsettings.json"
@@ -100,8 +101,10 @@ _appRestartAttempted=n
 _rollback() {
 	echo "Restoring previous Apache config and certificate" >&2
 	sudo cp "${_backupDir}/site.conf" "${_configPath}"
-	sudo cp "${_backupDir}/fullchain.cer" "${_certificateFile}"
-	sudo cp "${_backupDir}/site.key" "${_keyFile}"
+	if [[ ${_scheme} == https ]]; then
+		sudo cp "${_backupDir}/fullchain.cer" "${_certificateFile}"
+		sudo cp "${_backupDir}/site.key" "${_keyFile}"
+	fi
 	if [[ -f ${_backupDir}/appsettings.json ]]; then
 		sudo cp "${_backupDir}/appsettings.json" "${_appSettings}"
 	fi
@@ -121,51 +124,60 @@ if ! sudo env NEW_ALIASES="${_newAliases}" bash -c 'source "$1"; replace_server_
 	exit 1
 fi
 if [[ -f ${_appSettings} ]] && grep -q '"UmbracoApplicationUrl"' "${_appSettings}" &&
-	! sudo env NEW_BINDING="${_newBinding}" perl -0pi -e 's/("UmbracoApplicationUrl"\s*:\s*")[^"]*(")/${1}https:\/\/$ENV{NEW_BINDING}$2/ or die "UmbracoApplicationUrl not found\n"' "${_appSettings}"; then
+	! sudo env NEW_BINDING="${_newBinding}" SCHEME="${_scheme}" perl -0pi -e 's/("UmbracoApplicationUrl"\s*:\s*")[^"]*(")/${1}$ENV{SCHEME}:\/\/$ENV{NEW_BINDING}$2/ or die "UmbracoApplicationUrl not found\n"' "${_appSettings}"; then
 	_rollback
 	exit 1
 fi
 
-if ! sudo cp "${_configPath}" "${_backupDir}/new-site.conf"; then
-	_rollback
-	exit 1
-fi
-_docRoot=${_siteRoot}
-if ! render_to "${_solutionFolder}/common/apache-temp.conf.tpl" "${_configPath}"; then
-	_rollback
-	exit 1
-fi
-if ((${#_certificateDomainAliases[@]})); then
-	printf '  ServerAlias %s\n' "${_certificateDomainAliases[*]}" | sudo tee -a "${_configPath}" >/dev/null
-fi
-if ! sudo apache2ctl configtest || ! sudo systemctl reload apache2; then
-	_rollback
-	exit 1
-fi
-
-echo "Issue certificate for ${_certificateDomainNames}"
-for _domain in "${_certificateDomains[@]}"; do clean_stale_acme "${_domain}"; done
-if sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" "${_certificateDomainArgs[@]}"; then
-	:
-else
-	_status=$?
-	if [[ ${_status} -ne 2 ]]; then
+if [[ ${_scheme} == https ]]; then
+	if ! set_certificate_domains "${_configPath}" "${_newBinding}"; then
 		_rollback
-		exit "${_status}"
+		exit 1
 	fi
-fi
+	if ! sudo cp "${_configPath}" "${_backupDir}/new-site.conf"; then
+		_rollback
+		exit 1
+	fi
+	_docRoot=${_siteRoot}
+	if ! render_to "${_solutionFolder}/common/apache-temp.conf.tpl" "${_configPath}"; then
+		_rollback
+		exit 1
+	fi
+	if ((${#_certificateDomainAliases[@]})); then
+		printf '  ServerAlias %s\n' "${_certificateDomainAliases[*]}" | sudo tee -a "${_configPath}" >/dev/null
+	fi
+	if ! sudo apache2ctl configtest || ! sudo systemctl reload apache2; then
+		_rollback
+		exit 1
+	fi
 
-if ! sudo "${_acme}" --install-cert -d "${_newBinding}" \
-	--key-file "${_keyFile}" \
-	--fullchain-file "${_certificateFile}" \
-	--reloadcmd "systemctl reload apache2"; then
-	_rollback
-	exit 1
-fi
+	echo "Issue certificate for ${_certificateDomainNames}"
+	for _domain in "${_certificateDomains[@]}"; do
+		[[ ${_domain} == "${_oldBinding}" || ${_domain} == "${_site}" ]] && continue
+		clean_stale_acme "${_domain}"
+	done
+	if sudo "${_acme}" --issue --apache --force --server "${_acmeServer}" "${_certificateDomainArgs[@]}"; then
+		:
+	else
+		_status=$?
+		if [[ ${_status} -ne 2 ]]; then
+			_rollback
+			exit "${_status}"
+		fi
+	fi
 
-if ! sudo cp "${_backupDir}/new-site.conf" "${_configPath}"; then
-	_rollback
-	exit 1
+	if ! sudo "${_acme}" --install-cert -d "${_newBinding}" \
+		--key-file "${_keyFile}" \
+		--fullchain-file "${_certificateFile}" \
+		--reloadcmd "systemctl reload apache2"; then
+		_rollback
+		exit 1
+	fi
+
+	if ! sudo cp "${_backupDir}/new-site.conf" "${_configPath}"; then
+		_rollback
+		exit 1
+	fi
 fi
 if ! sudo apache2ctl configtest || ! sudo systemctl reload apache2; then
 	_rollback
@@ -180,7 +192,7 @@ if [[ -f ${_backupDir}/appsettings.json ]] &&
 	fi
 fi
 
-if [[ ${_newBinding} != "${_oldBinding}" ]]; then
+if [[ ${_newBinding} != "${_oldBinding}" && ${_scheme} == https ]]; then
 	_oldBindingInUse=0
 	for _domain in ${_newAliases}; do [[ ${_domain} == "${_oldBinding}" ]] && _oldBindingInUse=1; done
 	for _enabledConfig in /etc/apache2/sites-enabled/*.conf; do
@@ -202,4 +214,4 @@ if [[ ${_newBinding} != "${_oldBinding}" ]]; then
 	fi
 fi
 
-echo "Bindings updated: https://${_newBinding}/ (aliases: ${_newAliases:-none}, folder: ${_site})"
+echo "Bindings updated: ${_scheme}://${_newBinding}/ (aliases: ${_newAliases:-none}, folder: ${_site})"

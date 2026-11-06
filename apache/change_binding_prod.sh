@@ -44,8 +44,8 @@ if [[ ${_newBinding} == "${_oldBinding}" && ${_newAliases} == "${_oldAliasesForC
 	exit 0
 fi
 
-echo "The new domain must resolve to ${_target} and be reachable on HTTP/port 80."
-read -r -p "Change production bindings to ${_newBinding} (aliases: ${_newAliases:-none}) on ${_target}, issue a new certificate, and remove the old one if unused? [y/N]: " _confirm
+echo "HTTP-only sites remain HTTP-only. For HTTPS sites the certificate will be updated; all names must resolve to ${_target} and be reachable on HTTP/port 80."
+read -r -p "Change production bindings to ${_newBinding} (aliases: ${_newAliases:-none}) on ${_target}? [y/N]: " _confirm
 [[ ${_confirm,,} == y || ${_confirm,,} == yes ]] || { echo "Aborted"; exit 1; }
 
 _umbraco=n
@@ -62,7 +62,11 @@ newcert=/etc/ssl/certs/${NEW}_ecc
 settings=${ROOT}/appsettings.json
 
 [[ -f ${conf} ]] || { echo "Apache config not found: ${conf}" >&2; exit 1; }
-[[ -x ${acme} ]] || { echo "acme.sh not found (${acme}). Run apache/init.sh there first." >&2; exit 1; }
+scheme=http
+if grep -Eq '^[[:space:]]*SSLEngine[[:space:]]+On([[:space:]]|$)' "${conf}"; then
+	scheme=https
+	[[ -x ${acme} ]] || { echo "acme.sh not found (${acme}). Run apache/init.sh there first." >&2; exit 1; }
+fi
 grep -qi "^[[:space:]]*ServerName[[:space:]]\+${OLD}[[:space:]]*$" "${conf}" || { echo "ServerName ${OLD} not found in ${conf}" >&2; exit 1; }
 
 used_by_other() {
@@ -106,44 +110,44 @@ apache2ctl configtest || { rollback; exit 1; }
 systemctl reload apache2
 
 # 2. Issue the certificate for the new name
-domains=("${NEW}")
-while IFS= read -r alias; do
-	[[ -n ${alias} ]] || continue
-	alias=${alias,,}
-	[[ ${alias} =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ && ${#alias} -le 253 ]] || {
-		echo "Invalid ServerAlias '${alias}' in ${conf}; certificate issuance stopped." >&2
+if [[ ${scheme} == https ]]; then
+	domains=("${NEW}")
+	while IFS= read -r alias; do
+		[[ -n ${alias} ]] || continue
+		alias=${alias,,}
+		[[ ${alias} =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ && ${#alias} -le 253 ]] || {
+			echo "Invalid ServerAlias '${alias}' in ${conf}; certificate issuance stopped." >&2
+			rollback
+			exit 1
+		}
+		found=0
+		for domain in "${domains[@]}"; do [[ ${domain} == "${alias}" ]] && found=1; done
+		((found)) || domains+=("${alias}")
+	done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${conf}")
+	domain_args=()
+	for domain in "${domains[@]}"; do domain_args+=(-d "${domain}"); done
+	printf 'Issue certificate for: %s\n' "${domains[*]}"
+	if [[ ${NEW} != "${OLD}" ]] && ! used_by_other "${NEW}"; then
+		"${acme}" --remove -d "${NEW}" >/dev/null 2>&1 || true
+		rm -rf "/etc/ssl/certs/${NEW}" "${newcert}"
+	fi
+	rc=0
+	"${acme}" --issue --apache --force --server "${ACME_SERVER}" "${domain_args[@]}" || rc=$?
+	if [[ ${rc} -ne 0 && ${rc} -ne 2 ]]; then
+		echo "Certificate issue failed. Check that DNS for ${NEW} points to this server." >&2
 		rollback
 		exit 1
-	}
-	found=0
-	for domain in "${domains[@]}"; do [[ ${domain} == "${alias}" ]] && found=1; done
-	((found)) || domains+=("${alias}")
-done < <(awk '$1 == "ServerAlias" { for (i = 2; i <= NF && $i !~ /^#/; i++) print $i }' "${conf}")
-domain_args=()
-for domain in "${domains[@]}"; do domain_args+=(-d "${domain}"); done
-printf 'Issue certificate for: %s\n' "${domains[*]}"
-if [[ ${NEW} != "${OLD}" ]] && ! used_by_other "${NEW}"; then
-	"${acme}" --remove -d "${NEW}" >/dev/null 2>&1 || true
-	rm -rf "/etc/ssl/certs/${NEW}" "${newcert}"
-fi
-rc=0
-"${acme}" --issue --apache --force --server "${ACME_SERVER}" "${domain_args[@]}" || rc=$?
-if [[ ${rc} -ne 0 && ${rc} -ne 2 ]]; then
-	echo "Certificate issue failed. Check that DNS for ${NEW} points to this server." >&2
-	rollback
-	exit 1
-fi
-mkdir -p "${newcert}"
-"${acme}" --install-cert -d "${NEW}" --key-file "${newcert}/${NEW}.key" \
-	--fullchain-file "${newcert}/fullchain.cer" --reloadcmd "systemctl reload apache2" || { rollback; exit 1; }
+	fi
+	mkdir -p "${newcert}"
+	"${acme}" --install-cert -d "${NEW}" --key-file "${newcert}/${NEW}.key" \
+		--fullchain-file "${newcert}/fullchain.cer" --reloadcmd "systemctl reload apache2" || { rollback; exit 1; }
 
-# 3. Point the config to the new certificate and update the application URL
-sed -i "s|${oldcert}/fullchain.cer|${newcert}/fullchain.cer|g; s|${oldcert}/${OLD}.key|${newcert}/${NEW}.key|g" "${conf}"
-if [[ -f ${settings} ]] && grep -q "UmbracoApplicationUrl" "${settings}"; then
-	sed -i -E "s|(\"UmbracoApplicationUrl\"[[:space:]]*:[[:space:]]*\")[^\"]*|\1https://${NEW}|" "${settings}"
+	# 3. Point the config to the new certificate
+	sed -i "s|${oldcert}/fullchain.cer|${newcert}/fullchain.cer|g; s|${oldcert}/${OLD}.key|${newcert}/${NEW}.key|g" "${conf}"
 fi
-ensure_production_tls_config "${conf}" "/etc/systemd/system/${SITE}.service" "${SITE}" \
-	"${NEW}" "${ROOT}" "${newcert}" "${MAIL}" "${UMBRACO}" || { rollback; exit 1; }
+if [[ -f ${settings} ]] && grep -q "UmbracoApplicationUrl" "${settings}"; then
+	sed -i -E "s|(\"UmbracoApplicationUrl\"[[:space:]]*:[[:space:]]*\")[^\"]*|\1${scheme}://${NEW}|" "${settings}"
+fi
 apache2ctl configtest || { rollback; exit 1; }
 systemctl reload apache2
 if [[ -f ${backup}/appsettings.json ]] && ! cmp -s "${backup}/appsettings.json" "${settings}"; then
@@ -152,7 +156,7 @@ if [[ -f ${backup}/appsettings.json ]] && ! cmp -s "${backup}/appsettings.json" 
 fi
 
 # 4. Remove the old certificate unless another site still uses that name
-if [[ ${OLD} != "${NEW}" ]]; then
+if [[ ${OLD} != "${NEW}" && ${scheme} == https ]]; then
 	old_binding_in_use=n
 	for alias in ${ALIASES}; do [[ ${alias} == "${OLD}" ]] && old_binding_in_use=y; done
 	if [[ ${old_binding_in_use} == y ]] || used_by_other "${OLD}"; then
@@ -164,7 +168,7 @@ if [[ ${OLD} != "${NEW}" ]]; then
 		rm -rf "/etc/ssl/certs/${OLD}" "${oldcert}"
 	fi
 fi
-echo "Bindings updated: https://${NEW}/ (aliases: ${ALIASES:-none})"
+echo "Bindings updated: ${scheme}://${NEW}/ (aliases: ${ALIASES:-none})"
 REMOTE
 
 # Keep the settings of this site in sync (quotes and the trailing comment are preserved)

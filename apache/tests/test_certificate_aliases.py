@@ -1,5 +1,9 @@
 from pathlib import Path
+import os
+import re
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -13,6 +17,110 @@ def shell_function(source, name):
 
 
 class CertificateAliasTests(unittest.TestCase):
+    def test_binding_changes_preserve_http_and_https_modes(self):
+        for production in (False, True):
+            for https in (False, True):
+                for primary_changed in (False, True):
+                    with self.subTest(production=production, https=https, primary_changed=primary_changed), tempfile.TemporaryDirectory() as directory:
+                        root = Path(directory)
+                        for folder in ("lib", "available", "enabled", "services", "certs", "bin", "sites/example.test/_publish"):
+                            (root / folder).mkdir(parents=True, exist_ok=True)
+
+                        def fixture_source(text):
+                            for original, replacement in (
+                                ("/etc/apache2/sites-available", root / "available"),
+                                ("/etc/apache2/sites-enabled", root / "enabled"),
+                                ("/etc/systemd/system", root / "services"),
+                                ("/etc/ssl/certs", root / "certs"),
+                                ("/etc/acmesh/acme.sh", root / "bin/acme"),
+                                ("/var/www", root / "sites"),
+                                ("/vns/apache/lib/common.sh", root / "lib/common.sh"),
+                            ):
+                                text = text.replace(original, str(replacement))
+                            if sys.platform == "darwin":
+                                text = re.sub(r"\$\{(\w+),,\}", r"""$(printf '%s' "${\1}" | tr '[:upper:]' '[:lower:]')""", text)
+                                text = text.replace("sed -i ", "sed -i '' ")
+                            return text
+
+                        (root / "lib/common.sh").write_text(fixture_source((APACHE / "lib/common.sh").read_text()))
+                        templates = root / "solutionfiles/common"
+                        templates.mkdir(parents=True)
+                        shutil.copy(APACHE / "solutionfiles/common/apache-temp.conf.tpl", templates)
+                        settings = root / "sites/example.test/_publish/appsettings.json"
+                        scheme = "https" if https else "http"
+                        settings.write_text('{"UmbracoApplicationUrl":"' + scheme + '://example.test"}')
+                        certificate = root / "certs/example.test_ecc"
+                        if https:
+                            certificate.mkdir()
+                            (certificate / "fullchain.cer").write_text("old cert")
+                            (certificate / "example.test.key").write_text("old key")
+                        config = root / "available/example.test.conf"
+                        config.write_text(
+                            "<VirtualHost *:" + ("443" if https else "80") + ">\n"
+                            "ServerName example.test\nServerAlias old.example.test\n"
+                            "ProxyPass / http://localhost:4003/\n"
+                            + (f"SSLEngine On\nSSLCertificateFile {certificate}/fullchain.cer\n"
+                               f"SSLCertificateKeyFile {certificate}/example.test.key\n" if https else "")
+                            + "</VirtualHost>\n")
+                        (root / "enabled/example.test.conf").symlink_to(config)
+                        (root / "services/example.test.service").write_text(
+                            "WorkingDirectory=" + str(settings.parent) + "\n")
+                        for name, body in (
+                            ("sudo", 'exec "$@"'),
+                            ("apache2ctl", 'echo "configtest" >> "$CALLS"'),
+                            ("systemctl", 'echo "systemctl:$*" >> "$CALLS"'),
+                            ("acme", 'echo "acme:$*" >> "$CALLS"\n'
+                             '[[ "$1" != --issue || "${FAIL_CERT:-0}" != 1 ]] || exit 1\n'
+                             'while (($#)); do\n'
+                             'case "$1" in --key-file|--fullchain-file) shift; mkdir -p "$(dirname "$1")"; echo installed > "$1";; esac\n'
+                             'shift\ndone'),
+                        ):
+                            command = root / "bin" / name
+                            command.write_text("#!/bin/bash\n" + body + "\n")
+                            command.chmod(0o700)
+                        new = "new.example.test" if primary_changed else "example.test"
+                        if production:
+                            source = (APACHE / "change_binding_prod.sh").read_text().split("<<'REMOTE'\n", 1)[1].split("\nREMOTE", 1)[0]
+                            args = []
+                        else:
+                            source = (APACHE / "change_binding.sh").read_text()
+                            args = ["example.test", new, "api.example.test"]
+                        script = root / "change.sh"
+                        script.write_text(fixture_source(source))
+                        calls = root / "calls"
+                        env = os.environ | {
+                            "PATH": str(root / "bin") + ":" + os.environ["PATH"], "CALLS": str(calls),
+                            "SITE": "example.test", "OLD": "example.test", "NEW": new,
+                            "ALIASES": "api.example.test", "ROOT": str(settings.parent),
+                            "ACME_SERVER": "letsencrypt", "MAIL": "admin@example.test", "UMBRACO": "1",
+                        }
+                        if https:
+                            original_config = config.read_text()
+                            original_settings = settings.read_text()
+                            result = subprocess.run(
+                                ["bash", str(script), *args], input="y\n", env=env | {"FAIL_CERT": "1"},
+                                capture_output=True, text=True)
+                            self.assertNotEqual(result.returncode, 0)
+                            self.assertEqual(config.read_text(), original_config)
+                            self.assertEqual(settings.read_text(), original_settings)
+                            self.assertEqual((certificate / "fullchain.cer").read_text(), "old cert")
+                            self.assertEqual((certificate / "example.test.key").read_text(), "old key")
+                            calls.unlink()
+                        result = subprocess.run(["bash", str(script), *args], input="y\n", env=env,
+                                                capture_output=True, text=True)
+                        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                        self.assertIn("ServerName " + new, config.read_text())
+                        self.assertIn("ServerAlias api.example.test", config.read_text())
+                        self.assertNotIn("old.example.test", config.read_text())
+                        self.assertIn(scheme + "://" + new, settings.read_text())
+                        self.assertEqual("SSLEngine On" in config.read_text(), https)
+                        actions = calls.read_text()
+                        self.assertEqual("acme:--issue" in actions, https)
+                        self.assertEqual("acme:--install-cert" in actions, https)
+                        if not https:
+                            self.assertNotIn("acme:", actions)
+                            self.assertEqual(list((root / "certs").iterdir()), [])
+
     def run_domains(self, config, primary="Example.test"):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "site.conf"
@@ -156,7 +264,7 @@ class CertificateAliasTests(unittest.TestCase):
         self.assertIn('"${_certificateDomainArgs[@]}"', test_action)
         self.assertIn('awk \'$1 == "ServerAlias"', prod_action)
         self.assertIn('"${domain_args[@]}"', prod_action)
-        self.assertIn('set_certificate_domains "${_backupDir}/site.conf" "${_newBinding}"', change_local)
+        self.assertIn('set_certificate_domains "${_configPath}" "${_newBinding}"', change_local)
         self.assertIn('"${_certificateDomainArgs[@]}"', change_local)
         self.assertIn('awk \'$1 == "ServerAlias"', change_remote)
         self.assertIn('"${domain_args[@]}"', change_remote)
@@ -165,13 +273,13 @@ class CertificateAliasTests(unittest.TestCase):
         self.assertIn('${server_alias_line}', publish)
         self.assertLess(publish.index('server_alias_line=""'), publish.index('if [[ ! -e ${certdir}/fullchain.cer ]]'))
         self.assertIn("ensure_production_tls_config", prod_action)
-        self.assertIn("ensure_production_tls_config", change_remote)
+        self.assertNotIn("ensure_production_tls_config", change_remote)
         for change in (change_local, change_remote):
             self.assertIn("New aliases, comma-separated", change)
             self.assertIn("normalize_server_aliases", change)
             self.assertIn("replace_server_aliases", change)
         self.assertIn('if [[ ${NEW} != "${OLD}" ]]', change_remote)
-        self.assertIn('if [[ ${_newBinding} != "${_oldBinding}" ]]', change_local)
+        self.assertIn('if [[ ${_newBinding} != "${_oldBinding}" && ${_scheme} == https ]]', change_local)
         self.assertIn('set_certificate_domains "${_configPath}" "${_binding}"', legacy)
         self.assertIn('"${_certificateDomainArgs[@]}"', legacy)
 

@@ -447,6 +447,7 @@ function siteCard(site) {
 		const environment = environmentLabel(site, env);
 		const group = el("div", { className: "site-link-group" + (production ? " production" : ""), role: "group", ariaLabel: environment + " · " + (env.binding || site.name) });
 		const heading = el("div", { className: "site-environment-head" },
+			httpsLock(env.https),
 			el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 		if (env.mode === "remote") heading.append(remoteIcon(env));
 		const pending = publishBadge(env);
@@ -460,12 +461,10 @@ function siteCard(site) {
 			continue;
 		}
 		const frontend = openLink("Frontend", scheme + "://" + env.binding + "/", environment + ": " + env.binding, true);
-		frontend.prepend(httpsLock(env.https));
 		frontend.classList.add("frontend");
 		links.append(frontend);
 		if (site.kind === "umbraco") {
 			const backend = openLink("Backend", scheme + "://" + env.binding + "/umbraco", environment + " backoffice: " + env.binding, true);
-			backend.prepend(httpsLock(env.https));
 			backend.classList.add("backend");
 			links.append(backend);
 		}
@@ -763,9 +762,9 @@ async function changeBinding(site, scope, env) {
 	const label = scope === "prod" ? "production site" : "test site";
 	const bindings = await ask({
 		title: `Change ${label} bindings`,
-		message: `Set the primary domain and aliases for the ${label} of ${site.name}. Aliases must resolve to the same server.`,
+		message: `Set the primary domain and aliases for the ${label} of ${site.name}. Aliases must resolve to the same server. HTTP-only sites remain HTTP-only; certificates are updated only for HTTPS sites.`,
 		value: current,
-		extra: { label: "Aliases (comma-separated)", value: (env?.aliases || []).join(", "), placeholder: "www.example.com, api.example.com" },
+		extra: { label: "Aliases (one per line)", value: (env?.aliases || []).join("\n"), placeholder: "www.example.com\napi.example.com" },
 		ok: "Change",
 	});
 	if (!bindings) return;

@@ -152,6 +152,8 @@ dialog.danger .primary { background: #da3633; border-color: var(--red); }
 #dlg-prompt { width: min(520px, 92vw); min-width: 0; }
 #prompt-message { overflow-wrap: anywhere; }
 #dlg-prompt .confirmation-copy { white-space: normal; }
+#dlg-prompt .prompt-extra-row { margin-top: 16px; }
+#dlg-prompt #prompt-extra { width: 100%; min-height: 92px; resize: vertical; font: inherit; }
 
 #toasts { position: fixed; inset: auto 18px 18px auto; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; max-width: calc(100vw - 36px); max-height: calc(100vh - 36px); overflow: auto; display: flex; flex-direction: column; gap: 8px; z-index: 50; pointer-events: none; }
 .toast { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 8px; padding: 10px 14px; box-shadow: var(--shadow); max-width: 420px; animation: pop .15s ease-out; }

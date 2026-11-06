@@ -226,11 +226,21 @@ for (const kind of ["csharp", "umbraco", "python", "html"]) {
     def test_change_bindings_dialog_includes_alias_editor(self):
         source = (APACHE / "solutionfiles/admin/app/static/app.js").read_text()
         template = (APACHE / "solutionfiles/admin/app/templates/index.html").read_text()
-        self.assertIn('extra: { label: "Aliases (comma-separated)"', source)
-        self.assertIn('value: (env?.aliases || []).join(", ")', source)
+        self.assertIn('extra: { label: "Aliases (one per line)"', source)
+        self.assertIn('value: (env?.aliases || []).join("\\n")', source)
         self.assertIn('kind: "change_binding", site: site.name, binding, aliases, scope', source)
-        self.assertIn('id="prompt-extra-row"', template)
-        self.assertIn('id="prompt-extra"', template)
+        self.assertIn('id="prompt-extra-row" class="prompt-extra-row"', template)
+        self.assertIn('<textarea id="prompt-extra" rows="4"', template)
+        styles = (APACHE / "solutionfiles/admin/app/static/style.css").read_text()
+        self.assertIn("#dlg-prompt .prompt-extra-row { margin-top: 16px; }", styles)
+
+    def test_overview_has_one_https_icon_before_each_environment_badge(self):
+        source = (APACHE / "solutionfiles/admin/app/static/app.js").read_text()
+        card = source[source.index("function siteCard("):source.index("function renderSite(")]
+        self.assertEqual(card.count("httpsLock(env.https)"), 1)
+        self.assertIn('httpsLock(env.https),\n\t\t\tel("span", { className: "badge env-"', card)
+        self.assertNotIn("frontend.prepend", card)
+        self.assertNotIn("backend.prepend", card)
 
 
 if __name__ == "__main__":
