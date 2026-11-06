@@ -147,9 +147,12 @@ dialog.danger .primary { background: #da3633; border-color: var(--red); }
 #prompt-message { overflow-wrap: anywhere; }
 #dlg-prompt .confirmation-copy { white-space: normal; }
 
-#toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+#toasts { position: fixed; inset: auto 18px 18px auto; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; max-width: calc(100vw - 36px); max-height: calc(100vh - 36px); overflow: auto; display: flex; flex-direction: column; gap: 8px; z-index: 50; pointer-events: none; }
 .toast { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 8px; padding: 10px 14px; box-shadow: var(--shadow); max-width: 420px; animation: pop .15s ease-out; }
 .toast.error { border-left-color: var(--red); }
+.toast { display: flex; align-items: flex-start; gap: 12px; pointer-events: auto; }
+.toast span { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.toast button { flex-shrink: 0; }
 .toast.ok { border-left-color: var(--green); }
 @keyframes pop { from { transform: translateY(8px); opacity: 0; } }
 

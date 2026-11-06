@@ -28,10 +28,35 @@ async function api(url, options = {}) {
 	return data;
 }
 
+function positionToasts() {
+	const container = $("#toasts");
+	const dialogs = document.querySelectorAll("dialog[open]");
+	const host = dialogs.length ? dialogs[dialogs.length - 1] : document.body;
+	if (container.hidePopover) container.hidePopover();
+	host.append(container);
+	if (container.childElementCount && container.showPopover) container.showPopover();
+}
+document.addEventListener("close", positionToasts, true);
+
 function toast(message, type) {
-	const node = el("div", { className: "toast " + (type || ""), textContent: message });
-	$("#toasts").append(node);
-	setTimeout(() => node.remove(), type === "error" ? 8000 : 3500);
+	const container = $("#toasts");
+	const node = el("div", { className: "toast " + (type || "") },
+		el("span", { textContent: message }));
+	node.setAttribute("role", type === "error" ? "alert" : "status");
+	const dismiss = () => {
+		node.remove();
+		if (!container.childElementCount && container.hidePopover) container.hidePopover();
+	};
+	if (type === "error") {
+		const close = el("button", { type: "button", textContent: "Close", onclick: dismiss });
+		close.setAttribute("aria-label", "Dismiss error");
+		node.append(close);
+		console.error(message);
+	} else {
+		setTimeout(dismiss, 3500);
+	}
+	container.append(node);
+	positionToasts();
 }
 
 async function run(action) {
@@ -1062,6 +1087,7 @@ async function saveFile() {
 		}
 	} catch (error) {
 		$("#editor-status").textContent = error.message;
+		toast(error.message, "error");
 	} finally {
 		savingFile = false;
 		$("#editor-save").disabled = false;
