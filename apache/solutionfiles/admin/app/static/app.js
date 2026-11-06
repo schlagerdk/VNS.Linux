@@ -1379,9 +1379,15 @@ async function closeEditor() {
 	editorDialog.close();
 }
 $("#editor-close").onclick = closeEditor;
+editorDialog.addEventListener("keydown", (event) => {
+	if (event.key !== "Escape" || savingFile) return;
+	event.preventDefault();
+	event.stopImmediatePropagation();
+	if (!event.repeat) run(closeEditor);
+}, true);
 editorDialog.addEventListener("cancel", (event) => {
 	event.preventDefault();
-	if (event.target === editorDialog && !dirty) run(closeEditor);
+	if (event.target === editorDialog) run(closeEditor);
 });
 $("#editor-text").oninput = () => setDirty(true);
 $("#editor-text").onkeydown = (event) => {
