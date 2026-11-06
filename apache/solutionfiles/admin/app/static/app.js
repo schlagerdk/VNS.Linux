@@ -99,9 +99,11 @@ async function copyText(text, container) {
 let copyStatusTimer = null;
 
 // Replaces prompt()/confirm(). Resolves to the entered text (or true without an input), or null when cancelled.
-function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null }) {
+function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null, extra = null }) {
 	const dlg = $("#dlg-prompt");
 	const field = $("#prompt-input");
+	const extraRow = $("#prompt-extra-row");
+	const extraField = $("#prompt-extra");
 	const okButton = $("#prompt-ok");
 	$("#prompt-title").textContent = title;
 	const messageBox = $("#prompt-message");
@@ -140,6 +142,12 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	field.hidden = !input;
 	field.value = value;
 	field.placeholder = match !== null ? "" : placeholder;
+	extraRow.hidden = !extra;
+	if (extra) {
+		$("#prompt-extra-label").textContent = extra.label;
+		extraField.value = extra.value || "";
+		extraField.placeholder = extra.placeholder || "";
+	}
 	okButton.value = "ok";
 	okButton.textContent = ok;
 	okButton.disabled = match !== null;
@@ -148,9 +156,11 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	$("#prompt-cancel").onclick = () => dlg.close("cancel");
 	dlg.returnValue = "";
 	return new Promise((resolve) => {
-		dlg.onclose = () => resolve(dlg.returnValue === "ok" ? (input ? field.value : true) : null);
+		dlg.onclose = () => resolve(dlg.returnValue === "ok"
+			? (extra ? { value: field.value, extra: extraField.value } : input ? field.value : true)
+			: null);
 		dlg.showModal();
-		if (input) { field.focus(); field.select(); } else okButton.focus();
+		if (input) { field.focus(); field.select(); } else if (extra) extraField.focus(); else okButton.focus();
 	});
 }
 
@@ -751,8 +761,20 @@ $("#logs-close").onclick = () => logsDialog.close();
 async function changeBinding(site, scope, env) {
 	const current = env ? env.binding : site.binding;
 	const label = scope === "prod" ? "production site" : "test site";
-	const binding = await ask({ title: `Change ${label} bindings`, message: `New domain for the ${label} of ${site.name}`, value: current, ok: "Change" });
-	if (binding && binding.trim() !== current) await openTask({ kind: "change_binding", site: site.name, binding: binding.trim(), scope });
+	const bindings = await ask({
+		title: `Change ${label} bindings`,
+		message: `Set the primary domain and aliases for the ${label} of ${site.name}. Aliases must resolve to the same server.`,
+		value: current,
+		extra: { label: "Aliases (comma-separated)", value: (env?.aliases || []).join(", "), placeholder: "www.example.com, api.example.com" },
+		ok: "Change",
+	});
+	if (!bindings) return;
+	const binding = bindings.value.trim();
+	const aliases = bindings.extra.trim();
+	const currentAliases = (env?.aliases || []).join(" ").toLowerCase();
+	if (binding !== current || aliases.replace(/,/g, " ").trim().replace(/\s+/g, " ").toLowerCase() !== currentAliases) {
+		await openTask({ kind: "change_binding", site: site.name, binding, aliases, scope });
+	}
 }
 
 async function deleteSite(site, scope) {

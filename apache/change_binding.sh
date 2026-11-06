@@ -34,11 +34,15 @@ _binding=${_newBinding}
 _oldAliases=$(server_aliases_from_config "${_configPath}" "${_oldBinding}")
 echo "Current aliases: ${_oldAliases:-none}"
 _aliasInput=""
-read -r -p "New aliases, comma-separated (Enter keeps current; - removes all): " _aliasInput
-if [[ -z ${_aliasInput} ]]; then
-	_aliasInput=${_oldAliases}
-elif [[ ${_aliasInput} == "-" ]]; then
-	_aliasInput=""
+if (($# >= 3)); then
+	_aliasInput=${3}
+else
+	read -r -p "New aliases, comma-separated (Enter keeps current; - removes all): " _aliasInput
+	if [[ -z ${_aliasInput} ]]; then
+		_aliasInput=${_oldAliases}
+	elif [[ ${_aliasInput} == "-" ]]; then
+		_aliasInput=""
+	fi
 fi
 normalize_server_aliases "${_newBinding}" "${_aliasInput}"
 _newAliases=${_normalizedAliases}

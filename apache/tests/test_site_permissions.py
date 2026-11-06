@@ -84,7 +84,9 @@ class SitePermissionsTests(unittest.TestCase):
         source = APACHE / "solutionfiles/admin/app/app.py"
         nodes = [node for node in ast.parse(source.read_text()).body
                  if isinstance(node, ast.FunctionDef) and node.name == "build_command"]
-        namespace = {"os": os, "abort": abort, "site_arg": lambda data: data["site"],
+        namespace = {"os": os, "re": __import__("re"), "abort": abort, "site_arg": lambda data: data["site"],
+                     "BINDING_RE": __import__("re").compile(
+                         r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"),
                      "ADMIN_SITE": "admin.test", "APACHE_DIR": str(APACHE), "WEB_ROOT": str(self.base)}
         exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), "exec"), namespace)
         command = namespace["build_command"]
@@ -97,6 +99,37 @@ class SitePermissionsTests(unittest.TestCase):
         for site, scope in (("admin.test", "test"), ("example.test", "all")):
             with self.assertRaises(BadRequest):
                 command({"kind": "fix_permissions", "site": site, "scope": scope})
+
+    def test_change_bindings_passes_validated_aliases_to_both_scopes(self):
+        source = APACHE / "solutionfiles/admin/app/app.py"
+        nodes = [node for node in ast.parse(source.read_text()).body
+                 if isinstance(node, ast.FunctionDef) and node.name == "build_command"]
+        namespace = {"os": os, "re": __import__("re"), "abort": abort, "site_arg": lambda data: data["site"],
+                     "BINDING_RE": __import__("re").compile(
+                         r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$"),
+                     "ADMIN_SITE": "admin.test", "APACHE_DIR": str(APACHE), "WEB_ROOT": str(self.base)}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), "exec"), namespace)
+        (self.root / "scripts").mkdir()
+        (self.root / "scripts/publish_prod.sh").touch()
+        command = namespace["build_command"]
+        for scope, script in (("test", "change_binding.sh"), ("prod", "change_binding_prod.sh")):
+            title, argv, cwd = command({
+                "kind": "change_binding", "site": "example.test", "binding": "example.test",
+                "aliases": "WWW.example.test, api.example.test www.example.test", "scope": scope,
+            })
+            self.assertEqual(argv, ["/bin/bash", str(APACHE / script), "example.test",
+                                    "example.test", "www.example.test api.example.test"])
+            self.assertIn("bindings", title.lower())
+            self.assertEqual(cwd, str(APACHE))
+            _, legacy_argv, _ = command({
+                "kind": "change_binding", "site": "example.test", "binding": "example.test",
+                "scope": scope,
+            })
+            self.assertEqual(legacy_argv, argv[:4])
+        for aliases in ("not-a-domain", "*.example.test", "https://example.test", "a" * 254 + ".test"):
+            with self.subTest(aliases=aliases), self.assertRaises(BadRequest):
+                command({"kind": "change_binding", "site": "example.test",
+                         "binding": "example.test", "aliases": aliases, "scope": "test"})
 
 
 if __name__ == "__main__":

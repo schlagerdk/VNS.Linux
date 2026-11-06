@@ -1138,11 +1138,31 @@ def build_command(data):
         binding = (data.get("binding") or "").lower()
         if not BINDING_RE.match(binding):
             abort(400, "Invalid binding")
+        argv = [bash, os.path.join(APACHE_DIR, "change_binding.sh"), site, binding]
+        if "aliases" in data:
+            aliases = data["aliases"]
+            if not isinstance(aliases, str) or len(aliases) > 4096:
+                abort(400, "Invalid aliases")
+            alias_names = []
+            for alias in re.split(r"[\s,]+", aliases.strip()):
+                if not alias:
+                    continue
+                alias = alias.lower()
+                if (len(alias) > 253 or not BINDING_RE.fullmatch(alias)
+                        or any(len(label) > 63 for label in alias.split("."))):
+                    abort(400, "Invalid alias: " + alias)
+                if alias != binding and alias not in alias_names:
+                    alias_names.append(alias)
+            if len(alias_names) > 99:
+                abort(400, "A certificate can include at most 99 aliases")
+            aliases = " ".join(alias_names)
+            argv.append(aliases)
         if data.get("scope") == "prod":
             if not os.path.isfile(os.path.join(WEB_ROOT, site, "scripts", "publish_prod.sh")):
                 abort(400, "This site has no production site")
-            return "Prod binding: " + site, [bash, os.path.join(APACHE_DIR, "change_binding_prod.sh"), site, binding], APACHE_DIR
-        return "Binding: " + site, [bash, os.path.join(APACHE_DIR, "change_binding.sh"), site, binding], APACHE_DIR
+            argv[1] = os.path.join(APACHE_DIR, "change_binding_prod.sh")
+            return "Prod bindings: " + site, argv, APACHE_DIR
+        return "Bindings: " + site, argv, APACHE_DIR
     if kind == "prod_action":
         site = site_arg(data)
         action = data.get("action", "")

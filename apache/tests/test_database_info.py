@@ -223,6 +223,15 @@ for (const kind of ["csharp", "umbraco", "python", "html"]) {
         result = subprocess.run(["node", "-e", harness.replace("ALIASES", alias_row).replace("ROW", row)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_change_bindings_dialog_includes_alias_editor(self):
+        source = (APACHE / "solutionfiles/admin/app/static/app.js").read_text()
+        template = (APACHE / "solutionfiles/admin/app/templates/index.html").read_text()
+        self.assertIn('extra: { label: "Aliases (comma-separated)"', source)
+        self.assertIn('value: (env?.aliases || []).join(", ")', source)
+        self.assertIn('kind: "change_binding", site: site.name, binding, aliases, scope', source)
+        self.assertIn('id="prompt-extra-row"', template)
+        self.assertIn('id="prompt-extra"', template)
+
 
 if __name__ == "__main__":
     unittest.main()
