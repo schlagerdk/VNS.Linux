@@ -245,12 +245,13 @@ body.login { display: grid; place-items: center; min-height: 100vh; background: 
 #dock #panes { flex: 1; min-height: 0; position: relative; }
 #dock #panes .pane { position: absolute; inset: 0; height: auto; min-height: 0; padding: 6px 10px; border: 0; border-radius: 0; overflow: hidden; }
 
-dialog.editor { width: min(1100px, 94vw); height: min(780px, 90vh); padding: 14px 18px; flex-direction: column; }
+dialog.editor { padding: 14px 18px; flex-direction: column; }
 dialog.editor[open] { display: flex; }
 dialog.editor .toolbar { margin-bottom: 10px; }
 dialog.editor textarea { flex: 1; min-height: 0; width: 100%; resize: none; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; tab-size: 4; }
 dialog.wide { width: min(1000px, 94vw); }
-dialog.files-dialog { width: min(1100px, 94vw); height: min(740px, 86vh); padding: 18px; }
+dialog.editor, dialog.files-dialog { width: min(1100px, 94vw); height: min(740px, 86vh); }
+dialog.files-dialog { padding: 18px; }
 .files-dialog #view-files { display: flex; flex-direction: column; height: 100%; }
 .files-heading h2 { margin: 0; font-size: 18px; }
 .files-dialog #crumbs { flex: 1; min-width: 0; overflow-wrap: anywhere; }

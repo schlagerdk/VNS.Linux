@@ -727,9 +727,26 @@ def dotnet_root_dir():
 DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
+def terminal_scope(payload):
+    kind = payload.get("kind")
+    if kind == "publish_both" or (kind == "bulk" and payload.get("action") == "both"):
+        return "all"
+    if kind == "bulk":
+        return "prod" if payload.get("action") == "prod" else "main"
+    if payload.get("scope") in ("all", "prod", "test", "main"):
+        return "main" if payload["scope"] == "test" else payload["scope"]
+    if kind in ("remote_tool", "create_prod"):
+        return "prod"
+    if kind == "script":
+        script = payload.get("script", "")
+        if script.endswith("_prod.sh") or script == "create_prod.sh":
+            return "prod"
+    return "main"
+
+
 def terminal_auto_close(payload):
     kind = payload.get("kind")
-    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions", "publish_both"):
+    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions", "publish_both", "bulk"):
         return True
     if kind == "remote_tool":
         return payload.get("tool") == "shell"
@@ -757,10 +774,11 @@ def terminal_output_problem(text):
 
 
 class TermSession:
-    def __init__(self, title, argv, cwd, extra_env=None, auto_close=False, update_root=None, sites=None):
+    def __init__(self, title, argv, cwd, extra_env=None, auto_close=False, update_root=None, sites=None, scope="main"):
         self.id = uuid.uuid4().hex[:12]
         self.title = title
         self.sites = sites or []
+        self.scope = scope
         self.created = time.time()
         self.exit = None
         self.auto_close = auto_close
@@ -998,7 +1016,7 @@ def build_command(data):
         if (not isinstance(sites, list) or not sites or len(sites) > 100
                 or any(not isinstance(site, str) for site in sites)
                 or len(set(sites)) != len(sites)
-                or action not in ("add", "remove", "local", "prod", "both", "outdated")):
+                or action not in ("check", "add", "remove", "local", "prod", "both", "outdated")):
             abort(400, "Invalid multi action selection")
         tasks = []
         for name in sites:
@@ -1013,11 +1031,12 @@ def build_command(data):
             if action in ("add", "remove"):
                 payload = {"kind": "dotnet_package", "site": site, "action": action,
                            "package": data.get("package"), "version": data.get("version", "")}
-            elif action == "outdated":
+            elif action in ("check", "outdated"):
                 projects = sorted(glob.glob(os.path.join(WEB_ROOT, site, "*.csproj")))
                 if len(projects) != 1:
                     abort(400, "Expected exactly one C# project in this site")
-                tasks.append({"site": site, "argv": ["dotnet", "outdated", "--upgrade"],
+                argv = ["dotnet", "list", "package", "--outdated"] if action == "check" else ["dotnet", "outdated", "--upgrade"]
+                tasks.append({"site": site, "argv": argv,
                               "cwd": os.path.dirname(projects[0])})
                 continue
             elif action == "both":
@@ -1238,7 +1257,8 @@ def build_command(data):
 
 def describe(s):
     return {"id": s.id, "title": s.title, "running": s.running, "exit": s.exit,
-            "auto_close": s.auto_close, "output_problem": s.output_problem, "sites": s.sites}
+            "auto_close": s.auto_close, "output_problem": s.output_problem, "sites": s.sites,
+            "scope": s.scope}
 
 
 @app.route("/api/term", methods=["GET", "POST"])
@@ -1260,7 +1280,7 @@ def api_term():
         try:
             update_root = os.path.join(WEB_ROOT, payload["site"]) if payload.get("kind") == "script" and payload.get("script") == "outdated.sh" and glob.glob(os.path.join(WEB_ROOT, payload["site"], "*.csproj")) else None
             sites = payload.get("sites", []) if payload.get("kind") == "bulk" else [payload["site"]] if payload.get("site") else []
-            session_obj = TermSession(title, argv, cwd, extra_env, auto_close=terminal_auto_close(payload), update_root=update_root, sites=sites)
+            session_obj = TermSession(title, argv, cwd, extra_env, auto_close=terminal_auto_close(payload), update_root=update_root, sites=sites, scope=terminal_scope(payload))
         except Exception:
             if extra_env is not None:
                 os.unlink(argv[1])

@@ -78,6 +78,12 @@ class BulkTests(unittest.TestCase):
             self.assertEqual(task["argv"], ["dotnet", "outdated", "--upgrade"])
             self.assertTrue(Path(task["cwd"], "Project.csproj").is_file())
 
+    def test_check_lists_outdated_packages_without_upgrading(self):
+        _, argv, _ = self.command(action="check")
+        for task in json.loads(argv[-1]):
+            self.assertEqual(task["argv"], ["dotnet", "list", "package", "--outdated"])
+            self.assertTrue(Path(task["cwd"], "Project.csproj").is_file())
+
     def test_sites_start_concurrently_and_output_is_labelled(self):
         script = (
             "import pathlib, sys, time\n"

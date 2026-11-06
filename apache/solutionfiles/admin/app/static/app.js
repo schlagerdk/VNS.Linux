@@ -410,16 +410,18 @@ function renderSites() {
 
 function updateSiteActivity() {
 	for (const badge of document.querySelectorAll(".site-activity")) {
-		const tasks = Object.values(terminals).filter((task) => !task.exited && task.sites.includes(badge.dataset.site));
+		const tasks = Object.values(terminals).filter((task) => !task.exited && task.sites.includes(badge.dataset.site)
+			&& (!badge.dataset.scope || task.scope === "all" || task.scope === badge.dataset.scope));
 		badge.hidden = tasks.length === 0;
 		badge.title = tasks.map((task) => task.taskTitle).join("\n");
 	}
 }
 
-function siteActivity(site) {
+function siteActivity(site, scope = "") {
 	const activity = el("span", { className: "site-activity", hidden: true, role: "status" },
 		el("span", { className: "activity-spinner", ariaHidden: "true" }), el("span", { textContent: "Working" }));
 	activity.dataset.site = site.name;
+	activity.dataset.scope = scope;
 	return activity;
 }
 
@@ -657,7 +659,7 @@ function quickActions(env) {
 function envPanel(site, env) {
 	const dot = env.unit ? env.state || "unknown" : "";
 	const heading = el("div", { className: "env-head" },
-		siteActivity(site),
+		siteActivity(site, env.key === "prod" ? "prod" : "main"),
 		el("span", { className: "dot " + dot }),
 		el("span", { className: "badge " + (env.unit ? "state-" + (env.state || "unknown") : ""), textContent: env.unit ? env.state || "unknown" : env.mode === "remote" ? "remote" : "static" }));
 	const environment = site.kind === "python" ? "Live" : env.environment;
@@ -714,7 +716,7 @@ function envPanel(site, env) {
 		add("Shell", () => openTask({ kind: "remote_tool", site: site.name, tool: "shell" }));
 		add("Files", () => openFiles("", site.name));
 	} else {
-		add("Shell", () => openTask({ kind: "shell", site: site.name, path: env.path }));
+		add("Shell", () => openTask({ kind: "shell", site: site.name, path: env.path, scope: env.key === "prod" ? "prod" : "main" }));
 		add("Files", () => openFiles(env.path));
 	}
 
@@ -750,7 +752,7 @@ function envPanel(site, env) {
 		for (const [tool, label] of [["check_service", "Check service"], ["edit_service", "Edit service"], ["edit_conf", "Edit config"]]) {
 			if (tool !== "edit_conf" && !env.unit && env.mode !== "remote") continue;
 			tools.append(el("button", { textContent: label, className: "small", onclick: () => run(() => tool === "check_service"
-				? openTask({ kind: env.mode === "remote" ? "remote_tool" : "unit_tool", site: site.name, unit: env.unit, tool })
+				? openTask({ kind: env.mode === "remote" ? "remote_tool" : "unit_tool", site: site.name, unit: env.unit, tool, scope: env.key === "prod" ? "prod" : "main" })
 				: editConfiguration(site, env, tool === "edit_service" ? "service" : "conf")) }));
 		}
 		if (site.kind === "csharp" || site.kind === "umbraco") {
@@ -1028,6 +1030,7 @@ $("#btn-multi-cancel").onclick = () => { multiSelecting = false; multiSites.clea
 function syncMultiAction() {
 	const action = multiForm.elements.namedItem("action").value;
 	$("#multi-action-description").textContent = {
+		check: "Run dotnet list package --outdated for every selected project without changing packages.",
 		add: "Add a NuGet package to every selected project.",
 		remove: "Remove a NuGet package from every selected project.",
 		local: "Build and restart each selected site's local environment.",
@@ -1419,6 +1422,12 @@ async function closeDock() {
 	$("#dock").hidden = true;
 }
 $("#dock-close").onclick = closeDock;
+document.addEventListener("keydown", (event) => {
+	if (event.key !== "Escape" || $("#dock").hidden || document.querySelector("dialog[open]")) return;
+	event.preventDefault();
+	event.stopImmediatePropagation();
+	if (!event.repeat) run(closeDock);
+}, true);
 $("#dock-size").onclick = () => { $("#dock").classList.toggle("max"); fitActive(); };
 
 function fitActive() {
@@ -1475,7 +1484,7 @@ function connectTerminal(t) {
 	};
 }
 
-function openTerminal(id, title, autoClose, sites = [], running = true) {
+function openTerminal(id, title, autoClose, sites = [], running = true, scope = "main") {
 	if (terminals[id]) return activate(id);
 	const pane = el("div", { className: "pane", hidden: true });
 	const titleNode = el("span", { textContent: title });
@@ -1488,13 +1497,13 @@ function openTerminal(id, title, autoClose, sites = [], running = true) {
 	const fit = new FitAddon.FitAddon();
 	term.loadAddon(fit);
 	term.open(pane);
-	const t = { id, term, fit, pane, tab, title: titleNode, taskTitle: title, sites, exited: !running, ws: null, autoClose: !!autoClose, remove: null };
+	const t = { id, term, fit, pane, tab, title: titleNode, taskTitle: title, sites, scope, exited: !running, ws: null, autoClose: !!autoClose, remove: null };
 	terminals[id] = t;
 	updateSiteActivity();
 
-	// Esc or Enter closes finished terminals, including failed processes.
+	// Enter closes finished terminals, including failed processes.
 	term.attachCustomKeyEventHandler((event) => {
-		if (t.exited && (event.key === "Escape" || event.key === "Enter")) {
+		if (t.exited && event.key === "Enter") {
 			if (event.type === "keydown") closeDock();
 			return false;
 		}
@@ -1528,7 +1537,7 @@ function openTerminal(id, title, autoClose, sites = [], running = true) {
 
 async function openTask(payload) {
 	const data = await api("/api/term", { json: payload });
-	openTerminal(data.id, data.title, data.auto_close, data.sites, data.running);
+	openTerminal(data.id, data.title, data.auto_close, data.sites, data.running, data.scope);
 	if (terminals[data.id]) {
 		showDock();
 		for (const dialog of document.querySelectorAll("dialog[open]")) {
@@ -1543,7 +1552,7 @@ async function openTask(payload) {
 
 async function restoreTerminals() {
 	const { sessions } = await api("/api/term");
-	for (const s of sessions) openTerminal(s.id, s.title, s.auto_close, s.sites, s.running);
+	for (const s of sessions) openTerminal(s.id, s.title, s.auto_close, s.sites, s.running, s.scope);
 	if (sessions.length) { for (const t of Object.values(terminals)) t.pane.hidden = true; activate(sessions[0].id); }
 }
 

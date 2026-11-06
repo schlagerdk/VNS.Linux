@@ -14,17 +14,37 @@ APP = Path(__file__).resolve().parents[1] / "solutionfiles/admin/app"
 
 class TerminalCompletionTests(unittest.TestCase):
     def setUp(self):
-        names = {"terminal_auto_close", "terminal_output_problem", "TermSession", "describe"}
+        names = {"terminal_scope", "terminal_auto_close", "terminal_output_problem", "TermSession", "describe"}
         nodes = [node for node in ast.parse((APP / "app.py").read_text()).body
                  if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in names]
         self.ns = {"re": re, "codecs": codecs, "BUFFER_MAX": 1024, "REMOTE_STATUS": {},
                    "os": SimpleNamespace(read=Mock())}
         exec(compile(ast.Module(body=nodes, type_ignores=[]), "terminal completion", "exec"), self.ns)
 
+    def test_activity_scope_matches_target_environment(self):
+        scope = self.ns["terminal_scope"]
+        for payload, expected in (
+            ({"kind": "script", "script": "publish.sh"}, "main"),
+            ({"kind": "script", "script": "publish_local.sh"}, "main"),
+            ({"kind": "script", "script": "publish_prod.sh"}, "prod"),
+            ({"kind": "remote_tool"}, "prod"),
+            ({"kind": "publish_both"}, "all"),
+            ({"kind": "bulk", "action": "local"}, "main"),
+            ({"kind": "bulk", "action": "prod"}, "prod"),
+            ({"kind": "bulk", "action": "both"}, "all"),
+            ({"kind": "bulk", "action": "add"}, "main"),
+            ({"kind": "unit_tool", "scope": "prod"}, "prod"),
+            ({"kind": "shell", "scope": "prod"}, "prod"),
+            ({"kind": "delete_site", "scope": "test"}, "main"),
+            ({"kind": "delete_site", "scope": "all"}, "all"),
+        ):
+            with self.subTest(payload=payload):
+                self.assertEqual(scope(payload), expected)
+
     def test_mutations_close_and_diagnostics_remain(self):
         auto_close = self.ns["terminal_auto_close"]
         for kind in ("create_site", "delete_site", "create_prod", "change_binding", "prod_action",
-                     "shell", "dotnet_package", "publish_both"):
+                     "shell", "dotnet_package", "publish_both", "bulk"):
             self.assertTrue(auto_close({"kind": kind}), kind)
         for script in ("publish.sh", "publish_local.sh", "publish_prod.sh", "sync_prod.sh",
                        "change_env.sh", "clear_logs.sh", "outdated.sh"):
@@ -108,6 +128,7 @@ Done.
                 session = cls.__new__(cls)
                 session.id, session.title, session.auto_close = "test", "Create site", True
                 session.sites = ["example.test"]
+                session.scope = "main"
                 session.output_tail, session.output_problem = "", False
                 session.update_root = None
                 session.buffer, session.lock, session.subscribers = bytearray(), threading.Lock(), set()
@@ -121,6 +142,7 @@ Done.
                 self.assertEqual(metadata["output_problem"], expected)
                 self.assertEqual(metadata["exit"], 0)
                 self.assertEqual(metadata["sites"], ["example.test"])
+                self.assertEqual(metadata["scope"], "main")
 
     def test_outdated_output_updates_shared_flag_after_completion(self):
         record = Mock()
