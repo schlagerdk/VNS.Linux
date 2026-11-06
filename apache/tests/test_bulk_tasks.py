@@ -81,8 +81,32 @@ class BulkTests(unittest.TestCase):
     def test_check_lists_outdated_packages_without_upgrading(self):
         _, argv, _ = self.command(action="check")
         for task in json.loads(argv[-1]):
-            self.assertEqual(task["argv"], ["dotnet", "list", "package", "--outdated"])
+            self.assertEqual(task["argv"], [sys.executable, str(APACHE / "lib/publish_status.py"),
+                                            "check", task["cwd"]])
             self.assertTrue(Path(task["cwd"], "Project.csproj").is_file())
+
+    def test_bulk_check_persists_update_badges_and_clears_them(self):
+        tools = self.root / "tools"
+        tools.mkdir()
+        dotnet = tools / "dotnet"
+        dotnet.write_text('#!/bin/bash\nprintf "%s\\n" "$CHECK_OUTPUT"\nexit "${CHECK_EXIT:-0}"\n')
+        dotnet.chmod(0o700)
+        _, argv, cwd = self.command(action="check")
+        for output, code, expected in (
+            ("Example 1.0 -> 2.0", "0", "available"),
+            ("has no updates given the current sources", "0", "current"),
+            ("error: feed unavailable", "1", "error"),
+        ):
+            with self.subTest(expected=expected):
+                result = subprocess.run(
+                    argv, cwd=cwd, capture_output=True, text=True,
+                    env=os.environ | {"PATH": str(tools) + os.pathsep + os.environ["PATH"],
+                                      "CHECK_OUTPUT": output, "CHECK_EXIT": code})
+                self.assertEqual(result.returncode, int(code != "0"), result.stderr)
+                self.assertIn(output, result.stdout)
+                for site in ("one", "two"):
+                    state = json.loads((self.root / site / ".vns-publish/updates.json").read_text())
+                    self.assertEqual(state["status"], expected)
 
     def test_sites_start_concurrently_and_output_is_labelled(self):
         script = (

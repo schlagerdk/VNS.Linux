@@ -1035,7 +1035,8 @@ def build_command(data):
                 projects = sorted(glob.glob(os.path.join(WEB_ROOT, site, "*.csproj")))
                 if len(projects) != 1:
                     abort(400, "Expected exactly one C# project in this site")
-                argv = ["dotnet", "list", "package", "--outdated"] if action == "check" else ["dotnet", "outdated", "--upgrade"]
+                argv = [sys.executable, os.path.join(APACHE_DIR, "lib", "publish_status.py"),
+                        "check", os.path.dirname(projects[0])] if action == "check" else ["dotnet", "outdated", "--upgrade"]
                 tasks.append({"site": site, "argv": argv,
                               "cwd": os.path.dirname(projects[0])})
                 continue

@@ -63,7 +63,7 @@ def updates_status(root, current):
     return data["status"] if data.get("fingerprint") == current else ""
 
 
-def check_updates(root):
+def check_updates(root, show_output=False):
     value = fingerprint(root)
     available = False
     try:
@@ -72,11 +72,20 @@ def check_updates(root):
                 ["dotnet", "list", str(project), "package", "--outdated"],
                 cwd=root, env=os.environ | {"DOTNET_CLI_UI_LANGUAGE": "en-US", "VSLANG": "1033"},
                 capture_output=True, text=True, timeout=180, check=True)
+            if show_output:
+                print(result.stdout, end="", flush=True)
+                if result.stderr:
+                    print(result.stderr, end="", file=sys.stderr, flush=True)
             if not result.stdout.strip():
                 raise ValueError("Package update check returned no output")
             available |= "has no updates given the current sources" not in result.stdout.lower()
         state = "available" if available else "current"
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        if show_output and isinstance(exc, subprocess.CalledProcessError):
+            if exc.stdout:
+                print(exc.stdout, end="", flush=True)
+            if exc.stderr:
+                print(exc.stderr, end="", file=sys.stderr, flush=True)
         record(root, "updates", value, status="error")
         raise RuntimeError("Package update check failed for " + Path(root).name) from exc
     record(root, "updates", value, status=state)
@@ -92,6 +101,9 @@ def run_publish(root, scope, command):
 
 
 def main(args):
+    if len(args) == 2 and args[0] == "check":
+        check_updates(args[1], show_output=True)
+        return 0
     if len(args) < 4 or args[0] not in ("run", "both"):
         raise ValueError("Usage: publish_status.py run ROOT test|prod COMMAND... | both ROOT LOCAL_SCRIPT PROD_SCRIPT")
     action, root = args[:2]
@@ -109,6 +121,6 @@ def main(args):
 if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv[1:]))
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         print("ERROR: Publish tracking failed: " + str(exc), file=sys.stderr)
         sys.exit(1)

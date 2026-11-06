@@ -12,7 +12,7 @@ The shared publish targets default `SatelliteResourceLanguages` to `en;da`, reta
 
 ## Multi-site actions
 
-The Packages group's first action, **Check**, runs `dotnet list package --outdated` on each selected project without modifying packages.
+The Packages group's first action, **Check**, runs `dotnet list package --outdated` on each selected project without modifying packages and saves the result for the site's Updates available badge. A successful check with no updates clears that badge; failed checks record an error instead.
 
 The file editor and file-browser dialogs share the same responsive outer dimensions, so opening an editor above the browser does not change window size.
 
