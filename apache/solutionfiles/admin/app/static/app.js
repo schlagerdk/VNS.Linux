@@ -334,6 +334,7 @@ const buttonStyles = {
 	"Publish": ["upload", "green"], "Publish both": ["upload", "green"], "Sync to*": ["sync", "blue"], "Start": ["play", "green"],
 	"Check for updates": ["download", "amber"],
 	"Add package": ["download", "green"], "Remove package": ["trash", "red"],
+	"Add": ["download", "green"], "Remove": ["trash", "red"], "Check": ["download", "amber"],
 	"Fix permissions": ["shield", "teal"], "Update Python packages": ["sync", "blue"],
 	"Create production site": ["server", "purple"],
 	"Check outdated": ["download", "amber"], "Restart": ["restart", "amber"], "Restart Apache": ["restart", "amber"],
@@ -547,10 +548,10 @@ function renderSite(name) {
 		packagesPanel.hidden = false;
 		const packages = (site.packages || []).filter((item) => item.name.toLowerCase() !== "microsoft.icu.icu4c.runtime");
 		const packageActions = el("div", { className: "actions" },
-			el("button", { textContent: "Add package", onclick: () => run(() => openPackageDialog(site, "add")) }),
-			el("button", { textContent: "Remove package", onclick: () => run(() => openPackageDialog(site, "remove")) }));
+			el("button", { textContent: "Add", title: "Add package", onclick: () => run(() => openPackageDialog(site, "add")) }),
+			el("button", { textContent: "Remove", title: "Remove package", onclick: () => run(() => openPackageDialog(site, "remove")) }));
 		if (site.scripts.includes("outdated.sh")) {
-			packageActions.append(el("button", { textContent: "Check outdated", title: "outdated.sh", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));
+			packageActions.append(el("button", { textContent: "Check", title: "Check outdated packages", onclick: () => run(() => openTask({ kind: "script", site: site.name, script: "outdated.sh" })) }));
 		}
 		const packageList = el("div", { className: "package-list" });
 		for (const item of packages) {
