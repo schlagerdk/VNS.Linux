@@ -103,6 +103,32 @@ for (const [autoClose, exit, problem, expected] of [
         result = subprocess.run(["node", "-e", test], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_keyboard_closes_any_finished_terminal_only(self):
+        source = (APP / "static/app.js").read_text()
+        start = source.index("term.attachCustomKeyEventHandler(")
+        handler = source[start:source.index("\n\tterm.onData", start)]
+        test = """
+const assert = require("node:assert/strict");
+let callback, closed;
+const term = {attachCustomKeyEventHandler: fn => {callback = fn;}};
+const closeDock = () => {closed++;};
+const t = {};
+""" + handler + """
+for (const exited of [false, true]) for (const exitCode of [0, 1, -9]) {
+    Object.assign(t, {exited, exitCode});
+    for (const key of ["Escape", "Enter", "a"]) {
+        closed = 0;
+        const handled = exited && key !== "a";
+        assert.equal(callback({type:"keydown", key}), !handled);
+        assert.equal(closed, handled ? 1 : 0);
+        callback({type:"keyup", key});
+        assert.equal(closed, handled ? 1 : 0);
+    }
+}
+"""
+        result = subprocess.run(["node", "-e", test], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -198,10 +198,12 @@ exclude_from_build() { :; }
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("s|DotNetVersion|" + target + "|g", result.stdout)
                 if target == "net8.0":
+                    self.assertIn("<Umbraco.Templates::13.3.2>", result.stdout)
                     self.assertNotIn("Umbraco.Cms.DevelopmentMode.Backoffice", result.stdout)
                     for package in ("VNS.Umbraco", "uSync"):
                         self.assertIn("<package> <" + package + "> <-v> <13.0.0>", result.stdout)
                 else:
+                    self.assertIn("<Umbraco.Templates@18.3.1>", result.stdout)
                     self.assertIn("<Umbraco.Cms.DevelopmentMode.Backoffice> <-v> <18.3.1>", result.stdout)
 
 

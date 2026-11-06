@@ -187,7 +187,11 @@ create_umbraco_project() {
 	local _files="${_solutionFolder}/csharp/umbraco/project" _publish="${_siteRoot}/${_publishFolder}"
 
 	echo "Create new umbraco instance in folder"
-	sudo dotnet new install "Umbraco.Templates@${_umbracoVersion}" --force
+	local _templatePackage="Umbraco.Templates@${_umbracoVersion}"
+	if [[ ${_dotNetVersion} == net8.0 ]]; then
+		_templatePackage="Umbraco.Templates::${_umbracoVersion}"
+	fi
+	sudo dotnet new install "${_templatePackage}" --force
 	sudo dotnet new umbraco --force
 	sudo find "${_siteRoot}" -maxdepth 1 -name '*.csproj' -delete
 

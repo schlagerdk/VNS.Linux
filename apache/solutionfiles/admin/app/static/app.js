@@ -1264,9 +1264,9 @@ function openTerminal(id, title, autoClose) {
 	const t = { id, term, fit, pane, tab, title: titleNode, exited: false, ws: null, autoClose: !!autoClose, remove: null };
 	terminals[id] = t;
 
-	// Esc or Enter in a terminal whose process ended successfully just closes the window
+	// Esc or Enter closes finished terminals, including failed processes.
 	term.attachCustomKeyEventHandler((event) => {
-		if (t.exited && t.exitCode === 0 && (event.key === "Escape" || event.key === "Enter")) {
+		if (t.exited && (event.key === "Escape" || event.key === "Enter")) {
 			if (event.type === "keydown") closeDock();
 			return false;
 		}
