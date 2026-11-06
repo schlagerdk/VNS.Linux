@@ -180,6 +180,7 @@ class RemoteApiTests(unittest.TestCase):
             self.assertEqual(info["publish_path"], str(publish))
             self.assertEqual(info["editable_configs"], ["appsettings.json"])
             self.assertEqual(info["database"], "SQLite")
+            self.assertEqual(info["database_name"], str(publish / "app.db"))
 
     def test_remote_file_routes_and_binary_transfer(self):
         command = Mock(return_value=Mock(stdout=b'{"ok": true}'))

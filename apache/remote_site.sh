@@ -48,12 +48,11 @@ if service.is_file():
 port = re.search(r"(?:localhost|127\.0\.0\.1):(\d+)", service_text)
 binding = re.search(r"^\s*ServerName\s+(\S+)", text, re.M)
 exec(os.environ.pop("DATABASE_CODE"))
-database = ""
+database = {"database": "Custom", "database_name": ""}
 try:
-    database = database_type(Path("/var/www", site), environment, variables)
+    database = database_details(Path("/var/www", site), environment, variables)
 except (OSError, ValueError):
     print("Could not read remote database configuration", file=__import__("sys").stderr)
-    database = "Database unknown"
 print(json.dumps({
     "unit": site if service.is_file() else "",
     "state": state.stdout.strip() if service.is_file() else "",
@@ -61,7 +60,7 @@ print(json.dumps({
     "scheme": "https" if secure else "http",
     "https": secure and bool(certificate and Path(certificate.group(1)).is_file()),
     "environment": environment,
-    "database": database,
+    **database,
     "binding": binding.group(1) if binding else "",
     "port": port.group(1) if port else "",
 }))

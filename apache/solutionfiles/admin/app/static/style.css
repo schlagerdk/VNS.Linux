@@ -84,11 +84,11 @@ main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
 .badge.publish-pending { background: rgba(210, 153, 34, .2); color: #d29922; }
 .badge.updates-available { background: rgba(210, 153, 34, .2); color: #d29922; }
 .badge.updates-error { background: rgba(248, 81, 73, .2); color: var(--red); }
-.badge.database { background: rgba(88, 166, 255, .12); color: var(--blue); text-transform: none; }
 .publish-status { flex-basis: 100%; display: flex; }
 .badge.state-failed, .badge.state-inactive { background: rgba(248, 81, 73, .2); color: var(--red); }
 .meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
 .meta dt { color: var(--muted); }
+.meta .database-name { overflow-wrap: anywhere; min-width: 0; }
 .meta dd { margin: 0; overflow-wrap: anywhere; }
 a.link { color: var(--blue); cursor: pointer; text-decoration: none; }
 a.link:hover { text-decoration: underline; }

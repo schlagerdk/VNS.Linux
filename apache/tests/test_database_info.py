@@ -25,11 +25,11 @@ class DatabaseInfoTests(unittest.TestCase):
         name = "appsettings" + ("." + environment if environment else "") + ".json"
         (self.root / name).write_text(json.dumps({"ConnectionStrings": values}))
 
-    def test_explicit_providers_and_no_credentials_in_result(self):
+    def test_explicit_providers_and_no_connection_details_in_result(self):
         for provider, connection, expected in (
             ("Microsoft.Data.Sqlite", "Data Source=|DataDirectory|/Umbraco.sqlite.db;Cache=Shared", "SQLite"),
-            ("Microsoft.Data.SqlClient", "Server=private;Database=app;User Id=example;Password=secret", "SQL Server"),
-            ("System.Data.SqlClient", "Data Source=private;Initial Catalog=app", "SQL Server"),
+            ("Microsoft.Data.SqlClient", "Server=private;Database=app;User Id=example", "SQL"),
+            ("System.Data.SqlClient", "Data Source=private;Initial Catalog=app", "SQL"),
         ):
             self.settings(connection, provider)
             self.assertEqual(database.database_type(self.root), expected)
@@ -38,42 +38,43 @@ class DatabaseInfoTests(unittest.TestCase):
         self.settings("Data Source=app.db", "Microsoft.Data.Sqlite")
         self.settings("Server=sql;Database=app", "Microsoft.Data.SqlClient", "Production")
         self.assertEqual(database.database_type(self.root, "Test"), "SQLite")
-        self.assertEqual(database.database_type(self.root, "Production"), "SQL Server")
+        self.assertEqual(database.database_type(self.root, "Production"), "SQL")
         self.assertEqual(database.database_type(self.root, "Production", {
             "ConnectionStrings__umbracoDbDSN": "Data Source=override.db",
             "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.Sqlite",
         }), "SQLite")
+        self.assertEqual(database.database_type(self.root), "SQL")
 
     def test_inference_without_provider_and_unsupported_database(self):
         for value, expected in (
             ("Data Source=app.sqlite", "SQLite"),
             ("Data Source=:memory:", "SQLite"),
-            ("Server=example;Database=test", "SQL Server"),
-            ("Data Source=example;Initial Catalog=test", "SQL Server"),
-            ("Host=postgres;Username=example", ""),
+            ("Server=example;Database=test", "SQL"),
+            ("Data Source=example;Initial Catalog=test", "SQL"),
+            ("Host=postgres;Username=example", "Custom"),
         ):
             self.settings(value)
             self.assertEqual(database.database_type(self.root), expected)
         self.settings("Server=example;Database=test", "Npgsql")
-        self.assertEqual(database.database_type(self.root), "")
+        self.assertEqual(database.database_type(self.root), "Custom")
 
     def test_comments_trailing_commas_and_string_literals(self):
         text = '''{
             // app settings
             "ConnectionStrings": {
-                "umbracoDbDSN": "Server=example;Password=a//b/*c*/,};Database=test",
+                "umbracoDbDSN": "Server=example;Application Name=a//b/*c*/,};Database=test",
                 /* provider */ "umbracoDbDSN_ProviderName": "Microsoft.Data.SqlClient",
             },
         }'''
         (self.root / "appsettings.json").write_text(text)
-        self.assertEqual(database.database_type(self.root), "SQL Server")
+        self.assertEqual(database.database_type(self.root), "SQL")
         parsed = database.configuration_json(text)
         self.assertIn("a//b/*c*/,}", parsed["ConnectionStrings"]["umbracoDbDSN"])
 
     def test_missing_empty_and_invalid_config(self):
-        self.assertEqual(database.database_type(self.root), "")
+        self.assertEqual(database.database_type(self.root), "Custom")
         self.settings("", "Microsoft.Data.Sqlite")
-        self.assertEqual(database.database_type(self.root), "")
+        self.assertEqual(database.database_type(self.root), "Custom")
         for text in ("{", "[]"):
             (self.root / "appsettings.json").write_text(text)
             with self.assertRaises(ValueError):
@@ -85,8 +86,6 @@ class DatabaseInfoTests(unittest.TestCase):
         script = script.replace('Path("/var/www", site)', 'Path(ROOT)')
         script = script.replace('Path("/etc/systemd/system", site + ".service")', 'Path(ROOT) / "service"')
         script = script.replace('Path("/etc/apache2/sites-available", site + ".conf")', 'Path(ROOT) / "conf"')
-        self.settings("Server=remote;Database=prod", "Microsoft.Data.SqlClient")
-        # Execute the actual transmitted status program with local service/config fixtures.
         harness = '''
 import os
 from pathlib import Path
@@ -100,11 +99,98 @@ def run(argv, **kwargs):
 with patch.dict(os.environ, {"SITE":"prod.test", "DATABASE_CODE":HELPER}), patch("subprocess.run", run):
     exec(SCRIPT)
 '''
-        code = ("ROOT=" + repr(str(self.root)) + "\nHELPER=" + repr((APACHE / "lib/database_info.py").read_text())
-                + "\nSCRIPT=" + repr(script) + "\n" + harness)
-        result = subprocess.run(["python3", "-c", code], capture_output=True, text=True, check=True)
-        self.assertEqual(json.loads(result.stdout)["database"], "SQL Server")
-        self.assertNotIn("Server=remote", result.stdout)
+        for connection, expected in (
+            ("Server=remote;Database=prod", "SQL"),
+            (r"Server=remote\SQLEXPRESS;Database=prod", "SQL Express"),
+            ("Server=tcp:example.database.windows.net,1433;Database=prod", "Azure SQL"),
+        ):
+            self.settings(connection, "Microsoft.Data.SqlClient")
+            code = ("ROOT=" + repr(str(self.root)) + "\nHELPER=" + repr((APACHE / "lib/database_info.py").read_text())
+                    + "\nSCRIPT=" + repr(script) + "\n" + harness)
+            result = subprocess.run(["python3", "-c", code], capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads(result.stdout)["database"], expected)
+            self.assertEqual(json.loads(result.stdout)["database_name"], "prod")
+            self.assertNotIn(connection, result.stdout)
+
+    def test_sql_express_and_azure_hostnames(self):
+        for connection, provider, expected in (
+            (r"Server=localhost\SQLEXPRESS;Database=app", None, "SQL Express"),
+            (r"Data Source=HOST\SqlExpress,1433;Initial Catalog=app", "Microsoft.Data.SqlClient", "SQL Express"),
+            ("Server=tcp:example.database.windows.net,1433;Database=app", None, "Azure SQL"),
+            ('Data Source="example.database.windows.net";Initial Catalog=app', "Microsoft.Data.SqlClient", "Azure SQL"),
+            ("Server=example.database.usgovcloudapi.net;Database=app", None, "Azure SQL"),
+            ("Server=example.database.windows.net.evil.test;Database=app", None, "SQL"),
+            ("Server=private;Application Name='value;Server=example.database.windows.net';Database=app", None, "SQL"),
+            (r"Server=private;Application Name=SQLEXPRESS;Database=app", None, "SQL"),
+            ("Server=private;Database=app", "Npgsql", "Custom"),
+        ):
+            with self.subTest(connection=connection):
+                self.settings(connection, provider)
+                self.assertEqual(database.database_type(self.root), expected)
+
+    def test_mixed_datasources_are_custom(self):
+        (self.root / "appsettings.json").write_text(json.dumps({"ConnectionStrings": {
+            "first": "Server=example;Database=app",
+            "second": "Data Source=app.db",
+        }}))
+        self.assertEqual(database.database_type(self.root), "Custom")
+
+    def test_database_names_and_sqlite_paths_preserve_case(self):
+        for connection, provider, expected in (
+            ("Server=example;Database=MyApplication", None, "MyApplication"),
+            ('Server=example;Initial Catalog="App;Production"', None, "App;Production"),
+            ('Server=example;Database="My ""Application"""', None, 'My "Application"'),
+            ("Host=example;Database=CustomApp", "Npgsql", "CustomApp"),
+            ("Data Source=App_Data/MyApp.db", None, str(self.root / "App_Data/MyApp.db")),
+            ("DataSource=App_Data/MyApp.db", "Microsoft.Data.Sqlite", str(self.root / "App_Data/MyApp.db")),
+            ("Filename=/var/data/MyApp.sqlite", "Microsoft.Data.Sqlite", "/var/data/MyApp.sqlite"),
+            ("Data Source=|DataDirectory|/Umbraco.sqlite.db", "Microsoft.Data.Sqlite", "|DataDirectory|/Umbraco.sqlite.db"),
+            ("Data Source=file:App.db?mode=ro", "Microsoft.Data.Sqlite", "file:App.db?mode=ro"),
+            ("Data Source=:memory:", "Microsoft.Data.Sqlite", ":memory:"),
+        ):
+            with self.subTest(connection=connection):
+                self.settings(connection, provider)
+                self.assertEqual(database.database_details(self.root)["database_name"], expected)
+        self.settings("Server=example;User ID=Example", "Microsoft.Data.SqlClient")
+        self.assertEqual(database.database_details(self.root), {"database": "SQL", "database_name": ""})
+
+    def test_names_respect_environment_and_service_overrides(self):
+        self.settings("Server=example;Database=BaseApp")
+        self.settings("Server=example;Database=ProductionApp", environment="Production")
+        self.assertEqual(database.database_details(self.root)["database_name"], "ProductionApp")
+        self.assertEqual(database.database_details(self.root, variables={
+            "ConnectionStrings__umbracoDbDSN": "Server=override;Database=OverrideApp",
+        })["database_name"], "OverrideApp")
+
+    def test_detail_datasource_row_and_no_overview_badge(self):
+        source = (APACHE / "solutionfiles/admin/app/static/app.js").read_text()
+        overview = source[source.index("function siteCard("):source.index("function renderSite(")]
+        self.assertNotIn("env.database", overview)
+        detail = source[source.index("function envPanel("):]
+        self.assertNotIn('className: "badge database"', detail)
+        start = detail.index('\tif (site.kind === "csharp" || site.kind === "umbraco")')
+        row = detail[start:detail.index('\n\tif (env.port)', start)]
+        harness = r"""
+const assert = require("node:assert/strict");
+const el = (tag, properties) => ({tag, ...properties});
+for (const kind of ["csharp", "umbraco", "python", "html"]) {
+    for (const database of ["SQL", "SQL Express", "SQLite", "Azure SQL", "Custom", undefined]) {
+        const site = {kind}, env = {database, database_name: "MyApplication"};
+        const meta = {children: [], append(...items) {this.children.push(...items);}};
+        ROW
+        if (kind === "csharp" || kind === "umbraco") {
+            assert.equal(meta.children[0].tag, "dt");
+            assert.equal(meta.children[0].textContent, "Datasource");
+            assert.equal(meta.children[1].tag, "dd");
+            assert.equal(meta.children[1].textContent, database || "Custom");
+            assert.equal(meta.children[2].textContent, "Database");
+            assert.equal(meta.children[3].textContent, "MyApplication");
+        } else assert.equal(meta.children.length, 0);
+    }
+}
+"""
+        result = subprocess.run(["node", "-e", harness.replace("ROW", row)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

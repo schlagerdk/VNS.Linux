@@ -438,7 +438,6 @@ function siteCard(site) {
 		const heading = el("div", { className: "site-environment-head" },
 			el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 		if (env.mode === "remote") heading.append(remoteIcon(env));
-		if (env.database) heading.append(el("span", { className: "badge database", textContent: env.database, title: "Configured database provider (connection not tested)" }));
 		const pending = publishBadge(env);
 		if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 		group.append(heading);
@@ -614,7 +613,6 @@ function envPanel(site, env) {
 	if (environment) heading.append(el("span", { className: "badge env-" + environment.toLowerCase(), textContent: environment }));
 	heading.append(httpsLock(env.https));
 	if (env.mode === "remote") heading.append(remoteIcon(env));
-	if (env.database) heading.append(el("span", { className: "badge database", textContent: env.database, title: "Configured database provider (connection not tested)" }));
 	const pending = publishBadge(env);
 	if (pending) heading.append(el("div", { className: "publish-status" }, pending));
 
@@ -624,6 +622,15 @@ function envPanel(site, env) {
 		: openLink(env.binding, scheme + "://" + env.binding + "/");
 	const meta = el("dl", { className: "meta" }, el("dt", { textContent: "Binding" }), el("dd", {}, binding));
 	if (site.kind === "umbraco" && env.binding) meta.append(el("dt", { textContent: "Backoffice" }), el("dd", {}, openLink(env.binding + "/umbraco", scheme + "://" + env.binding + "/umbraco")));
+	if (site.kind === "csharp" || site.kind === "umbraco") {
+		meta.append(el("dt", { textContent: "Datasource" }), el("dd", {
+			textContent: env.database || "Custom",
+			title: "Inferred from database configuration; connection and server edition are not tested.",
+		}));
+		if (env.database_name) meta.append(el("dt", { textContent: "Database" }), el("dd", {
+			className: "database-name", textContent: env.database_name,
+		}));
+	}
 	if (env.port) meta.append(el("dt", { textContent: "Port" }), el("dd", { textContent: env.port }));
 	if (env.mode === "remote") {
 		meta.append(el("dt", { textContent: "Server" }), el("dd", { textContent: `${env.user || "?"}@${env.host || "?"}:${env.ssh_port || 22}` }));

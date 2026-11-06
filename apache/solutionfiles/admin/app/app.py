@@ -335,10 +335,10 @@ def environment_info(key, label, unit, binding, port, path, states, **extra):
                         ["systemctl", "show", unit + ".service", "--property=Environment", "--value"],
                         capture_output=True, text=True, timeout=10, check=True)
                     variables = dict(item.split("=", 1) for item in shlex.split(settings.stdout) if "=" in item)
-                    info["database"] = _database_module.database_type(working, info["environment"], variables)
+                    info.update(_database_module.database_details(working, info["environment"], variables))
                 except (OSError, subprocess.SubprocessError, ValueError):
                     app.logger.warning("Could not read database configuration for %s", unit)
-                    info["database"] = "Database unknown"
+                    info["database"] = "Custom"
     return info
 
 
