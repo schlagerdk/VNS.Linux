@@ -66,13 +66,19 @@
     </div>
     <div class="panel sql-connection-bar">
       <label>Connection <select id="sql-connection"><option value="">Choose a connection...</option></select></label>
-      <button id="sql-refresh" type="button">Refresh</button>
       <button id="sql-remove-connection" type="button">Remove connection</button>
-      <button id="sql-create" type="button">Create database</button>
-      <button id="sql-backup-all" type="button">Backup all</button>
+      <span class="spacer"></span>
+      <button id="sql-refresh" type="button">Refresh</button>
     </div>
     <p id="sql-status" role="status">Add a local or remote SQL connection to get started.</p>
-    <div class="panel sql-table"><h3>Databases</h3>
+    <div class="panel sql-table">
+      <div class="sql-databases-header">
+        <h3>Databases</h3>
+        <div class="sql-databases-actions">
+          <button id="sql-create" type="button">Create database</button>
+          <button id="sql-backup-all" type="button">Backup all</button>
+        </div>
+      </div>
       <table><thead><tr><th>Name</th><th>Size</th><th>State</th><th>Recovery</th><th>Actions</th></tr></thead><tbody id="sql-databases"></tbody></table>
       <details id="sql-system-databases" class="sql-system-databases">
         <summary id="sql-system-summary">System databases</summary>
