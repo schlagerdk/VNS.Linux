@@ -114,6 +114,13 @@ a.link:hover { text-decoration: underline; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line); }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.sql-connection-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px; }
+.sql-connection-bar label { margin: 0; min-width: 220px; }
+.sql-table { margin-top: 16px; padding: 16px; overflow-x: auto; }
+.sql-table h3 { margin-top: 0; }
+.sql-table td { overflow-wrap: anywhere; }
+.sql-table .actions { flex-wrap: wrap; gap: 6px; }
+#form-sql-connection input[type=checkbox] { width: auto; }
 .system-update-available { color: var(--orange); background: rgba(210, 153, 34, .15); }
 .package-panel { margin-top: 16px; overflow: hidden; }
 .package-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 20px; border-bottom: 1px solid var(--line); background: linear-gradient(110deg, rgba(163, 113, 247, .08), transparent); }

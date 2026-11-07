@@ -53,6 +53,12 @@ _database_spec = importlib.util.spec_from_file_location("vns_database_info", os.
 _database_module = importlib.util.module_from_spec(_database_spec)
 _database_spec.loader.exec_module(_database_module)
 ADMIN_SITE = cfg.get("admin_site", "")
+SQL_HELPER = os.path.join(os.path.dirname(APACHE_DIR), "sql", "lib", "admin.py")
+_sql_spec = importlib.util.spec_from_file_location("vns_sql_admin", SQL_HELPER)
+_sql_module = importlib.util.module_from_spec(_sql_spec)
+_sql_spec.loader.exec_module(_sql_module)
+SQL_CONNECTIONS = os.path.join(BASE, "sql-connections.json")
+SQL_LOCK = threading.Lock()
 APACHE_SITES = "/etc/apache2/sites-available"
 APACHE_ENABLED = "/etc/apache2/sites-enabled"
 SERVICE_DIR = "/etc/systemd/system"
@@ -582,6 +588,37 @@ def own_like_parent(path):
 
 # ----------------------------------------------------------------- sites API
 
+@app.route("/api/sql/connections", methods=["GET", "POST", "DELETE"])
+def api_sql_connections():
+    try:
+        with SQL_LOCK:
+            if request.method == "POST":
+                data = request.get_json(silent=True)
+                if not isinstance(data, dict):
+                    abort(400, "Expected a connection object")
+                _sql_module.add_connection(SQL_CONNECTIONS, data)
+            elif request.method == "DELETE":
+                data = request.get_json(silent=True)
+                if not isinstance(data, dict):
+                    abort(400, "Expected a connection object")
+                _sql_module.remove_connection(SQL_CONNECTIONS, data.get("id"))
+            return jsonify(connections=_sql_module.public_connections(SQL_CONNECTIONS))
+    except (OSError, ValueError) as exc:
+        app.logger.error("SQL connection operation failed: %s", exc)
+        return error(str(exc))
+
+
+@app.route("/api/sql/<connection_id>")
+def api_sql_status(connection_id):
+    try:
+        with SQL_LOCK:
+            settings = _sql_module.connection(SQL_CONNECTIONS, connection_id)
+        return jsonify(databases=_sql_module.databases(settings), backups=_sql_module.backups(settings))
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        app.logger.error("SQL overview failed: %s", exc)
+        return error(str(exc), 502)
+
+
 SYSTEM_UPDATE_LOCK = threading.Lock()
 SYSTEM_UPDATE_CACHE = {}
 
@@ -797,7 +834,7 @@ def terminal_scope(payload):
 
 def terminal_auto_close(payload):
     kind = payload.get("kind")
-    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions", "publish_both", "bulk", "update_package"):
+    if kind in ("shell", "create_site", "create_prod", "delete_site", "change_binding", "prod_action", "dotnet_package", "fix_permissions", "publish_both", "bulk", "update_package", "sql_action"):
         return True
     if kind == "remote_tool":
         return payload.get("tool") == "shell"
@@ -1061,6 +1098,23 @@ def build_command(data):
     """Validate a terminal request and return (title, argv, cwd). User input is never shell code."""
     kind = data.get("kind")
     bash = "/bin/bash"
+    if kind == "sql_action":
+        identifier = data.get("connection")
+        if not isinstance(identifier, str):
+            abort(400, "Select a SQL connection")
+        try:
+            with SQL_LOCK:
+                _sql_module.connection(SQL_CONNECTIONS, identifier)
+            if data.get("action") not in ("create", "backup", "backup_all", "copy", "restore", "drop"):
+                abort(400, "Unknown SQL action")
+            if data["action"] != "backup_all":
+                _sql_module.identifier(data.get("database", ""))
+            if data["action"] in ("copy", "restore"):
+                _sql_module.identifier(data.get("target", ""))
+        except ValueError as exc:
+            abort(400, str(exc))
+        payload = {key: data[key] for key in ("action", "database", "target", "backup_id", "overwrite", "confirmation") if key in data}
+        return "SQL: " + data["action"], [sys.executable, SQL_HELPER, SQL_CONNECTIONS, identifier, json.dumps(payload)], "/"
     if kind == "update_system":
         if not ADMIN_SITE:
             abort(400, "The admin site is not configured")

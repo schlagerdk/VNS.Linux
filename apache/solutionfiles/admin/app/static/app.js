@@ -169,7 +169,7 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 let remoteFilesSite = "";
 let serverFiles = false;
 let currentView = "sites";
-const views = ["sites", "site"];
+const views = ["sites", "site", "sql"];
 
 function showView(name) {
 	currentView = name;
@@ -198,6 +198,10 @@ async function route() {
 		history.replaceState(null, "", "#sites");
 		showView("sites");
 		await run(() => openFiles(view === "remote-files" ? parts.join("/") : arg, remote));
+	} else if (view === "sql") {
+		if (filesDialog.open) filesDialog.close();
+		showView("sql");
+		await run(loadSqlConnections);
 	} else if (view === "site" && arg) {
 		if (filesDialog.open) filesDialog.close();
 		showView("site");
@@ -262,6 +266,7 @@ async function loadSites() {
 	defaultUmbracoVersion = (data.defaults || {}).umbraco_version || "";
 	renderSites();
 	if (currentView === "site") renderSite(decodeURIComponent(location.hash.slice(6)));
+	if (currentView === "sql") await refreshSql();
 }
 
 // A site is running when any of its services is; sites without a service are static
@@ -1629,6 +1634,162 @@ run(async () => {
 
 
 // ------------------------------------------------------------------ settings menu
+let sqlConnections = [];
+let sqlSnapshot = { databases: [], backups: [] };
+let sqlLoadGeneration = 0;
+
+function sqlSelected() {
+	const id = $("#sql-connection").value;
+	if (!id) throw new Error("Choose a SQL connection.");
+	return id;
+}
+
+async function loadSqlConnections() {
+	const selected = $("#sql-connection").value;
+	const data = await api("/api/sql/connections");
+	sqlConnections = data.connections;
+	const select = $("#sql-connection");
+	select.replaceChildren(el("option", { value: "", textContent: "Choose a connection..." }),
+		...sqlConnections.map((item) => el("option", { value: item.id, textContent: `${item.name} · ${item.host}:${item.port}` })));
+	select.value = sqlConnections.some((item) => item.id === selected) ? selected : sqlConnections[0]?.id || "";
+	await refreshSql();
+}
+
+async function refreshSql() {
+	const id = $("#sql-connection").value;
+	const generation = ++sqlLoadGeneration;
+	for (const key of ["sql-refresh", "sql-remove-connection", "sql-create", "sql-backup-all"]) $("#" + key).disabled = !id;
+	$("#sql-databases").replaceChildren();
+	$("#sql-backups").replaceChildren();
+	sqlSnapshot = { databases: [], backups: [] };
+	if (!id) {
+		$("#sql-status").textContent = "Add a local or remote SQL connection to get started.";
+		return;
+	}
+	$("#sql-status").textContent = "Loading databases and backup history...";
+	try {
+		const data = await api("/api/sql/" + encodeURIComponent(id));
+		if (generation !== sqlLoadGeneration) return;
+		sqlSnapshot = data;
+		$("#sql-status").textContent = `${data.databases.length} databases · ${data.backups.length} recorded full backups`;
+		for (const database of data.databases) {
+			const actions = el("div", { className: "actions" });
+			if (database.id > 4) {
+				for (const [label, action] of [["Backup", "backup"], ["Copy", "copy"], ["Delete", "drop"]]) {
+					actions.append(el("button", { textContent: label, onclick: () => run(() => sqlDatabaseAction(action, database)) }));
+				}
+			}
+			$("#sql-databases").append(el("tr", {}, el("td", { textContent: database.name }),
+				el("td", { textContent: database.size_mb + " MB" }), el("td", { textContent: database.state }),
+				el("td", { textContent: database.recovery }), el("td", {}, actions)));
+		}
+		for (const backup of data.backups) {
+			$("#sql-backups").append(el("tr", {}, el("td", { textContent: backup.database_name }),
+				el("td", { textContent: backup.finished }), el("td", { textContent: backup.size_mb + " MB" }),
+				el("td", { textContent: backup.path }), el("td", {}, el("button", {
+					textContent: "Restore", disabled: backup.media_count !== 1,
+					title: backup.media_count !== 1 ? "Striped backups are not supported" : "Restore this full backup",
+					onclick: () => run(() => sqlRestore(backup)),
+				}))));
+		}
+		decorateSql();
+	} catch (error) {
+		if (generation !== sqlLoadGeneration) return;
+		$("#sql-status").textContent = error.message;
+		for (const key of ["sql-create", "sql-backup-all"]) $("#" + key).disabled = true;
+		throw error;
+	}
+}
+
+async function sqlDatabaseAction(action, database) {
+	const connection = sqlSelected();
+	const payload = { kind: "sql_action", connection, action, database: database.name };
+	if (action === "copy") {
+		const target = await ask({ title: "Copy database", message: `Back up ${database.name} and restore to a new database. Logins are not copied; existing database users remain in the backup.`, placeholder: "New database name", ok: "Copy" });
+		if (!target) return;
+		payload.target = target.trim();
+	} else if (action === "drop") {
+		const confirmation = await ask({ title: "Delete database?", message: `This permanently deletes ${database.name} and disconnects all sessions. Backups and server logins are kept. Type ${database.name} to confirm.`, match: database.name, danger: true, ok: "Delete" });
+		if (!confirmation) return;
+		payload.confirmation = confirmation;
+	} else if (!(await ask({ title: "Backup database?", message: `Create a full copy-only backup of ${database.name} in the connection's server-side backup directory.`, input: false, ok: "Backup" }))) return;
+	await openTask(payload);
+}
+
+async function sqlRestore(backup) {
+	const connection = sqlSelected();
+	const target = await ask({ title: "Restore database", message: `Restore ${backup.database_name} from ${backup.path}. SQL Server must still be able to read this file. Logins are not created automatically.`, value: backup.database_name, ok: "Continue" });
+	if (!target) return;
+	const name = target.trim();
+	const existing = sqlSnapshot.databases.some((item) => item.name.toLowerCase() === name.toLowerCase());
+	let confirmation = "";
+	if (existing) {
+		confirmation = await ask({ title: "Overwrite existing database?", message: `All data in ${name} will be replaced and active sessions disconnected. Take a backup first. Type ${name} to confirm.`, match: name, danger: true, ok: "Overwrite and restore" });
+		if (!confirmation) return;
+	} else if (!(await ask({ title: "Restore to new database?", message: `Create ${name} from the selected backup.`, input: false, ok: "Restore" }))) return;
+	await openTask({ kind: "sql_action", connection, action: "restore", database: backup.database_name,
+		target: name, backup_id: backup.id, overwrite: existing, confirmation });
+}
+
+function decorateSql() {
+	const styles = {
+		"Add connection": ["server", "blue"], "Remove connection": ["trash", "red"],
+		"Create database": ["server", "green"], "Backup": ["download", "blue"],
+		"Backup all": ["download", "blue"], "Copy": ["sync", "purple"],
+		"Restore": ["upload", "amber"], "Refresh": ["sync", "blue"],
+	};
+	for (const button of $("#view-sql").querySelectorAll("button:not([data-tone])")) {
+		const style = styles[button.textContent.trim()];
+		if (!style) continue;
+		button.dataset.tone = style[1];
+		button.prepend(svgIcon(style[0]));
+	}
+	decorate($("#view-sql"));
+}
+
+$("#settings-sql").onclick = () => go("#sql");
+$("#sql-back").onclick = () => go("#sites");
+$("#sql-refresh").onclick = () => run(refreshSql);
+$("#sql-connection").onchange = () => run(refreshSql);
+$("#sql-create").onclick = () => run(async () => {
+	const connection = sqlSelected();
+	const name = await ask({ title: "Create database", message: "Creates a database only, not a new SQL login.", placeholder: "Database name", ok: "Create" });
+	if (name) await openTask({ kind: "sql_action", connection, action: "create", database: name.trim() });
+});
+$("#sql-backup-all").onclick = () => run(async () => {
+	const connection = sqlSelected();
+	if (await ask({ title: "Backup all databases?", message: "Create full copy-only backups of all online user databases on this connection. System databases are excluded.", input: false, ok: "Backup all" })) {
+		await openTask({ kind: "sql_action", connection, action: "backup_all" });
+	}
+});
+$("#sql-remove-connection").onclick = () => run(async () => {
+	const id = sqlSelected();
+	if (!(await ask({ title: "Remove connection?", message: "Remove the saved connection and credentials from this admin server. Databases and backups are not deleted.", input: false, ok: "Remove", danger: true }))) return;
+	await api("/api/sql/connections", { method: "DELETE", json: { id } });
+	await loadSqlConnections();
+});
+$("#sql-add-connection").onclick = () => {
+	$("#form-sql-connection").reset();
+	$("#dlg-sql-connection").showModal();
+};
+$("#sql-connection-cancel").onclick = () => $("#dlg-sql-connection").close();
+$("#form-sql-connection").onsubmit = (event) => {
+	event.preventDefault();
+	const form = event.target;
+	const data = Object.fromEntries(new FormData(form));
+	data.port = Number(data.port);
+	data.trust_certificate = form.elements.trust_certificate.checked;
+	run(async () => {
+		await api("/api/sql/connections", { json: data });
+		form.reset();
+		$("#dlg-sql-connection").close();
+		await loadSqlConnections();
+	});
+};
+decorateSql();
+$("#settings-sql").dataset.tone = "blue";
+$("#settings-sql").prepend(svgIcon("server"));
+
 const settingsMenu = $("#settings-menu");
 async function checkSystemUpdate() {
 	const result = await api("/api/system-update");
