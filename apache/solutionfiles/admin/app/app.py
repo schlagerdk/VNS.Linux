@@ -554,8 +554,25 @@ def rel(full):
     return os.path.relpath(full, WEB_ROOT).replace(os.sep, "/") if full != WEB_ROOT else ""
 
 
+def server_files():
+    return request.path.startswith("/api/server-fs/")
+
+
+def fs_path(relative):
+    if server_files():
+        path = os.path.join("/", (relative or "").lstrip("/"))
+        if request.endpoint in ("fs_rename", "fs_delete") and os.path.basename(path) not in ("", ".", ".."):
+            return os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path))
+        return os.path.realpath(path)
+    return safe_path(relative)
+
+
+def fs_relative(full):
+    return full.lstrip("/") if server_files() else rel(full)
+
+
 def is_site_root(full):
-    return full == WEB_ROOT or os.path.dirname(full) == WEB_ROOT
+    return full == "/" or full == WEB_ROOT or os.path.dirname(full) == WEB_ROOT
 
 
 def own_like_parent(path):
@@ -1094,7 +1111,7 @@ def build_command(data):
                     abort(400, "Unknown folder")
                 title = "Shell: " + (data.get("label") or rel(cwd))[:60]
             return title, [bash, "-l"], cwd
-        return "Shell: server", [bash, "-l"], WEB_ROOT
+        return "Shell: server", [bash, "-l"], "/"
     if kind == "publish_both":
         site = site_arg(data)
         folder = os.path.join(WEB_ROOT, site, "scripts")
@@ -1448,8 +1465,9 @@ def remote_fs(site, action):
 
 
 @app.route("/api/fs/list")
+@app.route("/api/server-fs/list")
 def fs_list():
-    full = safe_path(request.args.get("path", ""))
+    full = fs_path(request.args.get("path", ""))
     if not os.path.isdir(full):
         return error("Not a folder", 404)
     items = []
@@ -1458,10 +1476,10 @@ def fs_list():
             info = entry.stat(follow_symlinks=False)
         except OSError:
             continue
-        is_dir = entry.is_dir(follow_symlinks=False)
+        is_dir = entry.is_dir(follow_symlinks=server_files())
         try:
             editable = not is_dir and not entry.is_symlink() and entry.is_file() and editable_file(Path(entry.path), info.st_size)
-            has_editable_files = contains_editable_files(Path(entry.path)) if is_dir else False
+            has_editable_files = (True if server_files() else contains_editable_files(Path(entry.path))) if is_dir else False
         except OSError as exc:
             app.logger.warning("Could not check file editability for %s: %s", entry.path, exc)
             editable = False
@@ -1469,12 +1487,13 @@ def fs_list():
         items.append({"name": entry.name, "dir": is_dir, "size": 0 if is_dir else info.st_size,
                       "modified": int(info.st_mtime), "editable": editable, "has_editable_files": has_editable_files})
     items.sort(key=lambda i: (not i["dir"], i["name"].lower()))
-    return jsonify(path=rel(full), items=items)
+    return jsonify(path=fs_relative(full), items=items)
 
 
 @app.route("/api/fs/read")
+@app.route("/api/server-fs/read")
 def fs_read():
-    full = safe_path(request.args.get("path", ""))
+    full = fs_path(request.args.get("path", ""))
     if not os.path.isfile(full):
         return error("Not a file", 404)
     if os.path.getsize(full) > MAX_EDIT_BYTES:
@@ -1487,9 +1506,10 @@ def fs_read():
 
 
 @app.route("/api/fs/save", methods=["POST"])
+@app.route("/api/server-fs/save", methods=["POST"])
 def fs_save():
     data = request.get_json(silent=True) or {}
-    full = safe_path(data.get("path", ""))
+    full = fs_path(data.get("path", ""))
     if os.path.isdir(full) or not os.path.isdir(os.path.dirname(full)):
         return error("Invalid path")
     existed = os.path.exists(full)
@@ -1507,9 +1527,11 @@ def valid_name(name):
 
 @app.route("/api/fs/mkdir", methods=["POST"])
 @app.route("/api/fs/newfile", methods=["POST"])
+@app.route("/api/server-fs/mkdir", methods=["POST"])
+@app.route("/api/server-fs/newfile", methods=["POST"])
 def fs_create():
     data = request.get_json(silent=True) or {}
-    parent = safe_path(data.get("path", ""))
+    parent = fs_path(data.get("path", ""))
     name = data.get("name", "")
     if not valid_name(name) or not os.path.isdir(parent):
         return error("Invalid name")
@@ -1525,10 +1547,13 @@ def fs_create():
 
 
 @app.route("/api/fs/rename", methods=["POST"])
+@app.route("/api/server-fs/rename", methods=["POST"])
 def fs_rename():
     data = request.get_json(silent=True) or {}
-    full = safe_path(data.get("path", ""))
+    full = fs_path(data.get("path", ""))
     name = data.get("name", "")
+    if full == "/":
+        return error("The filesystem root cannot be renamed.")
     if is_site_root(full):
         return error("Sites cannot be renamed here. Use change binding or create a new site.")
     if not valid_name(name) or not os.path.lexists(full):
@@ -1541,8 +1566,11 @@ def fs_rename():
 
 
 @app.route("/api/fs/delete", methods=["POST"])
+@app.route("/api/server-fs/delete", methods=["POST"])
 def fs_delete():
-    full = safe_path((request.get_json(silent=True) or {}).get("path", ""))
+    full = fs_path((request.get_json(silent=True) or {}).get("path", ""))
+    if full == "/":
+        return error("The filesystem root cannot be deleted.")
     if is_site_root(full):
         return error("Sites cannot be deleted here. Use Delete site.")
     if os.path.islink(full) or os.path.isfile(full):
@@ -1555,8 +1583,9 @@ def fs_delete():
 
 
 @app.route("/api/fs/upload", methods=["POST"])
+@app.route("/api/server-fs/upload", methods=["POST"])
 def fs_upload():
-    parent = safe_path(request.form.get("path", ""))
+    parent = fs_path(request.form.get("path", ""))
     if not os.path.isdir(parent):
         return error("Not a folder")
     count = 0
@@ -1574,8 +1603,9 @@ def fs_upload():
 
 
 @app.route("/api/fs/download")
+@app.route("/api/server-fs/download")
 def fs_download():
-    full = safe_path(request.args.get("path", ""))
+    full = fs_path(request.args.get("path", ""))
     if not os.path.isfile(full):
         return error("Not a file", 404)
     return send_file(full, as_attachment=True)

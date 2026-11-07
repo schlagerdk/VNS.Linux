@@ -167,6 +167,7 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 // ------------------------------------------------------------------ views
 
 let remoteFilesSite = "";
+let serverFiles = false;
 let currentView = "sites";
 const views = ["sites", "site"];
 
@@ -209,7 +210,7 @@ async function route() {
 window.addEventListener("hashchange", route);
 const go = (hash) => { location.hash = hash; };
 const siteLink = (name) => "#site/" + encodeURIComponent(name);
-const fsUrl = (action) => remoteFilesSite ? "/api/remote-fs/" + encodeURIComponent(remoteFilesSite) + "/" + action : "/api/fs/" + action;
+const fsUrl = (action) => remoteFilesSite ? "/api/remote-fs/" + encodeURIComponent(remoteFilesSite) + "/" + action : (serverFiles ? "/api/server-fs/" : "/api/fs/") + action;
 
 // ------------------------------------------------------------------ sites
 
@@ -897,7 +898,7 @@ $("#search").oninput = (event) => {
 	renderSites();
 };
 $("#btn-server-shell").onclick = () => run(() => openTask({ kind: "shell" }));
-$("#btn-browse").onclick = () => run(() => openFiles(""));
+$("#btn-browse").onclick = () => run(() => openFiles("", "", true));
 $("#btn-check-updates").onclick = () => run(async () => {
 	$("#btn-check-updates").disabled = true;
 	try {
@@ -1189,7 +1190,7 @@ async function loadFiles(path) {
 	const data = await api(fsUrl("list") + "?path=" + encodeURIComponent(path));
 	currentPath = data.path;
 	const crumbs = $("#crumbs");
-	crumbs.replaceChildren(el("a", { className: "link", textContent: remoteFilesSite ? "Remote production · " + remoteFilesSite : "/var/www", onclick: () => run(() => loadFiles("")) }));
+	crumbs.replaceChildren(el("a", { className: "link", textContent: remoteFilesSite ? "Remote production · " + remoteFilesSite : serverFiles ? "/" : "/var/www", onclick: () => run(() => loadFiles("")) }));
 	let accumulated = "";
 	for (const part of currentPath ? currentPath.split("/") : []) {
 		accumulated = join(accumulated, part);
@@ -1225,10 +1226,11 @@ function renderFiles() {
 	if (!items.length) body.append(el("tr", {}, el("td", { colSpan: 4, className: "empty", textContent: listedFiles.length ? "No editable files in this folder." : "This folder is empty." })));
 }
 
-async function openFiles(path, remoteSite = "") {
+async function openFiles(path, remoteSite = "", server = false) {
 	remoteFilesSite = remoteSite;
+	serverFiles = server && !remoteSite;
 	await loadFiles(path);
-	$("#files-title").textContent = remoteSite ? "Remote files · " + remoteSite : "Files";
+	$("#files-title").textContent = remoteSite ? "Remote files · " + remoteSite : serverFiles ? "Server files" : "Files";
 	if (!filesDialog.open) filesDialog.showModal();
 }
 
@@ -1296,7 +1298,7 @@ const editorValue = () => (monacoEditor && !$("#editor-box").hidden ? monacoEdit
 
 async function editFile(path, remoteSite = remoteFilesSite) {
 	if (!(await discardOk())) return;
-	const base = remoteSite ? "/api/remote-fs/" + encodeURIComponent(remoteSite) + "/" : "/api/fs/";
+	const base = remoteSite ? "/api/remote-fs/" + encodeURIComponent(remoteSite) + "/" : serverFiles ? "/api/server-fs/" : "/api/fs/";
 	const saveUrl = base + "save";
 	const data = await api(base + "read?path=" + encodeURIComponent(path));
 	openFile = path;
