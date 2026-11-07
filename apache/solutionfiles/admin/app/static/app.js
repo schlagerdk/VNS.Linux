@@ -1791,13 +1791,17 @@ $("#settings-sql").dataset.tone = "blue";
 $("#settings-sql").prepend(svgIcon("server"));
 
 const settingsMenu = $("#settings-menu");
-async function checkSystemUpdate() {
-	const result = await api("/api/system-update");
+async function checkSystemUpdate(refresh = false) {
+	const result = await api("/api/system-update" + (refresh ? "?refresh=1" : ""));
 	const badge = $("#system-update-badge");
 	const available = result.status === "available";
-	badge.hidden = !available;
-	$("#settings-update").hidden = !available;
-	$("#btn-settings").title = result.status === "unknown" ? "Installed version unknown. Run /vns/update.sh and /vns/apache/update_admin_site.sh once to record it."
+	const unknown = result.status === "unknown";
+	badge.hidden = !available && !unknown;
+	badge.textContent = unknown ? "Version unknown" : "Update available";
+	badge.classList.toggle("system-update-available", available);
+	$("#settings-update").hidden = !available && !unknown;
+	$("#settings-update").replaceChildren(svgIcon("sync"), unknown ? "Initialize / update" : "Update");
+	$("#btn-settings").title = unknown ? "Installed version unknown. Use Initialize / update to install the latest version and record it."
 		: result.status === "error" ? result.error
 		: available ? `Update available · Installed: ${result.installed.slice(0, 7)} · GitHub: ${result.latest.slice(0, 7)}` : "Settings";
 	if (result.status === "error") throw new Error(result.error);
@@ -1805,7 +1809,7 @@ async function checkSystemUpdate() {
 $("#btn-settings").onclick = (event) => {
 	event.stopPropagation();
 	settingsMenu.hidden = !settingsMenu.hidden;
-	if (!settingsMenu.hidden) run(checkSystemUpdate);
+	if (!settingsMenu.hidden) run(() => checkSystemUpdate(true));
 };
 document.addEventListener("click", () => { settingsMenu.hidden = true; });
 $("#settings-restart-apache").onclick = () => run(async () => {

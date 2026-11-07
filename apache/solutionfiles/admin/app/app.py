@@ -626,7 +626,7 @@ SYSTEM_UPDATE_CACHE = {}
 @app.route("/api/system-update")
 def api_system_update():
     with SYSTEM_UPDATE_LOCK:
-        if SYSTEM_UPDATE_CACHE and time.monotonic() - SYSTEM_UPDATE_CACHE["checked_at"] < 300:
+        if request.args.get("refresh") != "1" and SYSTEM_UPDATE_CACHE and time.monotonic() - SYSTEM_UPDATE_CACHE["checked_at"] < 300:
             return jsonify(**SYSTEM_UPDATE_CACHE["result"])
         try:
             path = Path(BASE) / ".vns-version"

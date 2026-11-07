@@ -8,7 +8,7 @@ import threading
 import unittest
 from unittest.mock import Mock
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,7 +26,7 @@ class SystemUpdateTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.run = Mock(return_value=Mock(stdout=self.latest + "\tHEAD\n"))
         self.clock = Mock(return_value=1000)
-        self.ns = dict(app=self.app, jsonify=jsonify, Path=Path, BASE=str(self.root), re=re,
+        self.ns = dict(app=self.app, jsonify=jsonify, request=request, Path=Path, BASE=str(self.root), re=re,
                        subprocess=Mock(run=self.run, SubprocessError=subprocess.SubprocessError),
                        SYSTEM_UPDATE_LOCK=threading.Lock(), SYSTEM_UPDATE_CACHE={},
                        time=Mock(monotonic=self.clock))
@@ -56,6 +56,15 @@ class SystemUpdateTests(unittest.TestCase):
                 if marker is not None:
                     self.marker.write_text(marker)
                 self.assertEqual(self.client.get("/api/system-update").json["status"], "unknown")
+
+    def test_explicit_refresh_bypasses_cached_revision(self):
+        self.marker.write_text(self.installed)
+        self.run.return_value.stdout = self.installed + "\tHEAD\n"
+        self.assertEqual(self.client.get("/api/system-update").json["status"], "current")
+        self.run.return_value.stdout = self.latest + "\tHEAD\n"
+        self.assertEqual(self.client.get("/api/system-update").json["status"], "current")
+        self.assertEqual(self.client.get("/api/system-update?refresh=1").json["status"], "available")
+        self.assertEqual(self.run.call_count, 2)
 
     def test_malformed_markers_remote_responses_and_network_errors_are_explicit(self):
         for marker, output, failure in (
