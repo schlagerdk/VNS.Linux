@@ -21,6 +21,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -ap
 button, select, input, textarea { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; transition: border-color .15s, background .15s; }
 input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--blue); outline-offset: -1px; border-color: var(--blue); }
 button { cursor: pointer; white-space: nowrap; }
+label:has(input[type="checkbox"]), input[type="checkbox"] { cursor: pointer; }
 button:hover { background: var(--hover); border-color: var(--muted); }
 button.primary { background: #238636; border-color: #2ea043; color: #fff; font-weight: 600; }
 button.primary:hover { background: #2ea043; }
@@ -335,6 +336,8 @@ button[data-tone="gray"] { --tone: #9da7b3; }
 button.primary[data-tone] { background: #238636; border-color: #2ea043; color: #fff; }
 #sql-remove-connection { margin-right: auto; padding-left: 0; padding-right: 0; border: 0; background: transparent; color: var(--red); align-self: center; }
 #sql-remove-connection:hover { background: transparent; text-decoration: underline; }
+#sql-connection-cancel { order: 1; }
+#form-sql-connection menu > button[type="submit"] { order: 2; }
 /* Delete buttons stand alone at the far right of their row */
 .actions > button.danger, #site-head .actions > button.danger { margin-left: auto; }
 dialog.editor #editor-box { flex: 1; min-height: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }

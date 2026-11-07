@@ -1655,14 +1655,14 @@ function groupSqlBackups(backups) {
 	return [...groups.values()];
 }
 
-function sqlBackupRow(backup) {
+function sqlBackupRow(backup, allowDelete = true) {
 	return el("tr", {}, el("td", { textContent: backup.database_name }),
 		el("td", { textContent: backup.finished || "Unavailable" }), el("td", { textContent: backup.size_mb === null ? "Unavailable" : backup.size_mb + " MB" }),
 		el("td", { textContent: backup.path }), el("td", {}, el("div", { className: "actions" }, el("button", {
 			textContent: "Restore", disabled: backup.media_count !== 1,
 			title: backup.error || (backup.media_count !== 1 ? "Striped or damaged backups are not supported" : "Restore this full backup"),
 			onclick: () => run(() => sqlRestore(backup)),
-		}), ...(sqlSnapshot.backup_file_access ? [el("button", {
+		}), ...(allowDelete && sqlSnapshot.backup_file_access ? [el("button", {
 			textContent: "Delete", onclick: () => run(async () => {
 				if (!(await ask({ title: "Delete backup file?", message: `Delete the entire file ${backup.path}? All backup sets in this file will be removed. Type ${backup.database_name} to confirm.`, match: backup.database_name, danger: true, ok: "Delete" }))) return;
 				await openTask({ kind: "sql_action", action: "delete_backup", connection: sqlSelected(),
@@ -1745,7 +1745,7 @@ async function refreshSql() {
 					el("summary", { textContent: `${older.length} older backup${older.length === 1 ? "" : "s"} for ${latest.database_name}` }),
 					el("table", {},
 						el("thead", {}, el("tr", {}, ...["Database", "Finished", "Size", "Server path", "Actions"].map((label) => el("th", { textContent: label })))),
-						el("tbody", {}, ...older.map(sqlBackupRow))));
+						el("tbody", {}, ...older.map((backup) => sqlBackupRow(backup, false)))));
 				$("#sql-backups").append(el("tr", {}, el("td", { colSpan: 5 }, history)));
 			}
 		}

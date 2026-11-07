@@ -113,7 +113,7 @@
         <p class="hint">Like production setup: an empty password uses the admin server's SSH key. During editing, leave blank to keep a saved password; disable SSH access and save to remove its credentials. First connection accepts a new host key; changed keys are rejected.</p>
       </fieldset>
       <p class="hint">Saved on the admin server in a root-only file. The login needs database and backup administration privileges. sqlcmd must be installed on the admin server.</p>
-      <menu><button id="sql-remove-connection" type="button" class="danger" hidden>Remove connection</button><button id="sql-connection-cancel" type="button">Cancel</button><button type="submit" class="primary">Save connection</button></menu>
+      <menu><button id="sql-remove-connection" type="button" class="danger" tabindex="-1" hidden>Remove connection</button><button type="submit" class="primary">Save connection</button><button id="sql-connection-cancel" type="button">Cancel</button></menu>
     </form>
   </dialog>
   <dialog id="dlg-sql-restore-login">
