@@ -66,17 +66,17 @@
     </div>
     <div class="panel sql-connection-bar">
       <label>Connection <select id="sql-connection"><option value="">Choose a connection...</option></select></label>
-      <button id="sql-remove-connection" type="button">Remove connection</button>
+      <button id="sql-remove-connection" type="button" hidden>Remove connection</button>
       <span class="spacer"></span>
-      <button id="sql-refresh" type="button">Refresh</button>
+      <button id="sql-refresh" type="button" hidden>Refresh</button>
     </div>
-    <p id="sql-status" role="status">Add a local or remote SQL connection to get started.</p>
-    <div class="panel sql-table">
+    <p id="sql-status" role="status" hidden></p>
+    <div id="sql-databases-panel" class="panel sql-table" hidden>
       <div class="sql-databases-header">
         <h3>Databases</h3>
         <div class="sql-databases-actions">
-          <button id="sql-create" type="button">Create database</button>
-          <button id="sql-backup-all" type="button">Backup all</button>
+          <button id="sql-create" type="button" hidden>Create database</button>
+          <button id="sql-backup-all" type="button" hidden>Backup all</button>
         </div>
       </div>
       <table><thead><tr><th>Name</th><th>Size</th><th>State</th><th>Recovery</th><th>Actions</th></tr></thead><tbody id="sql-databases"></tbody></table>
@@ -85,7 +85,7 @@
         <table><thead><tr><th>Name</th><th>Size</th><th>State</th><th>Recovery</th><th>Actions</th></tr></thead><tbody id="sql-system-rows"></tbody></table>
       </details>
     </div>
-    <div class="panel sql-table"><h3>Full backups</h3>
+    <div id="sql-backups-panel" class="panel sql-table" hidden><h3>Full backups</h3>
       <p class="hint">Latest 200 full disk backups recorded in SQL Server history, grouped by database. Expand older backups to see the history. Paths are on the SQL server; files may have been overwritten, moved or deleted.</p>
       <table><thead><tr><th>Database</th><th>Finished</th><th>Size</th><th>Server path</th><th>Actions</th></tr></thead><tbody id="sql-backups"></tbody></table>
     </div>

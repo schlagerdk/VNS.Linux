@@ -1680,7 +1680,11 @@ async function loadSqlConnections() {
 async function refreshSql() {
 	const id = $("#sql-connection").value;
 	const generation = ++sqlLoadGeneration;
-	for (const key of ["sql-refresh", "sql-remove-connection", "sql-create", "sql-backup-all"]) $("#" + key).disabled = !id;
+	for (const key of ["sql-status", "sql-databases-panel", "sql-backups-panel"]) $("#" + key).hidden = !id;
+	for (const key of ["sql-refresh", "sql-remove-connection", "sql-create", "sql-backup-all"]) {
+		$("#" + key).hidden = !id;
+		$("#" + key).disabled = !id;
+	}
 	$("#sql-databases").replaceChildren();
 	$("#sql-system-rows").replaceChildren();
 	$("#sql-system-databases").hidden = true;
