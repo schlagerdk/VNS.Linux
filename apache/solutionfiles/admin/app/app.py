@@ -662,7 +662,7 @@ def api_run_system_update():
 @app.route("/api/system-update")
 def api_system_update():
     with SYSTEM_UPDATE_LOCK:
-        if request.args.get("refresh") != "1" and SYSTEM_UPDATE_CACHE and time.monotonic() - SYSTEM_UPDATE_CACHE["checked_at"] < 300:
+        if request.args.get("refresh") != "1" and SYSTEM_UPDATE_CACHE and time.monotonic() - SYSTEM_UPDATE_CACHE["checked_at"] < 60:
             return jsonify(**SYSTEM_UPDATE_CACHE["result"])
         try:
             path = Path(BASE) / ".vns-version"
@@ -680,7 +680,7 @@ def api_system_update():
                         "installed": installed, "latest": latest}
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             app.logger.error("System update check failed: %s", exc)
-            response = {"status": "error", "error": "Could not check GitHub for updates. Try again in five minutes."}
+            response = {"status": "error", "error": "Could not check GitHub for updates. Try again in one minute."}
         SYSTEM_UPDATE_CACHE.update(checked_at=time.monotonic(), result=response)
         return jsonify(**response)
 

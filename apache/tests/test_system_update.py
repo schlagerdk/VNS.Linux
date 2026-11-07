@@ -48,7 +48,7 @@ class SystemUpdateTests(unittest.TestCase):
         self.assertEqual(self.run.call_args.kwargs["timeout"], 15)
         self.client.get("/api/system-update")
         self.assertEqual(self.run.call_count, 1)
-        self.clock.return_value = 1301
+        self.clock.return_value = 1061
         self.run.return_value.stdout = self.installed + "\tHEAD\n"
         self.assertEqual(self.client.get("/api/system-update").json["status"], "current")
         self.assertEqual(self.run.call_count, 2)

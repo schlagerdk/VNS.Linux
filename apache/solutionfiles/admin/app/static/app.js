@@ -1672,7 +1672,7 @@ async function loadSqlConnections() {
 	sqlConnections = data.connections;
 	const select = $("#sql-connection");
 	select.replaceChildren(el("option", { value: "", textContent: "Choose a connection..." }),
-		...sqlConnections.map((item) => el("option", { value: item.id, textContent: `${item.name} · ${item.host}:${item.port}` })));
+		...sqlConnections.map((item) => el("option", { value: item.id, textContent: item.name })));
 	select.value = sqlConnections.some((item) => item.id === selected) ? selected : sqlConnections[0]?.id || "";
 	await refreshSql();
 }
@@ -1682,6 +1682,9 @@ async function refreshSql() {
 	const generation = ++sqlLoadGeneration;
 	for (const key of ["sql-refresh", "sql-remove-connection", "sql-create", "sql-backup-all"]) $("#" + key).disabled = !id;
 	$("#sql-databases").replaceChildren();
+	$("#sql-system-rows").replaceChildren();
+	$("#sql-system-databases").hidden = true;
+	$("#sql-system-databases").open = false;
 	$("#sql-backups").replaceChildren();
 	sqlSnapshot = { databases: [], backups: [] };
 	if (!id) {
@@ -1694,6 +1697,9 @@ async function refreshSql() {
 		if (generation !== sqlLoadGeneration) return;
 		sqlSnapshot = data;
 		$("#sql-status").textContent = `${data.databases.length} databases · ${data.backups.length} recorded full backups`;
+		const systemCount = data.databases.filter((database) => database.id <= 4).length;
+		$("#sql-system-databases").hidden = !systemCount;
+		$("#sql-system-summary").textContent = `System databases (${systemCount})`;
 		for (const database of data.databases) {
 			const actions = el("div", { className: "actions" });
 			if (database.id > 4) {
@@ -1701,7 +1707,7 @@ async function refreshSql() {
 					actions.append(el("button", { textContent: label, onclick: () => run(() => sqlDatabaseAction(action, database)) }));
 				}
 			}
-			$("#sql-databases").append(el("tr", {}, el("td", { textContent: database.name }),
+			$(database.id <= 4 ? "#sql-system-rows" : "#sql-databases").append(el("tr", {}, el("td", { textContent: database.name }),
 				el("td", { textContent: database.size_mb + " MB" }), el("td", { textContent: database.state }),
 				el("td", { textContent: database.recovery }), el("td", {}, actions)));
 		}
@@ -1902,9 +1908,12 @@ $("#settings-update").prepend(svgIcon("sync"));
 decorate($("#settings-menu"));
 decorate($("#view-sites .toolbar"));
 decorate($("#view-files"));
-run(checkSystemUpdate);
+run(() => checkSystemUpdate(true));
 run(async () => {
 	const state = await api("/api/system-update/run");
 	if (state.status === "running") await runSystemUpdate(state);
 });
-setInterval(() => { if (!document.hidden) run(checkSystemUpdate); }, 300000);
+setInterval(() => { if (!document.hidden && !systemUpdating) run(checkSystemUpdate); }, 60000);
+document.addEventListener("visibilitychange", () => {
+	if (!document.hidden && !systemUpdating) run(() => checkSystemUpdate(true));
+});

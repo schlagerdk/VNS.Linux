@@ -74,6 +74,10 @@
     <p id="sql-status" role="status">Add a local or remote SQL connection to get started.</p>
     <div class="panel sql-table"><h3>Databases</h3>
       <table><thead><tr><th>Name</th><th>Size</th><th>State</th><th>Recovery</th><th>Actions</th></tr></thead><tbody id="sql-databases"></tbody></table>
+      <details id="sql-system-databases" class="sql-system-databases">
+        <summary id="sql-system-summary">System databases</summary>
+        <table><thead><tr><th>Name</th><th>Size</th><th>State</th><th>Recovery</th><th>Actions</th></tr></thead><tbody id="sql-system-rows"></tbody></table>
+      </details>
     </div>
     <div class="panel sql-table"><h3>Full backups</h3>
       <p class="hint">Latest 200 full disk backups recorded in SQL Server history, grouped by database. Expand older backups to see the history. Paths are on the SQL server; files may have been overwritten, moved or deleted.</p>

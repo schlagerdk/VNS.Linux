@@ -63,6 +63,9 @@ def add_connection(path, data):
         raise ValueError("Invalid certificate setting")
     fields.update(id=uuid.uuid4().hex, port=port, trust_certificate=trust)
     items = connections(path)
+    host = fields["host"].strip("[]").rstrip(".").casefold()
+    if any(item["host"].strip("[]").rstrip(".").casefold() == host and item["port"] == port for item in items):
+        raise ValueError("A connection to this SQL host and port already exists")
     items.append(fields)
     save_connections(path, items)
     return fields["id"]

@@ -49,6 +49,17 @@ class SqlAdminTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 sql.add_connection(self.store, self.settings | change)
 
+    def test_duplicate_host_and_port_rejected_regardless_of_login(self):
+        sql.add_connection(self.store, self.settings)
+        original = self.store.read_bytes()
+        for change in ({"name": "Other"}, {"username": "other"}, {"host": " LOCALHOST. "}):
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "already exists"):
+                sql.add_connection(self.store, self.settings | change)
+            self.assertEqual(self.store.read_bytes(), original)
+        sql.add_connection(self.store, self.settings | {"port": 1434})
+        sql.add_connection(self.store, self.settings | {"host": "other.example"})
+        self.assertEqual(len(sql.connections(self.store)), 3)
+
     def test_sqlcmd_uses_private_query_file_and_password_environment(self):
         filenames = []
         def run(args, **kwargs):
