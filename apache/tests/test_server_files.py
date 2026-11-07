@@ -5,12 +5,14 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from urllib.parse import urlparse
 
 from flask import Flask, abort, jsonify, redirect, request, send_file, session
+from werkzeug.exceptions import BadRequest
 
 from apache.lib.remote_files import contains_editable_files, editable_file
 
@@ -136,6 +138,31 @@ class ServerFilesTests(unittest.TestCase):
         self.assertEqual(self.ns["build_command"]({"kind": "shell"})[2], "/")
         self.assertEqual(self.ns["build_command"]({"kind": "shell", "site": "example.test"})[2],
                          str(self.web / "example.test"))
+
+    def test_settings_update_runs_scripts_in_order_and_stops_after_failure(self):
+        apache = self.root / "vns/apache"
+        apache.mkdir(parents=True)
+        calls = self.root / "update-calls"
+        updater = apache.parent / "update.sh"
+        admin_updater = apache / "update_admin_site.sh"
+        admin_updater.write_text(f'printf "admin:%s\\n" "$1" >> "{calls}"\n')
+        self.ns.update(APACHE_DIR=str(apache), ADMIN_SITE="admin.example.test")
+        for code in (0, 7):
+            with self.subTest(code=code):
+                updater.write_text(f'echo vns >> "{calls}"\nexit {code}\n')
+                if calls.exists():
+                    calls.unlink()
+                title, argv, cwd = self.ns["build_command"]({
+                    "kind": "update_system", "site": "ignored.test",
+                })
+                self.assertEqual(cwd, "/")
+                result = subprocess.run(argv, cwd=cwd, capture_output=True, text=True)
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertEqual(calls.read_text().splitlines(),
+                                 ["vns", "admin:admin.example.test"] if code == 0 else ["vns"])
+        updater.unlink()
+        with self.app.test_request_context(), self.assertRaises(BadRequest):
+            self.ns["build_command"]({"kind": "update_system"})
 
 
 if __name__ == "__main__":

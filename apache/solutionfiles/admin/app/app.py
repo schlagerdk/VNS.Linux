@@ -1031,6 +1031,17 @@ def build_command(data):
     """Validate a terminal request and return (title, argv, cwd). User input is never shell code."""
     kind = data.get("kind")
     bash = "/bin/bash"
+    if kind == "update_system":
+        if not ADMIN_SITE:
+            abort(400, "The admin site is not configured")
+        updater = os.path.join(os.path.dirname(APACHE_DIR), "update.sh")
+        admin_updater = os.path.join(APACHE_DIR, "update_admin_site.sh")
+        if not os.path.isfile(updater) or not os.path.isfile(admin_updater):
+            abort(400, "VNS update scripts are missing")
+        return "Update VNS and admin site", [
+            bash, "-c", '/bin/bash "$1" && /bin/bash "$2" "$3"',
+            "vns-update", updater, admin_updater, ADMIN_SITE,
+        ], "/"
     if kind == "update_package":
         site = site_arg(data)
         info = site_info(site, {})

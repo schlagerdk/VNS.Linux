@@ -341,7 +341,7 @@ const iconPaths = {
 
 // label (exact, or a prefix ending in "*") -> [icon, tone]
 const buttonStyles = {
-	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /var/www": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
+	"Shell": ["terminal", "blue"], "Server shell": ["terminal", "blue"], "New file": ["file", "blue"], "New folder": ["folder", "blue"], "Upload": ["upload", "blue"], "Browse /": ["folder", "blue"], "Files": ["folder", "blue"], "Manage": ["manage", "blue"],
 	"Publish": ["upload", "green"], "Publish both": ["upload", "green"], "Sync to*": ["sync", "blue"], "Start": ["play", "green"],
 	"Check for updates": ["download", "amber"],
 	"Add package": ["download", "green"], "Remove package": ["trash", "red"],
@@ -1637,6 +1637,15 @@ $("#settings-restart-apache").onclick = () => run(async () => {
 });
 $("#settings-admin-site").onclick = () => { const admin = allSites.find((s) => s.admin); if (admin) go(siteLink(admin.name)); };
 $("#settings-apache-test").onclick = () => run(() => openTask({ kind: "apache", tool: "configtest" }));
+$("#settings-update").onclick = () => run(async () => {
+	if (await ask({
+		title: "Update VNS and the admin site?",
+		message: "Download and install the latest VNS version, then update this admin site. The admin service restarts near the end, disconnecting this terminal. Reload the page once it is available again.",
+		input: false, ok: "Update",
+	})) await openTask({ kind: "update_system" });
+});
+$("#settings-update").dataset.tone = "purple";
+$("#settings-update").prepend(svgIcon("sync"));
 
 decorate($("#settings-menu"));
 decorate($("#view-sites .toolbar"));
