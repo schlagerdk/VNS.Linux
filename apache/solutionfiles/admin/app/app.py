@@ -582,6 +582,36 @@ def own_like_parent(path):
 
 # ----------------------------------------------------------------- sites API
 
+SYSTEM_UPDATE_LOCK = threading.Lock()
+SYSTEM_UPDATE_CACHE = {}
+
+
+@app.route("/api/system-update")
+def api_system_update():
+    with SYSTEM_UPDATE_LOCK:
+        if SYSTEM_UPDATE_CACHE and time.monotonic() - SYSTEM_UPDATE_CACHE["checked_at"] < 300:
+            return jsonify(**SYSTEM_UPDATE_CACHE["result"])
+        try:
+            path = Path(BASE) / ".vns-version"
+            installed = path.read_text().strip() if path.exists() else ""
+            if installed and not re.fullmatch(r"[0-9a-f]{40}", installed):
+                raise ValueError("Invalid installed version marker")
+            result = subprocess.run(
+                ["git", "ls-remote", "https://github.com/schlagerdk/VNS.Linux.git", "HEAD"],
+                capture_output=True, text=True, timeout=15, check=True)
+            fields = result.stdout.strip().split()
+            if len(fields) != 2 or fields[1] != "HEAD" or not re.fullmatch(r"[0-9a-f]{40}", fields[0]):
+                raise ValueError("GitHub returned an invalid version")
+            latest = fields[0]
+            response = {"status": "unknown" if not installed else "available" if installed != latest else "current",
+                        "installed": installed, "latest": latest}
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            app.logger.error("System update check failed: %s", exc)
+            response = {"status": "error", "error": "Could not check GitHub for updates. Try again in five minutes."}
+        SYSTEM_UPDATE_CACHE.update(checked_at=time.monotonic(), result=response)
+        return jsonify(**response)
+
+
 UPDATE_CHECK_LOCK = threading.Lock()
 UPDATE_CHECK = {"running": False, "completed": 0, "total": 0, "errors": []}
 

@@ -21,7 +21,7 @@
   <span class="spacer"></span>
   <button id="btn-dock" class="ghost" title="Terminals (Ctrl+`)" hidden>⌨ Terminals <span id="term-count" class="count" hidden></span></button>
   <div class="user">
-    <button id="btn-settings" class="ghost" title="Settings" aria-haspopup="true">⚙ Settings</button>
+    <button id="btn-settings" class="ghost" title="Settings" aria-haspopup="true">⚙ Settings <span id="system-update-badge" class="badge system-update-available" hidden>Update available</span></button>
     <div id="settings-menu" class="menu" hidden>
       <div class="menu-group" role="group" aria-label="Server">
         <div class="menu-group-title">Server</div>
@@ -35,7 +35,7 @@
       </div>
       <div id="settings-admin-group" class="menu-group" role="group" aria-label="Administration" hidden>
         <div class="menu-group-title">Administration</div>
-        <button id="settings-update" type="button">Update</button>
+        <button id="settings-update" type="button" hidden>Update</button>
         <button id="settings-admin-site" type="button" hidden>Admin site</button>
       </div>
     </div>

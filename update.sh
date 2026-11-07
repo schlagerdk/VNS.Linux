@@ -10,6 +10,7 @@ TARGET="/vns"
 main() {
     local src="${1:-}"
     local tmp=""
+    local revision=""
 
     if [ -z "$src" ]; then
         tmp="$(mktemp -d)"
@@ -17,12 +18,23 @@ main() {
         git clone --depth 1 "$REPO_URL" "$tmp/VNS.Linux"
         src="$tmp/VNS.Linux"
     fi
+    if git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        revision="$(git -C "$src" rev-parse HEAD)"
+        if [ -n "$(git -C "$src" status --porcelain --untracked-files=normal)" ]; then
+            echo "WARNING: Source has local changes; installed revision will be unknown." >&2
+            revision=""
+        fi
+    else
+        echo "WARNING: Source has no Git metadata; installed revision will be unknown." >&2
+    fi
 
     # If the repository has a vns subdirectory, deploy that directory
     [ -d "$src/vns" ] && src="$src/vns"
 
     sudo mkdir -p "$TARGET"
     sudo chown "$(id -un):$(id -gn)" "$TARGET"
+    # A failed synchronization must not retain a success-shaped version marker.
+    printf '\n' > "$TARGET/.vns-version"
 
     # Save the sa password from the installed copy so it can be restored after synchronization
     local sa_quoted=""
@@ -36,6 +48,7 @@ main() {
         --exclude '.git' \
         --exclude '.DS_Store' \
         --exclude '.gitignore' \
+        --exclude '.vns-version' \
         "$src"/ "$TARGET"/
 
     # Site ports are discovered from active configs now; remove the obsolete counter.
@@ -52,6 +65,7 @@ main() {
     fi
 
     find "$TARGET" -name '*.sh' -exec chmod +x {} +
+    printf '%s\n' "$revision" > "$TARGET/.vns-version"
     echo "VNS updated in $TARGET"
 }
 

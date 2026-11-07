@@ -1630,7 +1630,22 @@ run(async () => {
 
 // ------------------------------------------------------------------ settings menu
 const settingsMenu = $("#settings-menu");
-$("#btn-settings").onclick = (event) => { event.stopPropagation(); settingsMenu.hidden = !settingsMenu.hidden; };
+async function checkSystemUpdate() {
+	const result = await api("/api/system-update");
+	const badge = $("#system-update-badge");
+	const available = result.status === "available";
+	badge.hidden = !available;
+	$("#settings-update").hidden = !available;
+	$("#btn-settings").title = result.status === "unknown" ? "Installed version unknown. Run /vns/update.sh and /vns/apache/update_admin_site.sh once to record it."
+		: result.status === "error" ? result.error
+		: available ? `Update available · Installed: ${result.installed.slice(0, 7)} · GitHub: ${result.latest.slice(0, 7)}` : "Settings";
+	if (result.status === "error") throw new Error(result.error);
+}
+$("#btn-settings").onclick = (event) => {
+	event.stopPropagation();
+	settingsMenu.hidden = !settingsMenu.hidden;
+	if (!settingsMenu.hidden) run(checkSystemUpdate);
+};
 document.addEventListener("click", () => { settingsMenu.hidden = true; });
 $("#settings-restart-apache").onclick = () => run(async () => {
 	if (await ask({ title: "Restart Apache?", message: "All sites on this server are briefly unavailable.", input: false, ok: "Restart", danger: true })) await openTask({ kind: "apache", tool: "restart" });
@@ -1650,3 +1665,5 @@ $("#settings-update").prepend(svgIcon("sync"));
 decorate($("#settings-menu"));
 decorate($("#view-sites .toolbar"));
 decorate($("#view-files"));
+run(checkSystemUpdate);
+setInterval(() => { if (!document.hidden) run(checkSystemUpdate); }, 300000);
