@@ -1680,11 +1680,14 @@ async function loadSqlConnections() {
 async function refreshSql() {
 	const id = $("#sql-connection").value;
 	const generation = ++sqlLoadGeneration;
-	for (const key of ["sql-status", "sql-databases-panel", "sql-backups-panel"]) $("#" + key).hidden = !id;
+	for (const key of ["sql-status", "sql-databases-panel"]) $("#" + key).hidden = !id;
 	for (const key of ["sql-refresh", "sql-remove-connection", "sql-create", "sql-backup-all"]) {
 		$("#" + key).hidden = !id;
 		$("#" + key).disabled = !id;
 	}
+	$("#sql-backups-panel").hidden = true;
+	$("#sql-backup-all").hidden = true;
+	$("#sql-user-databases-table").hidden = true;
 	$("#sql-databases").replaceChildren();
 	$("#sql-system-rows").replaceChildren();
 	$("#sql-system-databases").hidden = true;
@@ -1700,6 +1703,10 @@ async function refreshSql() {
 		const data = await api("/api/sql/" + encodeURIComponent(id));
 		if (generation !== sqlLoadGeneration) return;
 		sqlSnapshot = data;
+		$("#sql-backups-panel").hidden = data.backups.length === 0;
+		const hasUserDatabases = data.databases.some((database) => database.id > 4);
+		$("#sql-backup-all").hidden = !hasUserDatabases;
+		$("#sql-user-databases-table").hidden = !hasUserDatabases;
 		$("#sql-status").textContent = `${data.databases.length} databases · ${data.backups.length} recorded full backups`;
 		const systemCount = data.databases.filter((database) => database.id <= 4).length;
 		$("#sql-system-databases").hidden = !systemCount;
@@ -1713,7 +1720,7 @@ async function refreshSql() {
 			}
 			$(database.id <= 4 ? "#sql-system-rows" : "#sql-databases").append(el("tr", {}, el("td", { textContent: database.name }),
 				el("td", { textContent: database.size_mb + " MB" }), el("td", { textContent: database.state }),
-				el("td", { textContent: database.recovery }), el("td", {}, actions)));
+				el("td", { textContent: database.recovery }), ...(database.id > 4 ? [el("td", {}, actions)] : [])));
 		}
 		for (const [latest, ...older] of groupSqlBackups(data.backups)) {
 			$("#sql-backups").append(sqlBackupRow(latest));

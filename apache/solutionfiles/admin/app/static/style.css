@@ -140,8 +140,9 @@ a.link:hover { text-decoration: underline; }
 .sql-databases-header h3 { margin: 0; }
 .sql-databases-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .sql-table td { overflow-wrap: anywhere; }
-.sql-table .actions { flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.sql-table .actions { flex-wrap: wrap; gap: 6px; justify-content: flex-end; border-top: 0; padding-top: 0; }
 .sql-table th:last-child, .sql-table td:last-child:not([colspan]) { text-align: right; }
+.sql-system-databases th:last-child, .sql-system-databases td:last-child { text-align: left; }
 #form-sql-connection input[type=checkbox] { width: auto; }
 #dlg-sql-connection { width: min(520px, 92vw); min-width: 0; max-height: 90vh; overflow-y: auto; }
 #form-sql-connection .sql-trust-certificate { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text); }
