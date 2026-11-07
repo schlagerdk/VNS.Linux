@@ -102,7 +102,7 @@ def execute(settings, query, table=False, timeout=3600):
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write("SET NOCOUNT ON;\n" + query + "\n")
         args = [tool, "-S", f'tcp:{settings["host"]},{settings["port"]}', "-U", settings["username"],
-                "-d", "master", "-b", "-x", "-r", "1", "-l", "15", "-t", "0", "-w", "65535", "-f", "65001", "-i", filename]
+                "-d", "master", "-b", "-x", "-r", "0", "-l", "15", "-t", "0", "-w", "65535", "-f", "65001", "-i", filename]
         args += ["-W", "-s", "|"] if table else ["-h", "-1"]
         if settings["trust_certificate"]:
             args.append("-C")
@@ -128,7 +128,10 @@ BEGIN
  SET @vns_json = SUBSTRING(@vns_json, 4001, 2147483647);
 END;
 """, timeout=30)
-    data = json.loads("".join(output.splitlines()))
+    payload = "".join(output.splitlines())
+    if not payload.strip():
+        raise ValueError("sqlcmd returned no JSON output. Check the SQL command-line tools and server logs.")
+    data = json.loads(payload)
     if not isinstance(data, list):
         raise ValueError("Invalid SQL Server response")
     return data

@@ -77,6 +77,24 @@ class SqlAdminTests(unittest.TestCase):
         with patch.object(sql, "execute", return_value=output):
             self.assertEqual(sql.query_json(self.settings, "SELECT name"), expected)
 
+    def test_json_print_output_is_not_redirected_to_stderr(self):
+        expected = [{"name": "Example", "id": 5}]
+        output = json.dumps(expected) + "\n"
+
+        def run(args, **kwargs):
+            redirect_print = args[args.index("-r") + 1] == "1"
+            return Mock(returncode=0, stdout="" if redirect_print else output,
+                        stderr=output if redirect_print else "")
+
+        with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), \
+                patch.object(sql.subprocess, "run", side_effect=run):
+            self.assertEqual(sql.query_json(self.settings, "SELECT name, database_id AS id FROM sys.databases"), expected)
+
+    def test_empty_json_response_has_actionable_error(self):
+        with patch.object(sql, "execute", return_value=" \r\n"):
+            with self.assertRaisesRegex(ValueError, "sqlcmd returned no JSON output"):
+                sql.query_json(self.settings, "SELECT 1")
+
     def test_sql_errors_never_become_success(self):
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), patch.object(
                 sql.subprocess, "run", return_value=Mock(returncode=1, stdout="", stderr="Access denied")):
