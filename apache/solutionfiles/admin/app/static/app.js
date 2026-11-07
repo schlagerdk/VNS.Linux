@@ -1687,9 +1687,11 @@ async function loadSqlConnections(selected = $("#sql-connection").value) {
 
 async function refreshSql() {
 	const id = $("#sql-connection").value;
+	const selectedConnection = sqlConnections.find((item) => item.id === id);
+	$("#sql-connection").title = selectedConnection ? `${selectedConnection.host}:${selectedConnection.port}` : "";
 	const generation = ++sqlLoadGeneration;
 	for (const key of ["sql-status", "sql-databases-panel"]) $("#" + key).hidden = !id;
-	for (const key of ["sql-refresh", "sql-remove-connection", "sql-create", "sql-backup-all"]) {
+	for (const key of ["sql-refresh", "sql-edit-connection", "sql-create", "sql-backup-all"]) {
 		$("#" + key).hidden = !id;
 		$("#" + key).disabled = !id;
 	}
@@ -1820,6 +1822,7 @@ function askRestoreLogin(database, action = "Restore") {
 function decorateSql() {
 	const styles = {
 		"Add connection": ["server", "blue"], "Remove connection": ["trash", "red"],
+		"Edit connection": ["server", "blue"],
 		"Create database": ["server", "green"], "Backup": ["download", "blue"],
 		"Backup all": ["download", "blue"], "Copy": ["sync", "purple"],
 		"Restore": ["upload", "amber"], "Refresh": ["sync", "blue"],
@@ -1848,16 +1851,39 @@ $("#sql-backup-all").onclick = () => run(async () => {
 		await openTask({ kind: "sql_action", connection, action: "backup_all" });
 	}
 });
+let editingSqlConnection = null;
 $("#sql-remove-connection").onclick = () => run(async () => {
-	const id = sqlSelected();
+	const id = editingSqlConnection;
+	if (!id) throw new Error("Select a SQL connection to remove.");
 	if (!(await ask({ title: "Remove connection?", message: "Remove the saved connection and credentials from this admin server. Databases and backups are not deleted.", input: false, ok: "Remove", danger: true }))) return;
 	await api("/api/sql/connections", { method: "DELETE", json: { id } });
+	$("#dlg-sql-connection").close();
 	await loadSqlConnections();
 });
-$("#sql-add-connection").onclick = () => {
-	$("#form-sql-connection").reset();
+function openSqlConnection(connection = null) {
+	editingSqlConnection = connection?.id || null;
+	const form = $("#form-sql-connection");
+	form.reset();
+	if (connection) {
+		for (const key of ["name", "host", "port", "username", "backup_directory"]) form.elements[key].value = connection[key];
+		form.elements.trust_certificate.checked = connection.trust_certificate;
+	}
+	form.elements.password.required = !connection;
+	$("#sql-password-help").hidden = !connection;
+	$("#sql-remove-connection").hidden = !connection;
+	$("#sql-connection-title").textContent = connection ? "Edit SQL connection" : "Add SQL connection";
 	$("#dlg-sql-connection").showModal();
-};
+}
+$("#sql-add-connection").onclick = () => openSqlConnection();
+$("#sql-edit-connection").onclick = () => run(() => {
+	const connection = sqlConnections.find((item) => item.id === sqlSelected());
+	if (!connection) throw new Error("SQL connection no longer exists.");
+	openSqlConnection(connection);
+});
+$("#dlg-sql-connection").addEventListener("close", () => {
+	$("#form-sql-connection").reset();
+	editingSqlConnection = null;
+});
 $("#sql-connection-cancel").onclick = () => $("#dlg-sql-connection").close();
 $("#form-sql-connection").onsubmit = (event) => {
 	event.preventDefault();
@@ -1865,8 +1891,9 @@ $("#form-sql-connection").onsubmit = (event) => {
 	const data = Object.fromEntries(new FormData(form));
 	data.port = Number(data.port);
 	data.trust_certificate = form.elements.trust_certificate.checked;
+	if (editingSqlConnection) data.id = editingSqlConnection;
 	run(async () => {
-		const saved = await api("/api/sql/connections", { json: data });
+		const saved = await api("/api/sql/connections", { method: data.id ? "PUT" : "POST", json: data });
 		form.reset();
 		$("#dlg-sql-connection").close();
 		await loadSqlConnections(saved.id);

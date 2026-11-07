@@ -66,7 +66,7 @@
     </div>
     <div class="panel sql-connection-bar">
       <label>Connection <select id="sql-connection"><option value="">Choose a connection...</option></select></label>
-      <button id="sql-remove-connection" type="button" hidden>Remove connection</button>
+      <button id="sql-edit-connection" type="button" hidden>Edit connection</button>
       <span class="spacer"></span>
       <button id="sql-refresh" type="button" hidden>Refresh</button>
     </div>
@@ -92,17 +92,18 @@
   </section>
   <dialog id="dlg-sql-connection">
     <form id="form-sql-connection">
-      <h2>Add SQL connection</h2>
+      <h2 id="sql-connection-title">Add SQL connection</h2>
       <label>Name <input name="name" required maxlength="100" placeholder="Local SQL Server"></label>
       <label>Hostname / IP <input name="host" required value="localhost"></label>
       <label>Port <input name="port" type="number" min="1" max="65535" required value="1433"></label>
       <label>SQL username <input name="username" required autocomplete="off" value="sa"></label>
       <label>Password <input name="password" type="password" required autocomplete="new-password"></label>
+      <p id="sql-password-help" class="hint" hidden>Leave the password blank to keep the saved password.</p>
       <label>Backup directory on SQL server <input name="backup_directory" required value="/var/opt/mssql/backup"></label>
       <label class="sql-trust-certificate"><input name="trust_certificate" type="checkbox" aria-describedby="sql-trust-help"><span>Trust server certificate</span></label>
       <p id="sql-trust-help" class="hint">Skip certificate validation only for a server you trust, such as one using a self-signed certificate.</p>
       <p class="hint">Saved on the admin server in a root-only file. The login needs database and backup administration privileges. sqlcmd must be installed on the admin server.</p>
-      <menu><button id="sql-connection-cancel" type="button">Cancel</button><button type="submit" class="primary">Save connection</button></menu>
+      <menu><button id="sql-remove-connection" type="button" class="danger" hidden>Remove connection</button><button id="sql-connection-cancel" type="button">Cancel</button><button type="submit" class="primary">Save connection</button></menu>
     </form>
   </dialog>
   <dialog id="dlg-sql-restore-login">

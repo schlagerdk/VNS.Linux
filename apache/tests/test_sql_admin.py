@@ -49,6 +49,21 @@ class SqlAdminTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 sql.add_connection(self.store, self.settings | change)
 
+    def test_edit_connection_keeps_password_id_and_rejects_duplicates(self):
+        first = sql.add_connection(self.store, self.settings)
+        second = sql.add_connection(self.store, self.settings | {"host": "other.example"})
+        sql.edit_connection(self.store, self.settings | {"name": "Renamed", "password": ""}, first)
+        saved = sql.connection(self.store, first)
+        self.assertEqual(saved["name"], "Renamed")
+        self.assertEqual(saved["password"], self.settings["password"])
+        sql.edit_connection(self.store, self.settings | {"password": "replacement"}, first)
+        self.assertEqual(sql.connection(self.store, first)["password"], "replacement")
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            sql.edit_connection(self.store, self.settings, second)
+        with self.assertRaisesRegex(ValueError, "Unknown SQL connection"):
+            sql.edit_connection(self.store, self.settings, "missing")
+        self.assertEqual(len(sql.connections(self.store)), 2)
+
     def test_duplicate_host_and_port_rejected_regardless_of_login(self):
         sql.add_connection(self.store, self.settings)
         original = self.store.read_bytes()
@@ -308,6 +323,11 @@ class SqlAdminTests(unittest.TestCase):
                                                    login="New", login_password="test-secret"))
             backup.assert_not_called()
 
+    def test_dot_host_is_local_but_remote_host_is_not(self):
+        self.assertTrue(sql.local_backup_access(self.settings | {"host": "."}))
+        self.assertTrue(sql.local_backup_access(self.settings | {"host": "localhost"}))
+        self.assertFalse(sql.local_backup_access(self.settings | {"host": "remote.example"}))
+
     def test_local_backup_delete_guards_and_whole_file_removal(self):
         root = Path(self.directory.name)
         path = root / "example.bak"
@@ -369,6 +389,13 @@ class SqlApiTests(unittest.TestCase):
         self.assertNotIn("test-only-secret", response.get_data(as_text=True))
         connection = response.json["connections"][0]["id"]
         self.assertEqual(response.json["id"], connection)
+        updated = self.client.put("/api/sql/connections", json={
+            "id": connection, "name": "Edited", "host": "localhost", "port": 1433, "username": "sa",
+            "password": "", "backup_directory": "/backup", "trust_certificate": True})
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json["id"], connection)
+        self.assertNotIn("password", updated.json["connections"][0])
+        self.assertEqual(sql.connection(self.store, connection)["password"], "test-only-secret")
         login_payload = dict(kind="sql_action", connection=connection, action="restore",
                              database="Uploaded", target="New", login="New", login_password="private-test-secret", backup_id=1)
         restore_argv = self.ns["build_command"](login_payload)[1]

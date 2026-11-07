@@ -48,6 +48,16 @@ def save_connections(path, items):
 
 
 def add_connection(path, data):
+    return edit_connection(path, data)
+
+
+def edit_connection(path, data, connection_id=None):
+    items = connections(path)
+    existing = next((item for item in items if item["id"] == connection_id), None)
+    if connection_id is not None and existing is None:
+        raise ValueError("Unknown SQL connection")
+    if existing and data.get("password", "") == "":
+        data = data | {"password": existing["password"]}
     fields = {}
     for key in ("name", "host", "username", "password", "backup_directory"):
         value = data.get(key)
@@ -64,12 +74,14 @@ def add_connection(path, data):
     trust = data.get("trust_certificate", False)
     if not isinstance(trust, bool):
         raise ValueError("Invalid certificate setting")
-    fields.update(id=uuid.uuid4().hex, port=port, trust_certificate=trust)
-    items = connections(path)
+    fields.update(id=connection_id or uuid.uuid4().hex, port=port, trust_certificate=trust)
     host = fields["host"].strip("[]").rstrip(".").casefold()
-    if any(item["host"].strip("[]").rstrip(".").casefold() == host and item["port"] == port for item in items):
+    if any(item["id"] != connection_id and item["host"].strip("[]").rstrip(".").casefold() == host and item["port"] == port for item in items):
         raise ValueError("A connection to this SQL host and port already exists")
-    items.append(fields)
+    if existing:
+        items = [fields if item["id"] == connection_id else item for item in items]
+    else:
+        items.append(fields)
     save_connections(path, items)
     return fields["id"]
 
@@ -281,6 +293,8 @@ def validate_restore_login(data):
 
 
 def local_backup_access(settings):
+    if settings["host"].strip() == ".":
+        return True
     host = settings["host"].strip("[]").rstrip(".").casefold()
     return host in {"localhost", "127.0.0.1", "::1", socket.gethostname().casefold(), socket.getfqdn().casefold()}
 

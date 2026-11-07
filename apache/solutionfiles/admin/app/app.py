@@ -588,15 +588,20 @@ def own_like_parent(path):
 
 # ----------------------------------------------------------------- sites API
 
-@app.route("/api/sql/connections", methods=["GET", "POST", "DELETE"])
+@app.route("/api/sql/connections", methods=["GET", "POST", "PUT", "DELETE"])
 def api_sql_connections():
     try:
         with SQL_LOCK:
-            if request.method == "POST":
+            if request.method in ("POST", "PUT"):
                 data = request.get_json(silent=True)
                 if not isinstance(data, dict):
                     abort(400, "Expected a connection object")
-                identifier = _sql_module.add_connection(SQL_CONNECTIONS, data)
+                if request.method == "PUT":
+                    if not isinstance(data.get("id"), str) or not data["id"]:
+                        abort(400, "Select a SQL connection")
+                    identifier = _sql_module.edit_connection(SQL_CONNECTIONS, data, data["id"])
+                else:
+                    identifier = _sql_module.add_connection(SQL_CONNECTIONS, data)
                 return jsonify(connections=_sql_module.public_connections(SQL_CONNECTIONS), id=identifier)
             elif request.method == "DELETE":
                 data = request.get_json(silent=True)
