@@ -1645,17 +1645,17 @@ function groupSqlBackups(backups) {
 		groups.get(backup.database_name).push(backup);
 	}
 	for (const entries of groups.values()) {
-		entries.sort((a, b) => b.finished.localeCompare(a.finished) || b.id - a.id);
+		entries.sort((a, b) => b.finished.localeCompare(a.finished) || String(b.id).localeCompare(String(a.id)));
 	}
 	return [...groups.values()];
 }
 
 function sqlBackupRow(backup) {
 	return el("tr", {}, el("td", { textContent: backup.database_name }),
-		el("td", { textContent: backup.finished }), el("td", { textContent: backup.size_mb + " MB" }),
+		el("td", { textContent: backup.finished || "Unavailable" }), el("td", { textContent: backup.size_mb === null ? "Unavailable" : backup.size_mb + " MB" }),
 		el("td", { textContent: backup.path }), el("td", {}, el("button", {
 			textContent: "Restore", disabled: backup.media_count !== 1,
-			title: backup.media_count !== 1 ? "Striped backups are not supported" : "Restore this full backup",
+			title: backup.error || (backup.media_count !== 1 ? "Striped or damaged backups are not supported" : "Restore this full backup"),
 			onclick: () => run(() => sqlRestore(backup)),
 		})));
 }
@@ -1706,7 +1706,11 @@ async function refreshSql() {
 		const hasUserDatabases = data.databases.some((database) => database.id > 4);
 		$("#sql-backup-all").hidden = !hasUserDatabases;
 		$("#sql-user-databases-table").hidden = !hasUserDatabases;
-		$("#sql-status").textContent = `${data.databases.length} databases · ${data.backups.length} recorded full backups`;
+		const fileErrors = data.backups.filter((backup) => backup.error);
+		$("#sql-status").textContent = `${data.databases.length} databases · ${data.backups.length} backups`;
+		if (fileErrors.length) {
+			$("#sql-status").textContent += " · " + fileErrors.map((backup) => `${backup.path}: ${backup.error}`).join(" · ");
+		}
 		const systemCount = data.databases.filter((database) => database.id <= 4).length;
 		$("#sql-system-databases").hidden = !systemCount;
 		$("#sql-system-summary").textContent = `System databases (${systemCount})`;

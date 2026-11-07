@@ -1,5 +1,6 @@
 """SQL Server admin operations using sqlcmd and server-side backup paths."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -147,7 +148,7 @@ GROUP BY d.name,d.database_id,d.state_desc,d.recovery_model_desc ORDER BY d.name
 
 
 def backups(settings):
-    return query_json(settings, """
+    history = query_json(settings, """
 SELECT TOP (200) b.backup_set_id AS id, b.database_name AS database_name,
  CONVERT(varchar(30),b.backup_finish_date,126) AS finished,
  CAST(b.backup_size/1048576.0 AS decimal(18,1)) AS size_mb,
@@ -156,6 +157,62 @@ SELECT TOP (200) b.backup_set_id AS id, b.database_name AS database_name,
 FROM msdb.dbo.backupset b JOIN msdb.dbo.backupmediafamily m ON m.media_set_id=b.media_set_id
 WHERE b.type='D' AND m.family_sequence_number=1 AND m.device_type=2
 ORDER BY b.backup_finish_date DESC""")
+    files = query_json(settings, f"""
+DECLARE @files TABLE (subdirectory nvarchar(512), depth int, is_file bit);
+INSERT INTO @files EXEC master.sys.xp_dirtree {literal(settings["backup_directory"])}, 1, 1;
+SELECT subdirectory AS name FROM @files WHERE is_file=1 AND LOWER(RIGHT(subdirectory,4))='.bak'""")
+    known_paths = {item["path"] for item in history}
+    separator = "\\" if "\\" in settings["backup_directory"] else "/"
+    for entry in files:
+        filename = entry["name"]
+        if not filename or any(char in filename for char in ("/", "\\", "\0")):
+            raise ValueError("SQL Server returned an invalid backup filename")
+        path = settings["backup_directory"].rstrip("/\\") + separator + filename
+        if path in known_paths:
+            continue
+        try:
+            media = backup_table(settings, f"RESTORE LABELONLY FROM DISK={literal(path)};")
+            if len(media) != 1:
+                raise ValueError("Cannot read backup media information")
+            family_count = int(media[0]["FamilyCount"])
+            headers = backup_table(settings, f"RESTORE HEADERONLY FROM DISK={literal(path)};")
+            full = [header for header in headers if header["BackupType"] == "1"]
+            if not full:
+                raise ValueError("File contains no full database backup")
+            for header in full:
+                position = int(header["Position"])
+                if position < 1:
+                    raise ValueError("Invalid backup position")
+                key = path + "\0" + str(position) + "\0" + header["BackupSetGUID"]
+                history.append({
+                    "id": "file-" + hashlib.sha256(key.encode("utf-8")).hexdigest(),
+                    "database_name": header["DatabaseName"], "finished": header["BackupFinishDate"].replace(" ", "T", 1),
+                    "size_mb": round(int(header["BackupSize"]) / 1048576, 1),
+                    "path": path, "position": position,
+                    "media_count": family_count if header.get("IsDamaged") == "0" else 0,
+                    "source": "file",
+                })
+        except (ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as exc:
+            print(f"Cannot read backup file {path}: {exc}", file=sys.stderr, flush=True)
+            history.append({"id": "file-" + hashlib.sha256(path.encode("utf-8")).hexdigest(),
+                            "database_name": filename, "finished": "", "size_mb": None, "path": path,
+                            "position": 0, "media_count": 0, "source": "file", "error": str(exc)})
+    return history
+
+
+def backup_table(settings, query):
+    output = execute(settings, query, table=True, timeout=30)
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if len(lines) < 3:
+        raise ValueError("SQL Server returned no backup metadata")
+    columns = [column.strip() for column in lines[0].split("|")]
+    rows = []
+    for line in lines[2:]:
+        values = [value.strip() for value in line.split("|")]
+        if len(values) != len(columns):
+            raise ValueError("Invalid backup metadata columns")
+        rows.append(dict(zip(columns, values)))
+    return rows
 
 
 def backup(settings, name):
@@ -262,7 +319,10 @@ END CATCH;""")
         if action == "copy":
             path, position = backup(settings, name), 1
         else:
-            if isinstance(data.get("backup_id"), bool) or not isinstance(data.get("backup_id"), int):
+            backup_id = data.get("backup_id")
+            if isinstance(backup_id, bool) or not (
+                isinstance(backup_id, int) or isinstance(backup_id, str) and re.fullmatch(r"file-[0-9a-f]{64}", backup_id)
+            ):
                 raise ValueError("Select a valid backup")
             selected = next((item for item in backups(settings) if item["id"] == data.get("backup_id")), None)
             if not selected or selected["media_count"] != 1:

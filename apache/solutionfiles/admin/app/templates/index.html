@@ -86,7 +86,7 @@
       </details>
     </div>
     <div id="sql-backups-panel" class="panel sql-table" hidden><h3>Full backups</h3>
-      <p class="hint">Latest 200 full disk backups recorded in SQL Server history, grouped by database. Expand older backups to see the history. Paths are on the SQL server; files may have been overwritten, moved or deleted.</p>
+      <p class="hint">Latest 200 full disk backups from SQL Server history, plus .bak files in the connection's backup directory that are not in that history. Grouped by database; expand older backups to see more. Paths are on the SQL server; historical files may have been overwritten, moved or deleted.</p>
       <table><thead><tr><th>Database</th><th>Finished</th><th>Size</th><th>Server path</th><th>Actions</th></tr></thead><tbody id="sql-backups"></tbody></table>
     </div>
   </section>

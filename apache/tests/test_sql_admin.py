@@ -123,6 +123,69 @@ class SqlAdminTests(unittest.TestCase):
             self.assertEqual(sql.query_json(self.settings, "SELECT 1 AS value WHERE 1=0"), [])
             self.assertEqual(sql.backups(self.settings), [])
 
+    def test_uploaded_backup_is_discovered_and_restore_rechecks_metadata(self):
+        header = dict(BackupType="1", Position="2", BackupSetGUID="guid-1", DatabaseName="Uploaded",
+                      BackupFinishDate="2026-11-07 12:00:00", BackupSize="1048576", IsDamaged="0")
+        with patch.object(sql, "query_json", side_effect=[[], [{"name": "uploaded.bak"}]]) as query, \
+                patch.object(sql, "backup_table", side_effect=[[{"FamilyCount": "1"}], [header]]):
+            records = sql.backups(self.settings)
+        self.assertIn("xp_dirtree", query.call_args.args[1])
+        selected = records[0]
+        self.assertEqual(selected["path"], "/var/opt/mssql/backup/uploaded.bak")
+        self.assertEqual(selected["position"], 2)
+        self.assertEqual(selected["size_mb"], 1)
+        self.assertEqual(selected["media_count"], 1)
+        self.assertRegex(selected["id"], r"^file-[0-9a-f]{64}$")
+        with patch.object(sql, "databases", return_value=self.rows), \
+                patch.object(sql, "backups", return_value=records), patch.object(sql, "restore") as restore:
+            sql.run_action(self.settings, dict(action="restore", database="Uploaded", target="New",
+                                               backup_id=selected["id"]))
+            restore.assert_called_once_with(self.settings, "New", selected["path"], 2, False)
+        with patch.object(sql, "databases", return_value=self.rows), \
+                patch.object(sql, "backups", return_value=[]), patch.object(sql, "restore") as restore:
+            with self.assertRaisesRegex(ValueError, "Backup not found"):
+                sql.run_action(self.settings, dict(action="restore", database="Uploaded", target="New",
+                                                   backup_id=selected["id"]))
+            restore.assert_not_called()
+
+    def test_history_files_are_not_duplicated_and_unknown_files_report_errors(self):
+        record = dict(id=1, path="/var/opt/mssql/backup/known.bak")
+        with patch.object(sql, "query_json", side_effect=[[record], [{"name": "known.bak"}, {"name": "bad.bak"}]]), \
+                patch.object(sql, "backup_table", side_effect=RuntimeError("Cannot open backup")), \
+                patch.object(sys, "stderr"):
+            records = sql.backups(self.settings)
+        self.assertEqual(records[0], record)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[1]["media_count"], 0)
+        self.assertIn("Cannot open backup", records[1]["error"])
+
+    def test_backup_metadata_parser_handles_numeric_padding(self):
+        with patch.object(sql, "execute", return_value="Position|BackupType|DatabaseName\n--------|----------|------------\n    2|    1|Uploaded\n"):
+            self.assertEqual(sql.backup_table(self.settings, "RESTORE HEADERONLY"),
+                             [dict(Position="2", BackupType="1", DatabaseName="Uploaded")])
+
+    def test_directory_filenames_cannot_escape_backup_directory(self):
+        with patch.object(sql, "query_json", side_effect=[[], [{"name": "../other.bak"}]]):
+            with self.assertRaisesRegex(ValueError, "invalid backup filename"):
+                sql.backups(self.settings)
+
+    def test_discovered_striped_or_damaged_backups_cannot_be_restored(self):
+        header = dict(BackupType="1", Position="1", BackupSetGUID="guid", DatabaseName="Uploaded",
+                      BackupFinishDate="2026-11-07 12:00:00", BackupSize="1", IsDamaged="0")
+        for family_count, damaged in (("2", "0"), ("1", "1")):
+            with self.subTest(family_count=family_count, damaged=damaged):
+                with patch.object(sql, "query_json", side_effect=[[], [{"name": "uploaded.bak"}]]), \
+                        patch.object(sql, "backup_table", side_effect=[
+                            [{"FamilyCount": family_count}], [header | {"IsDamaged": damaged}]]):
+                    records = sql.backups(self.settings)
+                self.assertNotEqual(records[0]["media_count"], 1)
+                with patch.object(sql, "databases", return_value=self.rows), \
+                        patch.object(sql, "backups", return_value=records), patch.object(sql, "restore") as restore:
+                    with self.assertRaisesRegex(ValueError, "Backup not found"):
+                        sql.run_action(self.settings, dict(action="restore", database="Uploaded", target="New",
+                                                           backup_id=records[0]["id"]))
+                    restore.assert_not_called()
+
     def test_sql_errors_never_become_success(self):
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), patch.object(
                 sql.subprocess, "run", return_value=Mock(returncode=1, stdout="", stderr="Access denied")):
