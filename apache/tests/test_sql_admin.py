@@ -63,7 +63,7 @@ class SqlAdminTests(unittest.TestCase):
             self.assertNotIn("-h", args)
             self.assertEqual(args[args.index("-y") + 1], "0")
             self.assertIn("SET NOCOUNT ON;", Path(filename).read_text())
-            self.assertIn("FOR JSON PATH) AS vns_json;", Path(filename).read_text())
+            self.assertIn("FOR JSON PATH), N'[]') AS vns_json;", Path(filename).read_text())
             return Mock(returncode=0, stdout="[]\n", stderr="")
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), patch.object(sql.subprocess, "run", side_effect=run):
             self.assertEqual(sql.query_json(self.settings, "SELECT 1 AS value"), [])
@@ -100,6 +100,17 @@ class SqlAdminTests(unittest.TestCase):
         with patch.object(sql, "execute", return_value=output):
             self.assertEqual(sql.query_json(self.settings, "SELECT name FROM sys.databases"),
                              [{"name": name} for name in ("master", "tempdb", "model", "msdb")])
+
+    def test_empty_result_is_coalesced_to_json_array_in_sql(self):
+        def run(args, **kwargs):
+            query = Path(args[args.index("-i") + 1]).read_text()
+            output = "[]\n" if "COALESCE((" in query and "), N'[]')" in query else "NULL\n"
+            return Mock(returncode=0, stdout=output, stderr="")
+
+        with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), \
+                patch.object(sql.subprocess, "run", side_effect=run):
+            self.assertEqual(sql.query_json(self.settings, "SELECT 1 AS value WHERE 1=0"), [])
+            self.assertEqual(sql.backups(self.settings), [])
 
     def test_sql_errors_never_become_success(self):
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), patch.object(

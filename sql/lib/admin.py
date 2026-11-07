@@ -118,7 +118,7 @@ def execute(settings, query, table=False, timeout=3600):
 
 
 def query_json(settings, query):
-    output = execute(settings, "SELECT (" + query + " FOR JSON PATH) AS vns_json;", timeout=30)
+    output = execute(settings, "SELECT COALESCE((" + query + " FOR JSON PATH), N'[]') AS vns_json;", timeout=30)
     lines = output.splitlines()
     while lines and not lines[0].strip():
         lines.pop(0)

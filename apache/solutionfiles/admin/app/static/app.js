@@ -921,7 +921,7 @@ document.addEventListener("keydown", (event) => {
 });
 setInterval(() => {
 	const busy = document.activeElement && $("#view-sites").contains(document.activeElement) && document.activeElement.tagName !== "BODY";
-	if (!document.hidden && !busy && !document.querySelector("dialog[open]")) loadSites().catch(() => {});
+	if (!document.hidden && currentView !== "sql" && !busy && !document.querySelector("dialog[open]")) loadSites().catch(() => {});
 }, 15000);
 
 // ------------------------------------------------------------------ account
@@ -1638,6 +1638,28 @@ let sqlConnections = [];
 let sqlSnapshot = { databases: [], backups: [] };
 let sqlLoadGeneration = 0;
 
+function groupSqlBackups(backups) {
+	const groups = new Map();
+	for (const backup of backups) {
+		if (!groups.has(backup.database_name)) groups.set(backup.database_name, []);
+		groups.get(backup.database_name).push(backup);
+	}
+	for (const entries of groups.values()) {
+		entries.sort((a, b) => b.finished.localeCompare(a.finished) || b.id - a.id);
+	}
+	return [...groups.values()];
+}
+
+function sqlBackupRow(backup) {
+	return el("tr", {}, el("td", { textContent: backup.database_name }),
+		el("td", { textContent: backup.finished }), el("td", { textContent: backup.size_mb + " MB" }),
+		el("td", { textContent: backup.path }), el("td", {}, el("button", {
+			textContent: "Restore", disabled: backup.media_count !== 1,
+			title: backup.media_count !== 1 ? "Striped backups are not supported" : "Restore this full backup",
+			onclick: () => run(() => sqlRestore(backup)),
+		})));
+}
+
 function sqlSelected() {
 	const id = $("#sql-connection").value;
 	if (!id) throw new Error("Choose a SQL connection.");
@@ -1683,14 +1705,16 @@ async function refreshSql() {
 				el("td", { textContent: database.size_mb + " MB" }), el("td", { textContent: database.state }),
 				el("td", { textContent: database.recovery }), el("td", {}, actions)));
 		}
-		for (const backup of data.backups) {
-			$("#sql-backups").append(el("tr", {}, el("td", { textContent: backup.database_name }),
-				el("td", { textContent: backup.finished }), el("td", { textContent: backup.size_mb + " MB" }),
-				el("td", { textContent: backup.path }), el("td", {}, el("button", {
-					textContent: "Restore", disabled: backup.media_count !== 1,
-					title: backup.media_count !== 1 ? "Striped backups are not supported" : "Restore this full backup",
-					onclick: () => run(() => sqlRestore(backup)),
-				}))));
+		for (const [latest, ...older] of groupSqlBackups(data.backups)) {
+			$("#sql-backups").append(sqlBackupRow(latest));
+			if (older.length) {
+				const history = el("details", { className: "sql-backup-history" },
+					el("summary", { textContent: `${older.length} older backup${older.length === 1 ? "" : "s"} for ${latest.database_name}` }),
+					el("table", {},
+						el("thead", {}, el("tr", {}, ...["Database", "Finished", "Size", "Server path", "Actions"].map((label) => el("th", { textContent: label })))),
+						el("tbody", {}, ...older.map(sqlBackupRow))));
+				$("#sql-backups").append(el("tr", {}, el("td", { colSpan: 5 }, history)));
+			}
 		}
 		decorateSql();
 	} catch (error) {

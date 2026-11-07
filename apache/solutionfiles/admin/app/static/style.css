@@ -55,6 +55,8 @@ main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
 #btn-empty-new-site { display: inline-flex; align-items: center; gap: 10px; padding: 13px 28px; font-size: 16px; border-radius: 10px; box-shadow: 0 4px 24px rgba(63, 185, 80, .2); }
 #btn-empty-new-site .ico { width: 20px; height: 20px; }
 .hint { color: var(--muted); font-size: 12px; }
+.sql-backup-history summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
+.sql-backup-history table { margin-top: 8px; }
 .error { color: var(--red); }
 #search { min-width: 260px; }
 
