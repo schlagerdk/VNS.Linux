@@ -1666,8 +1666,7 @@ function sqlSelected() {
 	return id;
 }
 
-async function loadSqlConnections() {
-	const selected = $("#sql-connection").value;
+async function loadSqlConnections(selected = $("#sql-connection").value) {
 	const data = await api("/api/sql/connections");
 	sqlConnections = data.connections;
 	const select = $("#sql-connection");
@@ -1821,10 +1820,10 @@ $("#form-sql-connection").onsubmit = (event) => {
 	data.port = Number(data.port);
 	data.trust_certificate = form.elements.trust_certificate.checked;
 	run(async () => {
-		await api("/api/sql/connections", { json: data });
+		const saved = await api("/api/sql/connections", { json: data });
 		form.reset();
 		$("#dlg-sql-connection").close();
-		await loadSqlConnections();
+		await loadSqlConnections(saved.id);
 	});
 };
 decorateSql();

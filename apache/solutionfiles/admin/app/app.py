@@ -596,7 +596,8 @@ def api_sql_connections():
                 data = request.get_json(silent=True)
                 if not isinstance(data, dict):
                     abort(400, "Expected a connection object")
-                _sql_module.add_connection(SQL_CONNECTIONS, data)
+                identifier = _sql_module.add_connection(SQL_CONNECTIONS, data)
+                return jsonify(connections=_sql_module.public_connections(SQL_CONNECTIONS), id=identifier)
             elif request.method == "DELETE":
                 data = request.get_json(silent=True)
                 if not isinstance(data, dict):

@@ -217,6 +217,7 @@ class SqlApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("test-only-secret", response.get_data(as_text=True))
         connection = response.json["connections"][0]["id"]
+        self.assertEqual(response.json["id"], connection)
         argv = self.ns["build_command"]({"kind": "sql_action", "connection": connection, "action": "backup_all"})[1]
         self.assertNotIn("test-only-secret", json.dumps(argv))
         self.assertEqual(json.loads(argv[-1]), {"action": "backup_all"})
