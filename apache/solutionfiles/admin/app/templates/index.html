@@ -106,7 +106,7 @@
       <fieldset id="sql-ssh-fields" hidden disabled>
         <legend>Linux server access</legend>
         <p class="hint">Use the same Linux server that hosts this SQL instance. The SSH user must be able to read and delete files in the backup directory; sudo is not used. Python 3 is required on the Linux server.</p>
-        <label>SSH hostname / IP <input name="ssh_host" required autocomplete="off"></label>
+        <label>SSH hostname / IP <input name="ssh_host" readonly autocomplete="off"></label>
         <label>SSH port <input name="ssh_port" type="number" min="1" max="65535" value="22" required></label>
         <label>SSH username <input name="ssh_username" required autocomplete="off"></label>
         <label>SSH password <input name="ssh_password" type="password" autocomplete="new-password"></label>

@@ -69,16 +69,25 @@ class SqlAdminTests(unittest.TestCase):
                       ssh_username="backup", ssh_password="ssh-only-test-secret")
         connection = sql.add_connection(self.store, self.settings | fields)
         public = sql.public_connections(self.store)[0]
-        self.assertEqual(public["ssh_host"], "linux.example")
+        self.assertEqual(public["ssh_host"], "localhost")
         self.assertNotIn("ssh_password", public)
         sql.edit_connection(self.store, self.settings | fields | {"ssh_password": ""}, connection)
         self.assertEqual(sql.connection(self.store, connection)["ssh_password"], fields["ssh_password"])
-        for invalid in ({"ssh_host": None}, {"ssh_username": "-root"}, {"ssh_port": True},
+        for invalid in ({"ssh_username": "-root"}, {"ssh_port": True},
                         {"ssh_port": 0}, {"ssh_password": "\0"}, {"backup_directory": "C:\\Backups"}):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 sql.edit_connection(self.store, self.settings | fields | invalid, connection)
         sql.edit_connection(self.store, self.settings | {"ssh_enabled": False}, connection)
         self.assertNotIn("ssh_password", sql.connection(self.store, connection))
+
+    def test_saved_ssh_host_follows_sql_host_and_ignores_submitted_ssh_host(self):
+        fields = self.settings | dict(ssh_enabled=True, ssh_host="wrong.example", ssh_username="backup", ssh_port=22)
+        connection = sql.add_connection(self.store, fields)
+        self.assertEqual(sql.connection(self.store, connection)["ssh_host"], "localhost")
+        sql.edit_connection(self.store, fields | {"host": "sql.example"}, connection)
+        self.assertEqual(sql.connection(self.store, connection)["ssh_host"], "sql.example")
+        sql.edit_connection(self.store, fields | {"host": "."}, connection)
+        self.assertEqual(sql.connection(self.store, connection)["ssh_host"], "localhost")
 
     def test_duplicate_host_and_port_rejected_regardless_of_login(self):
         sql.add_connection(self.store, self.settings)

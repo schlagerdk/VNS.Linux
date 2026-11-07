@@ -1872,9 +1872,8 @@ function openSqlConnection(connection = null) {
 		form.elements.trust_certificate.checked = connection.trust_certificate;
 	}
 	form.elements.ssh_enabled.checked = connection?.ssh_enabled || false;
-	const sshHost = connection?.host === "." ? "localhost" : connection?.host || "";
-	for (const key of ["ssh_host", "ssh_port", "ssh_username"]) {
-		form.elements[key].value = connection?.[key] || (key === "ssh_port" ? 22 : key === "ssh_host" ? sshHost : "");
+	for (const key of ["ssh_port", "ssh_username"]) {
+		form.elements[key].value = connection?.[key] || (key === "ssh_port" ? 22 : "");
 	}
 	updateSqlSshFields();
 	form.elements.password.required = !connection;
@@ -1888,11 +1887,10 @@ function updateSqlSshFields() {
 	const enabled = form.elements.ssh_enabled.checked;
 	$("#sql-ssh-fields").hidden = !enabled;
 	$("#sql-ssh-fields").disabled = !enabled;
-	if (enabled && !form.elements.ssh_host.value) {
-		form.elements.ssh_host.value = form.elements.host.value === "." ? "localhost" : form.elements.host.value;
-	}
+	form.elements.ssh_host.value = form.elements.host.value;
 }
 $("#form-sql-connection").elements.ssh_enabled.onchange = updateSqlSshFields;
+$("#form-sql-connection").elements.host.oninput = updateSqlSshFields;
 $("#sql-add-connection").onclick = () => openSqlConnection();
 $("#sql-edit-connection").onclick = () => run(() => {
 	const connection = sqlConnections.find((item) => item.id === sqlSelected());

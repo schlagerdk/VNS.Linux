@@ -111,7 +111,7 @@ def edit_connection(path, data, connection_id=None):
     if not isinstance(trust, bool):
         raise ValueError("Invalid certificate setting")
     fields.update(id=connection_id or uuid.uuid4().hex, port=port, trust_certificate=trust)
-    fields.update(ssh_settings(data, existing))
+    fields.update(ssh_settings(data | {"ssh_host": fields["host"] if fields["host"] != "." else "localhost"}, existing))
     if fields["ssh_enabled"] and (not fields["backup_directory"].startswith("/") or "\\" in fields["backup_directory"]):
         raise ValueError("Linux SSH backup access requires an absolute Linux backup directory")
     host = fields["host"].strip("[]").rstrip(".").casefold()
