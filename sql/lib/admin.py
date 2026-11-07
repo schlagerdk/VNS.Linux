@@ -103,7 +103,7 @@ def execute(settings, query, table=False, timeout=3600):
             stream.write("SET NOCOUNT ON;\n" + query + "\n")
         args = [tool, "-S", f'tcp:{settings["host"]},{settings["port"]}', "-U", settings["username"],
                 "-d", "master", "-b", "-x", "-r", "1", "-l", "15", "-t", "0", "-w", "65535", "-f", "65001", "-i", filename]
-        args += ["-W", "-s", "|"] if table else ["-h", "-1", "-y", "0"]
+        args += ["-W", "-s", "|"] if table else ["-h", "-1"]
         if settings["trust_certificate"]:
             args.append("-C")
         result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
@@ -118,8 +118,17 @@ def execute(settings, query, table=False, timeout=3600):
 
 
 def query_json(settings, query):
-    output = execute(settings, query + " FOR JSON PATH;", timeout=30)
-    data = json.loads("".join(line.strip() for line in output.splitlines()))
+    output = execute(settings, """
+DECLARE @vns_json nvarchar(max) = (
+""" + query + """ FOR JSON PATH
+);
+WHILE LEN(@vns_json) > 0
+BEGIN
+ PRINT LEFT(@vns_json, 4000);
+ SET @vns_json = SUBSTRING(@vns_json, 4001, 2147483647);
+END;
+""", timeout=30)
+    data = json.loads("".join(output.splitlines()))
     if not isinstance(data, list):
         raise ValueError("Invalid SQL Server response")
     return data

@@ -60,11 +60,22 @@ class SqlAdminTests(unittest.TestCase):
             self.assertIn("-b", args)
             self.assertIn("-x", args)
             self.assertNotIn("-C", args)
+            self.assertNotIn("-y", args)
+            self.assertEqual(args[args.index("-h") + 1], "-1")
             self.assertIn("SET NOCOUNT ON;", Path(filename).read_text())
+            self.assertIn("PRINT LEFT(@vns_json, 4000)", Path(filename).read_text())
             return Mock(returncode=0, stdout="[]", stderr="")
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), patch.object(sql.subprocess, "run", side_effect=run):
             self.assertEqual(sql.query_json(self.settings, "SELECT 1 AS value"), [])
         self.assertFalse(Path(filenames[0]).exists())
+
+    def test_long_json_chunks_preserve_spaces_at_chunk_boundaries(self):
+        expected = [{"name": "a" * 3985 + " middle " + "b" * 5000}]
+        encoded = json.dumps(expected)
+        boundary = encoded.index(" middle") + 1
+        output = encoded[:boundary] + "\n" + encoded[boundary:] + "\n"
+        with patch.object(sql, "execute", return_value=output):
+            self.assertEqual(sql.query_json(self.settings, "SELECT name"), expected)
 
     def test_sql_errors_never_become_success(self):
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), patch.object(

@@ -82,7 +82,8 @@
       <label>SQL username <input name="username" required autocomplete="off" value="sa"></label>
       <label>Password <input name="password" type="password" required autocomplete="new-password"></label>
       <label>Backup directory on SQL server <input name="backup_directory" required value="/var/opt/mssql/backup"></label>
-      <label><input name="trust_certificate" type="checkbox">Trust server certificate (only for a trusted/self-signed server)</label>
+      <label class="sql-trust-certificate"><input name="trust_certificate" type="checkbox" aria-describedby="sql-trust-help"><span>Trust server certificate</span></label>
+      <p id="sql-trust-help" class="hint">Skip certificate validation only for a server you trust, such as one using a self-signed certificate.</p>
       <p class="hint">Saved on the admin server in a root-only file. The login needs database and backup administration privileges. sqlcmd must be installed on the admin server.</p>
       <menu><button id="sql-connection-cancel" type="button">Cancel</button><button type="submit" class="primary">Save connection</button></menu>
     </form>
