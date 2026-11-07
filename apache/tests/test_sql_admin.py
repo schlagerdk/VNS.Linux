@@ -64,6 +64,22 @@ class SqlAdminTests(unittest.TestCase):
             sql.edit_connection(self.store, self.settings, "missing")
         self.assertEqual(len(sql.connections(self.store)), 2)
 
+    def test_ssh_connection_credentials_are_validated_preserved_and_redacted(self):
+        fields = dict(ssh_enabled=True, ssh_host="linux.example", ssh_port=2222,
+                      ssh_username="backup", ssh_password="ssh-only-test-secret")
+        connection = sql.add_connection(self.store, self.settings | fields)
+        public = sql.public_connections(self.store)[0]
+        self.assertEqual(public["ssh_host"], "linux.example")
+        self.assertNotIn("ssh_password", public)
+        sql.edit_connection(self.store, self.settings | fields | {"ssh_password": ""}, connection)
+        self.assertEqual(sql.connection(self.store, connection)["ssh_password"], fields["ssh_password"])
+        for invalid in ({"ssh_host": None}, {"ssh_username": "-root"}, {"ssh_port": True},
+                        {"ssh_port": 0}, {"ssh_password": "\0"}, {"backup_directory": "C:\\Backups"}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                sql.edit_connection(self.store, self.settings | fields | invalid, connection)
+        sql.edit_connection(self.store, self.settings | {"ssh_enabled": False}, connection)
+        self.assertNotIn("ssh_password", sql.connection(self.store, connection))
+
     def test_duplicate_host_and_port_rejected_regardless_of_login(self):
         sql.add_connection(self.store, self.settings)
         original = self.store.read_bytes()
@@ -356,6 +372,70 @@ class SqlAdminTests(unittest.TestCase):
                 sql.backup_files_for_deletion(settings, "Example", 1)
         self.assertTrue(path.exists())
 
+    def test_remote_linux_backup_delete_uses_ssh_without_sudo_or_password_arguments(self):
+        root = Path(self.directory.name)
+        path = root / "remote.bak"
+        path.write_bytes(b"backup")
+        settings = self.settings | dict(host="sql.example", backup_directory=str(root),
+                                        ssh_enabled=True, ssh_host="linux.example", ssh_port=2222,
+                                        ssh_username="backup", ssh_password="ssh-only-test-secret")
+        record = dict(id=1, database_name="Example", path=str(path))
+        commands = []
+
+        def run(args, **kwargs):
+            commands.append((args, kwargs))
+            self.assertNotIn(settings["ssh_password"], json.dumps(args))
+            self.assertEqual(kwargs["env"]["SSHPASS"], settings["ssh_password"])
+            self.assertEqual(args[:2], ["/test/sshpass", "-e"])
+            self.assertIn("StrictHostKeyChecking=accept-new", args)
+            self.assertEqual(args[-2], "backup@linux.example")
+            self.assertNotIn("sudo", args[-1])
+            response = sql._file_module.operate(json.loads(kwargs["input"]))
+            return Mock(returncode=0, stdout=json.dumps(response), stderr="")
+
+        with patch.object(sql.shutil, "which", side_effect=lambda tool: "/test/" + tool), \
+                patch.object(sql.subprocess, "run", side_effect=run), \
+                patch.object(sql, "backups", return_value=[record]), \
+                patch.object(sql, "backup_table", return_value=[{"DatabaseName": "Example"}]):
+            files = sql.backup_files_for_deletion(settings, "Example", 1)
+            sql.delete_backup_files(files, settings)
+        self.assertFalse(path.exists())
+        self.assertEqual([json.loads(kwargs["input"])["operation"] for _, kwargs in commands], ["inspect", "delete"])
+
+    def test_remote_backup_failures_are_explicit_and_key_login_uses_batch_mode(self):
+        settings = self.settings | dict(host="sql.example", ssh_enabled=True, ssh_host="linux.example",
+                                        ssh_port=22, ssh_username="backup", ssh_password="")
+        with patch.object(sql.shutil, "which", return_value="/test/ssh"), \
+                patch.object(sql.subprocess, "run", return_value=Mock(returncode=1, stderr="Permission denied")) as run:
+            with self.assertRaisesRegex(RuntimeError, "Permission denied"):
+                sql.file_operation(settings, "delete", {"/backup/file.bak": [1, 2]})
+            self.assertIn("BatchMode=yes", run.call_args.args[0])
+        with patch.object(sql.shutil, "which", return_value="/test/ssh"), \
+                patch.object(sql.subprocess, "run", return_value=Mock(returncode=0, stderr="", stdout="{}")):
+            with self.assertRaisesRegex(ValueError, "every file"):
+                sql.file_operation(settings, "delete", {"/backup/file.bak": [1, 2]})
+
+    def test_remote_file_helper_refuses_symlinks_outside_paths_and_replaced_files(self):
+        root = Path(self.directory.name)
+        file = root / "file.bak"
+        file.write_bytes(b"backup")
+        link = root / "link.bak"
+        link.symlink_to(file)
+        for path in (str(link), "/outside/file.bak"):
+            with self.assertRaises((OSError, ValueError)):
+                sql._file_module.operate(dict(directory=str(root), operation="inspect", files={path: None}))
+        with self.assertRaisesRegex(ValueError, "changed"):
+            sql._file_module.operate(dict(directory=str(root), operation="delete", files={str(file): [0, 0]}))
+        self.assertTrue(file.exists())
+
+    def test_deleted_remote_history_file_is_hidden_with_ssh_access(self):
+        settings = self.settings | dict(host="remote.example", backup_directory="/backup", ssh_enabled=True)
+        record = dict(id=1, path="/backup/missing.bak", database_name="Example")
+        with patch.object(sql, "query_json", side_effect=[[record], []]), \
+                patch.object(sql, "file_operation", return_value={}) as operation:
+            self.assertEqual(sql.backups(settings), [])
+        operation.assert_called_once_with(settings, "inspect", {"/backup/missing.bak": None}, skip_missing=True)
+
     def test_drop_prevalidates_files_and_deletes_only_after_sql_success(self):
         data = dict(action="drop", database="Example", confirmation="Example", delete_backups=True)
         with patch.object(sql, "databases", return_value=self.rows), \
@@ -386,6 +466,14 @@ class SqlAdminTests(unittest.TestCase):
             sql.run_action(self.settings, dict(action="drop", database="Example", confirmation="Example"))
         self.assertIn("DROP DATABASE [Example]", execute.call_args_list[0].args[1])
         self.assertEqual(execute.call_args_list[1].args[1], "DROP LOGIN [different_login];")
+
+    def test_database_drop_can_keep_associated_logins(self):
+        with patch.object(sql, "databases", return_value=self.rows), \
+                patch.object(sql, "exclusive_database_logins") as logins, patch.object(sql, "execute") as execute:
+            sql.run_action(self.settings, dict(action="drop", database="Example", confirmation="Example",
+                                               delete_login=False))
+        logins.assert_not_called()
+        self.assertEqual(execute.call_count, 1)
 
     def test_deleted_local_file_disappears_from_history_listing(self):
         path = Path(self.directory.name) / "deleted.bak"

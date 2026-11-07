@@ -145,12 +145,14 @@ a.link:hover { text-decoration: underline; }
 #form-sql-connection input[type=checkbox] { width: auto; }
 #dlg-sql-connection { width: min(520px, 92vw); min-width: 0; max-height: 90vh; overflow-y: auto; }
 #dlg-sql-restore-login { width: min(520px, 92vw); min-width: 0; max-height: 90vh; overflow-y: auto; }
-#prompt-checkbox-row { flex-direction: row; align-items: flex-start; gap: 12px; margin: 16px 0 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); color: var(--text); font-size: 14px; line-height: 1.5; cursor: pointer; }
-#prompt-checkbox { flex: none; width: 18px; height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--blue); }
+#prompt-checkbox-row, #prompt-login-row { flex-direction: row; align-items: flex-start; gap: 12px; margin: 16px 0 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); color: var(--text); font-size: 14px; line-height: 1.5; cursor: pointer; }
+#prompt-checkbox, #prompt-login-checkbox { flex: none; width: 18px; height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--blue); }
 #prompt-checkbox-label { min-width: 0; overflow-wrap: anywhere; }
 #form-sql-connection .sql-trust-certificate { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text); }
 #form-sql-connection .sql-trust-certificate input { flex: none; margin: 0; }
 #sql-trust-help { margin-top: 0; }
+#sql-ssh-fields { margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+#sql-ssh-fields legend { color: var(--muted); padding: 0 6px; }
 .system-update-available { color: var(--orange); background: rgba(210, 153, 34, .15); }
 .package-panel { margin-top: 16px; overflow: hidden; }
 .package-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 20px; border-bottom: 1px solid var(--line); background: linear-gradient(110deg, rgba(163, 113, 247, .08), transparent); }

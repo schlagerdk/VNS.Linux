@@ -1,6 +1,8 @@
 """SQL Server admin operations using sqlcmd and server-side backup paths."""
 import argparse
 import hashlib
+import importlib.util
+import shlex
 import socket
 import stat
 import json
@@ -12,6 +14,36 @@ import subprocess
 import sys
 import tempfile
 import uuid
+
+_file_spec = importlib.util.spec_from_file_location("vns_backup_files", Path(__file__).with_name("backup_files.py"))
+_file_module = importlib.util.module_from_spec(_file_spec)
+_file_spec.loader.exec_module(_file_module)
+
+
+def ssh_settings(data, existing=None):
+    enabled = data.get("ssh_enabled", False)
+    if not isinstance(enabled, bool):
+        raise ValueError("Invalid SSH setting")
+    if not enabled:
+        return {"ssh_enabled": False}
+    host = data.get("ssh_host", "")
+    user = data.get("ssh_username", "")
+    if not isinstance(host, str) or not isinstance(user, str):
+        raise ValueError("Invalid SSH host or username")
+    host, user = host.strip(), user.strip()
+    port = data.get("ssh_port", 22)
+    password = data.get("ssh_password", "")
+    if existing and password == "":
+        password = existing.get("ssh_password", "")
+    if not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+        raise ValueError("Invalid SSH host")
+    if not isinstance(user, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}", user):
+        raise ValueError("Invalid SSH username")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError("Invalid SSH port")
+    if not isinstance(password, str) or len(password) > 4096 or "\0" in password:
+        raise ValueError("Invalid SSH password")
+    return dict(ssh_enabled=True, ssh_host=host, ssh_username=user, ssh_port=port, ssh_password=password)
 
 
 def connections(path):
@@ -27,12 +59,16 @@ def connections(path):
         for item in data
     ):
         raise ValueError("Invalid SQL connection store")
+    for item in data:
+        ssh_settings(item)
     return data
 
 
 def public_connections(path):
-    return [{key: item[key] for key in ("id", "name", "host", "port", "username", "backup_directory", "trust_certificate")}
-            for item in connections(path)]
+    return [{key: item[key] for key in (
+        "id", "name", "host", "port", "username", "backup_directory", "trust_certificate",
+        "ssh_enabled", "ssh_host", "ssh_username", "ssh_port"
+    ) if key in item} for item in connections(path)]
 
 
 def save_connections(path, items):
@@ -75,6 +111,9 @@ def edit_connection(path, data, connection_id=None):
     if not isinstance(trust, bool):
         raise ValueError("Invalid certificate setting")
     fields.update(id=connection_id or uuid.uuid4().hex, port=port, trust_certificate=trust)
+    fields.update(ssh_settings(data, existing))
+    if fields["ssh_enabled"] and (not fields["backup_directory"].startswith("/") or "\\" in fields["backup_directory"]):
+        raise ValueError("Linux SSH backup access requires an absolute Linux backup directory")
     host = fields["host"].strip("[]").rstrip(".").casefold()
     if any(item["id"] != connection_id and item["host"].strip("[]").rstrip(".").casefold() == host and item["port"] == port for item in items):
         raise ValueError("A connection to this SQL host and port already exists")
@@ -176,6 +215,13 @@ ORDER BY b.backup_finish_date DESC""")
         history = [item for item in history if not (
             Path(item["path"]).parent.resolve() == directory and not Path(item["path"]).exists()
         )]
+    elif settings.get("ssh_enabled"):
+        paths = {item["path"]: None for item in history
+                 if str(Path(item["path"]).parent) == settings["backup_directory"].rstrip("/")
+                 and Path(item["path"]).suffix.casefold() == ".bak"}
+        if paths:
+            present = file_operation(settings, "inspect", paths, skip_missing=True)
+            history = [item for item in history if item["path"] not in paths or item["path"] in present]
     files = query_json(settings,
         "SELECT subdirectory AS name FROM @files WHERE is_file=1 AND LOWER(RIGHT(subdirectory,4))='.bak'",
         preamble=f"""
@@ -304,10 +350,56 @@ def local_backup_access(settings):
     return host in {"localhost", "127.0.0.1", "::1", socket.gethostname().casefold(), socket.getfqdn().casefold()}
 
 
+def backup_file_access(settings):
+    return local_backup_access(settings) or settings.get("ssh_enabled", False)
+
+
+def file_operation(settings, operation, files, skip_missing=False):
+    data = dict(directory=settings["backup_directory"], operation=operation, files=files, skip_missing=skip_missing)
+    if local_backup_access(settings):
+        return _file_module.operate(data)
+    config = ssh_settings(settings)
+    if not config["ssh_enabled"]:
+        raise ValueError("Configure Linux SSH access to delete remote backup files")
+    ssh = shutil.which("ssh")
+    if not ssh:
+        raise ValueError("ssh is not installed on the admin server")
+    args = [ssh, "-T", "-p", str(config["ssh_port"]), "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2"]
+    env = os.environ.copy()
+    if config["ssh_password"]:
+        sshpass = shutil.which("sshpass")
+        if not sshpass:
+            raise ValueError("sshpass is required for password login: sudo apt install sshpass")
+        args = [sshpass, "-e", *args]
+        env["SSHPASS"] = config["ssh_password"]
+    else:
+        args += ["-o", "BatchMode=yes"]
+    source = Path(__file__).with_name("backup_files.py").read_text()
+    args += [config["ssh_username"] + "@" + config["ssh_host"], "python3 -c " + shlex.quote(source)]
+    result = subprocess.run(args, input=json.dumps(data), capture_output=True, text=True,
+                            encoding="utf-8", env=env, timeout=60)
+    if result.returncode:
+        raise RuntimeError((result.stderr or "Remote backup file operation failed").strip())
+    if result.stderr.strip():
+        print(result.stderr, file=sys.stderr, end="", flush=True)
+    response = json.loads(result.stdout)
+    if not isinstance(response, dict) or any(
+        not isinstance(path, str) or path not in files or not isinstance(identity, list)
+        or len(identity) != 2 or any(type(value) is not int for value in identity)
+        for path, identity in response.items()
+    ):
+        raise ValueError("Invalid remote backup file response")
+    if (operation == "delete" or not skip_missing) and set(response) != set(files):
+        raise ValueError("Remote backup file operation did not confirm every file")
+    for filename in set(files) - set(response):
+        print("Backup file no longer exists; skipping: " + filename, flush=True)
+    return response
+
+
 def backup_files_for_deletion(settings, name, backup_id=None):
-    if not local_backup_access(settings):
-        raise ValueError("Backup file deletion is only available for local SQL connections")
-    root = Path(settings["backup_directory"]).resolve(strict=True)
+    if not backup_file_access(settings):
+        raise ValueError("Backup file deletion requires a local connection or Linux SSH access")
     records = backups(settings)
     if backup_id is not None:
         records = [item for item in records if item["id"] == backup_id and item["database_name"] == name]
@@ -318,26 +410,30 @@ def backup_files_for_deletion(settings, name, backup_id=None):
     paths = {}
     for item in records:
         path = Path(item["path"])
-        if not path.exists() and not path.is_symlink() and backup_id is None:
-            print("Backup file no longer exists; skipping: " + str(path), flush=True)
-            continue
-        if path.suffix.casefold() != ".bak" or path.parent.resolve(strict=True) != root or path.is_symlink():
+        if path.suffix.casefold() != ".bak" or str(path.parent) != settings["backup_directory"].rstrip("/"):
             raise ValueError("Backup deletion is restricted to regular .bak files in the backup directory")
-        info = path.stat()
-        if not stat.S_ISREG(info.st_mode):
-            raise ValueError("Backup is not a regular file")
+        paths[str(path)] = None
+    checked = file_operation(settings, "inspect", paths, skip_missing=backup_id is None)
+    for filename in checked:
+        path = Path(filename)
         headers = backup_table(settings, f"RESTORE HEADERONLY FROM DISK={literal(str(path))};")
         if any(header["DatabaseName"].casefold() != name.casefold() for header in headers):
             raise ValueError("Backup file contains backups of another database; deletion refused")
-        paths[str(path)] = (info.st_dev, info.st_ino)
-    return paths
+    return checked
 
 
-def delete_backup_files(paths):
+def delete_backup_files(paths, settings=None):
+    if not paths:
+        return
+    if settings is not None:
+        file_operation(settings, "delete", paths)
+        for filename in paths:
+            print("Deleted backup file: " + filename, flush=True)
+        return
     for filename, identity in paths.items():
         path = Path(filename)
         info = path.lstat()
-        if not stat.S_ISREG(info.st_mode) or (info.st_dev, info.st_ino) != identity:
+        if not stat.S_ISREG(info.st_mode) or (info.st_dev, info.st_ino) != tuple(identity):
             raise ValueError("Backup file changed before deletion")
         path.unlink()
         print("Deleted backup file: " + filename, flush=True)
@@ -411,7 +507,7 @@ def run_action(settings, data):
     if action == "delete_backup":
         if data.get("confirmation") != name or not isinstance(data.get("backup_id"), (int, str)) or isinstance(data.get("backup_id"), bool):
             raise ValueError("Confirm the database name and select a backup")
-        delete_backup_files(backup_files_for_deletion(settings, name, data["backup_id"]))
+        delete_backup_files(backup_files_for_deletion(settings, name, data["backup_id"]), settings)
         return
     if action in ("backup", "drop", "copy") and not current:
         raise ValueError("Database no longer exists")
@@ -427,7 +523,9 @@ def run_action(settings, data):
         if not isinstance(data.get("delete_backups", False), bool):
             raise ValueError("Invalid backup deletion option")
         files_to_delete = backup_files_for_deletion(settings, name) if data.get("delete_backups") else {}
-        logins_to_delete = exclusive_database_logins(settings, name)
+        if not isinstance(data.get("delete_login", True), bool):
+            raise ValueError("Invalid login deletion option")
+        logins_to_delete = exclusive_database_logins(settings, name) if data.get("delete_login", True) else []
         execute(settings, f"""
 ALTER DATABASE {identifier(name)} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
 BEGIN TRY
@@ -440,7 +538,7 @@ END CATCH;""")
         for login in logins_to_delete:
             execute(settings, "DROP LOGIN " + identifier(login) + ";")
             print("Deleted SQL login: " + login, flush=True)
-        delete_backup_files(files_to_delete)
+        delete_backup_files(files_to_delete, settings)
     elif action in ("copy", "restore"):
         target = data.get("target", "")
         identifier(target)

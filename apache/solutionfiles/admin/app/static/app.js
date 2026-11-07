@@ -99,7 +99,7 @@ async function copyText(text, container) {
 let copyStatusTimer = null;
 
 // Replaces prompt()/confirm(). Resolves to the entered text (or true without an input), or null when cancelled.
-function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null, extra = null, checkbox = null }) {
+function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null, extra = null, checkbox = null, loginCheckbox = false }) {
 	const dlg = $("#dlg-prompt");
 	const field = $("#prompt-input");
 	const extraRow = $("#prompt-extra-row");
@@ -144,6 +144,8 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	field.placeholder = match !== null ? "" : placeholder;
 	extraRow.hidden = !extra;
 	$("#prompt-checkbox-row").hidden = !checkbox;
+	$("#prompt-login-row").hidden = !loginCheckbox;
+	$("#prompt-login-checkbox").checked = loginCheckbox;
 	$("#prompt-checkbox").checked = false;
 	$("#prompt-checkbox-label").textContent = checkbox || "";
 	if (extra) {
@@ -160,7 +162,7 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	dlg.returnValue = "";
 	return new Promise((resolve) => {
 		dlg.onclose = () => resolve(dlg.returnValue === "ok"
-			? (checkbox ? { value: field.value, checked: $("#prompt-checkbox").checked } : extra ? { value: field.value, extra: extraField.value } : input ? field.value : true)
+			? (checkbox || loginCheckbox ? { value: field.value, checked: $("#prompt-checkbox").checked, deleteLogin: $("#prompt-login-checkbox").checked } : extra ? { value: field.value, extra: extraField.value } : input ? field.value : true)
 			: null);
 		dlg.showModal();
 		if (input) { field.focus(); field.select(); } else if (extra) extraField.focus(); else okButton.focus();
@@ -1660,7 +1662,7 @@ function sqlBackupRow(backup) {
 			textContent: "Restore", disabled: backup.media_count !== 1,
 			title: backup.error || (backup.media_count !== 1 ? "Striped or damaged backups are not supported" : "Restore this full backup"),
 			onclick: () => run(() => sqlRestore(backup)),
-		}), ...(sqlSnapshot.local_backup_access ? [el("button", {
+		}), ...(sqlSnapshot.backup_file_access ? [el("button", {
 			textContent: "Delete", onclick: () => run(async () => {
 				if (!(await ask({ title: "Delete backup file?", message: `Delete the entire file ${backup.path}? All backup sets in this file will be removed. Type ${backup.database_name} to confirm.`, match: backup.database_name, danger: true, ok: "Delete" }))) return;
 				await openTask({ kind: "sql_action", action: "delete_backup", connection: sqlSelected(),
@@ -1767,11 +1769,12 @@ async function sqlDatabaseAction(action, database) {
 		if (!login) return;
 		Object.assign(payload, login);
 	} else if (action === "drop") {
-		const confirmation = await ask({ title: "Delete database?", message: `This permanently deletes ${database.name} and disconnects all sessions. Associated SQL logins used only by this database are also deleted; shared and administrator logins are kept. Type ${database.name} to confirm.`, match: database.name, danger: true, ok: "Delete",
-			checkbox: sqlSnapshot.local_backup_access ? "Also delete backup files for this database" : null });
+		const confirmation = await ask({ title: "Delete database?", message: `This permanently deletes ${database.name} and disconnects all sessions. Shared and administrator logins are kept. Type ${database.name} to confirm.`, match: database.name, danger: true, ok: "Delete", loginCheckbox: true,
+			checkbox: sqlSnapshot.backup_file_access ? "Also delete backup files for this database" : null });
 		if (!confirmation) return;
-		payload.confirmation = sqlSnapshot.local_backup_access ? confirmation.value : confirmation;
-		payload.delete_backups = sqlSnapshot.local_backup_access ? confirmation.checked : false;
+		payload.confirmation = confirmation.value;
+		payload.delete_login = confirmation.deleteLogin;
+		payload.delete_backups = sqlSnapshot.backup_file_access ? confirmation.checked : false;
 	} else if (!(await ask({ title: "Backup database?", message: `Create a full copy-only backup of ${database.name} in the connection's server-side backup directory.`, input: false, ok: "Backup" }))) return;
 	await openTask(payload);
 }
@@ -1868,12 +1871,28 @@ function openSqlConnection(connection = null) {
 		for (const key of ["name", "host", "port", "username", "backup_directory"]) form.elements[key].value = connection[key];
 		form.elements.trust_certificate.checked = connection.trust_certificate;
 	}
+	form.elements.ssh_enabled.checked = connection?.ssh_enabled || false;
+	const sshHost = connection?.host === "." ? "localhost" : connection?.host || "";
+	for (const key of ["ssh_host", "ssh_port", "ssh_username"]) {
+		form.elements[key].value = connection?.[key] || (key === "ssh_port" ? 22 : key === "ssh_host" ? sshHost : "");
+	}
+	updateSqlSshFields();
 	form.elements.password.required = !connection;
 	$("#sql-password-help").hidden = !connection;
 	$("#sql-remove-connection").hidden = !connection;
 	$("#sql-connection-title").textContent = connection ? "Edit SQL connection" : "Add SQL connection";
 	$("#dlg-sql-connection").showModal();
 }
+function updateSqlSshFields() {
+	const form = $("#form-sql-connection");
+	const enabled = form.elements.ssh_enabled.checked;
+	$("#sql-ssh-fields").hidden = !enabled;
+	$("#sql-ssh-fields").disabled = !enabled;
+	if (enabled && !form.elements.ssh_host.value) {
+		form.elements.ssh_host.value = form.elements.host.value === "." ? "localhost" : form.elements.host.value;
+	}
+}
+$("#form-sql-connection").elements.ssh_enabled.onchange = updateSqlSshFields;
 $("#sql-add-connection").onclick = () => openSqlConnection();
 $("#sql-edit-connection").onclick = () => run(() => {
 	const connection = sqlConnections.find((item) => item.id === sqlSelected());
@@ -1891,6 +1910,8 @@ $("#form-sql-connection").onsubmit = (event) => {
 	const data = Object.fromEntries(new FormData(form));
 	data.port = Number(data.port);
 	data.trust_certificate = form.elements.trust_certificate.checked;
+	data.ssh_enabled = form.elements.ssh_enabled.checked;
+	if (data.ssh_enabled) data.ssh_port = Number(data.ssh_port);
 	if (editingSqlConnection) data.id = editingSqlConnection;
 	run(async () => {
 		const saved = await api("/api/sql/connections", { method: data.id ? "PUT" : "POST", json: data });

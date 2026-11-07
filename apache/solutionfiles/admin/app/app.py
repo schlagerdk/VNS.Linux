@@ -620,7 +620,8 @@ def api_sql_status(connection_id):
         with SQL_LOCK:
             settings = _sql_module.connection(SQL_CONNECTIONS, connection_id)
         return jsonify(databases=_sql_module.databases(settings), backups=_sql_module.backups(settings),
-                       local_backup_access=_sql_module.local_backup_access(settings))
+                       local_backup_access=_sql_module.local_backup_access(settings),
+                       backup_file_access=_sql_module.backup_file_access(settings))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         app.logger.error("SQL overview failed: %s", exc)
         return error(str(exc), 502)
@@ -1160,7 +1161,7 @@ def build_command(data):
                 _sql_module.validate_restore_login(data)
         except ValueError as exc:
             abort(400, str(exc))
-        payload = {key: data[key] for key in ("action", "database", "target", "backup_id", "overwrite", "confirmation", "login", "delete_backups") if key in data}
+        payload = {key: data[key] for key in ("action", "database", "target", "backup_id", "overwrite", "confirmation", "login", "delete_backups", "delete_login") if key in data}
         return "SQL: " + data["action"], [sys.executable, SQL_HELPER, SQL_CONNECTIONS, identifier, json.dumps(payload)], "/"
     if kind == "update_system":
         if not ADMIN_SITE:
