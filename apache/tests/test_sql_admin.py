@@ -129,7 +129,7 @@ class SqlAdminTests(unittest.TestCase):
         with patch.object(sql, "query_json", side_effect=[[], [{"name": "uploaded.bak"}]]) as query, \
                 patch.object(sql, "backup_table", side_effect=[[{"FamilyCount": "1"}], [header]]):
             records = sql.backups(self.settings)
-        self.assertIn("xp_dirtree", query.call_args.args[1])
+        self.assertIn("xp_dirtree", query.call_args.kwargs["preamble"])
         selected = records[0]
         self.assertEqual(selected["path"], "/var/opt/mssql/backup/uploaded.bak")
         self.assertEqual(selected["position"], 2)
@@ -163,6 +163,22 @@ class SqlAdminTests(unittest.TestCase):
         with patch.object(sql, "execute", return_value="Position|BackupType|DatabaseName\n--------|----------|------------\n    2|    1|Uploaded\n"):
             self.assertEqual(sql.backup_table(self.settings, "RESTORE HEADERONLY"),
                              [dict(Position="2", BackupType="1", DatabaseName="Uploaded")])
+
+    def test_directory_batch_declarations_are_outside_json_subquery(self):
+        queries = []
+
+        def execute(settings, query, **kwargs):
+            queries.append(query)
+            return "[]\n"
+
+        with patch.object(sql, "execute", side_effect=execute):
+            self.assertEqual(sql.backups(self.settings), [])
+        listing = queries[1]
+        self.assertLess(listing.index("DECLARE @files"), listing.index("INSERT INTO @files"))
+        self.assertLess(listing.index("INSERT INTO @files"), listing.index("SELECT COALESCE(("))
+        self.assertIn("SELECT COALESCE((SELECT subdirectory", listing)
+        self.assertNotIn("DECLARE", listing[listing.index("SELECT COALESCE(("):])
+        self.assertIn("N'/var/opt/mssql/backup'", listing)
 
     def test_directory_filenames_cannot_escape_backup_directory(self):
         with patch.object(sql, "query_json", side_effect=[[], [{"name": "../other.bak"}]]):

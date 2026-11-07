@@ -121,8 +121,8 @@ def execute(settings, query, table=False, timeout=3600):
         os.unlink(filename)
 
 
-def query_json(settings, query):
-    output = execute(settings, "SELECT COALESCE((" + query + " FOR JSON PATH), N'[]') AS vns_json;", timeout=30)
+def query_json(settings, query, *, preamble=""):
+    output = execute(settings, preamble + "\nSELECT COALESCE((" + query + " FOR JSON PATH), N'[]') AS vns_json;", timeout=30)
     lines = output.splitlines()
     while lines and not lines[0].strip():
         lines.pop(0)
@@ -157,10 +157,11 @@ SELECT TOP (200) b.backup_set_id AS id, b.database_name AS database_name,
 FROM msdb.dbo.backupset b JOIN msdb.dbo.backupmediafamily m ON m.media_set_id=b.media_set_id
 WHERE b.type='D' AND m.family_sequence_number=1 AND m.device_type=2
 ORDER BY b.backup_finish_date DESC""")
-    files = query_json(settings, f"""
+    files = query_json(settings,
+        "SELECT subdirectory AS name FROM @files WHERE is_file=1 AND LOWER(RIGHT(subdirectory,4))='.bak'",
+        preamble=f"""
 DECLARE @files TABLE (subdirectory nvarchar(512), depth int, is_file bit);
-INSERT INTO @files EXEC master.sys.xp_dirtree {literal(settings["backup_directory"])}, 1, 1;
-SELECT subdirectory AS name FROM @files WHERE is_file=1 AND LOWER(RIGHT(subdirectory,4))='.bak'""")
+INSERT INTO @files EXEC master.sys.xp_dirtree {literal(settings["backup_directory"])}, 1, 1;""")
     known_paths = {item["path"] for item in history}
     separator = "\\" if "\\" in settings["backup_directory"] else "/"
     for entry in files:
