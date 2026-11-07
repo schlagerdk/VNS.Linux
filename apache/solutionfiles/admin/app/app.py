@@ -614,7 +614,8 @@ def api_sql_status(connection_id):
     try:
         with SQL_LOCK:
             settings = _sql_module.connection(SQL_CONNECTIONS, connection_id)
-        return jsonify(databases=_sql_module.databases(settings), backups=_sql_module.backups(settings))
+        return jsonify(databases=_sql_module.databases(settings), backups=_sql_module.backups(settings),
+                       local_backup_access=_sql_module.local_backup_access(settings))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         app.logger.error("SQL overview failed: %s", exc)
         return error(str(exc), 502)
@@ -1142,19 +1143,19 @@ def build_command(data):
         try:
             with SQL_LOCK:
                 _sql_module.connection(SQL_CONNECTIONS, identifier)
-            if data.get("action") not in ("create", "backup", "backup_all", "copy", "restore", "drop"):
+            if data.get("action") not in ("create", "backup", "backup_all", "copy", "restore", "drop", "delete_backup"):
                 abort(400, "Unknown SQL action")
             if data["action"] != "backup_all":
                 _sql_module.identifier(data.get("database", ""))
             if data["action"] in ("copy", "restore"):
                 _sql_module.identifier(data.get("target", ""))
             if data.get("login") is not None:
-                if data["action"] != "restore":
-                    abort(400, "SQL login creation is only supported for restore")
+                if data["action"] not in ("restore", "copy"):
+                    abort(400, "SQL login creation is only supported for restore or copy")
                 _sql_module.validate_restore_login(data)
         except ValueError as exc:
             abort(400, str(exc))
-        payload = {key: data[key] for key in ("action", "database", "target", "backup_id", "overwrite", "confirmation", "login") if key in data}
+        payload = {key: data[key] for key in ("action", "database", "target", "backup_id", "overwrite", "confirmation", "login", "delete_backups") if key in data}
         return "SQL: " + data["action"], [sys.executable, SQL_HELPER, SQL_CONNECTIONS, identifier, json.dumps(payload)], "/"
     if kind == "update_system":
         if not ADMIN_SITE:

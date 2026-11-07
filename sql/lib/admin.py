@@ -1,6 +1,8 @@
 """SQL Server admin operations using sqlcmd and server-side backup paths."""
 import argparse
 import hashlib
+import socket
+import stat
 import json
 import os
 from pathlib import Path
@@ -270,10 +272,56 @@ END CATCH;"""
 def validate_restore_login(data):
     username = data.get("login")
     identifier(username)
+    if username.casefold() in {"dbo", "guest", "sys", "information_schema"}:
+        raise ValueError("Choose a username other than a built-in database user")
     password = data.get("login_password")
     if not isinstance(password, str) or not 8 <= len(password) <= 128 or any(char in password for char in ("\0", "\r", "\n")):
         raise ValueError("The new SQL login password must be 8-128 characters without line breaks")
     return username, password
+
+
+def local_backup_access(settings):
+    host = settings["host"].strip("[]").rstrip(".").casefold()
+    return host in {"localhost", "127.0.0.1", "::1", socket.gethostname().casefold(), socket.getfqdn().casefold()}
+
+
+def backup_files_for_deletion(settings, name, backup_id=None):
+    if not local_backup_access(settings):
+        raise ValueError("Backup file deletion is only available for local SQL connections")
+    root = Path(settings["backup_directory"]).resolve(strict=True)
+    records = backups(settings)
+    if backup_id is not None:
+        records = [item for item in records if item["id"] == backup_id and item["database_name"] == name]
+        if not records:
+            raise ValueError("Backup no longer exists")
+    else:
+        records = [item for item in records if item["database_name"].casefold() == name.casefold()]
+    paths = {}
+    for item in records:
+        path = Path(item["path"])
+        if not path.exists() and not path.is_symlink() and backup_id is None:
+            print("Backup file no longer exists; skipping: " + str(path), flush=True)
+            continue
+        if path.suffix.casefold() != ".bak" or path.parent.resolve(strict=True) != root or path.is_symlink():
+            raise ValueError("Backup deletion is restricted to regular .bak files in the backup directory")
+        info = path.stat()
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("Backup is not a regular file")
+        headers = backup_table(settings, f"RESTORE HEADERONLY FROM DISK={literal(str(path))};")
+        if any(header["DatabaseName"].casefold() != name.casefold() for header in headers):
+            raise ValueError("Backup file contains backups of another database; deletion refused")
+        paths[str(path)] = (info.st_dev, info.st_ino)
+    return paths
+
+
+def delete_backup_files(paths):
+    for filename, identity in paths.items():
+        path = Path(filename)
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or (info.st_dev, info.st_ino) != identity:
+            raise ValueError("Backup file changed before deletion")
+        path.unlink()
+        print("Deleted backup file: " + filename, flush=True)
 
 
 def create_restore_login(settings, database, username, password):
@@ -293,7 +341,7 @@ def run_action(settings, data):
     if not isinstance(data, dict):
         raise ValueError("Expected a SQL action object")
     action = data.get("action")
-    if action not in ("backup_all", "create", "backup", "drop", "copy", "restore"):
+    if action not in ("backup_all", "create", "backup", "drop", "copy", "restore", "delete_backup"):
         raise ValueError("Unknown SQL action")
     print("SQL operation: " + action, flush=True)
     rows = databases(settings)
@@ -310,6 +358,11 @@ def run_action(settings, data):
     current = next((row for row in rows if row["name"].casefold() == name.casefold()), None)
     if current and current["id"] <= 4:
         raise ValueError("System databases cannot be changed here")
+    if action == "delete_backup":
+        if data.get("confirmation") != name or not isinstance(data.get("backup_id"), (int, str)) or isinstance(data.get("backup_id"), bool):
+            raise ValueError("Confirm the database name and select a backup")
+        delete_backup_files(backup_files_for_deletion(settings, name, data["backup_id"]))
+        return
     if action in ("backup", "drop", "copy") and not current:
         raise ValueError("Database no longer exists")
     if action == "create":
@@ -321,6 +374,9 @@ def run_action(settings, data):
     elif action == "drop":
         if data.get("confirmation") != name:
             raise ValueError("Type the exact database name to confirm deletion")
+        if not isinstance(data.get("delete_backups", False), bool):
+            raise ValueError("Invalid backup deletion option")
+        files_to_delete = backup_files_for_deletion(settings, name) if data.get("delete_backups") else {}
         execute(settings, f"""
 ALTER DATABASE {identifier(name)} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
 BEGIN TRY
@@ -330,6 +386,7 @@ BEGIN CATCH
  ALTER DATABASE {identifier(name)} SET MULTI_USER;
  THROW;
 END CATCH;""")
+        delete_backup_files(files_to_delete)
     elif action in ("copy", "restore"):
         target = data.get("target", "")
         identifier(target)
@@ -340,6 +397,10 @@ END CATCH;""")
         if overwrite and (action == "copy" or data.get("confirmation") != target or data.get("overwrite") is not True):
             raise ValueError("Destination exists. Explicit overwrite confirmation is required for restore.")
         login = None
+        if action == "copy":
+            login = validate_restore_login(data)
+            if query_json(settings, "SELECT name FROM sys.server_principals WHERE name=" + literal(login[0])):
+                raise ValueError("SQL login already exists. Choose another username before copying/restoring.")
         if action == "copy":
             path, position = backup(settings, name), 1
         else:

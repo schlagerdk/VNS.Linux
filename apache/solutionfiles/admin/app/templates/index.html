@@ -107,13 +107,13 @@
   </dialog>
   <dialog id="dlg-sql-restore-login">
     <form id="form-sql-restore-login">
-      <h2>SQL login for restored database</h2>
+      <h2>SQL login for new database</h2>
       <p class="hint">Create a new SQL login and map its database user to db_owner. An existing login cannot be reused. Password policy and expiration are disabled, matching the restore script.</p>
       <label>SQL username <input name="login" required maxlength="128" autocomplete="off"></label>
       <label>Password <input name="password" type="password" required minlength="8" maxlength="128" autocomplete="new-password"></label>
       <label>Repeat password <input name="confirmation" type="password" required minlength="8" maxlength="128" autocomplete="new-password"></label>
       <p id="sql-restore-login-error" class="error" role="alert"></p>
-      <menu><button id="sql-restore-login-cancel" type="button">Cancel</button><button type="submit" class="primary">Restore and create login</button></menu>
+      <menu><button id="sql-restore-login-cancel" type="button">Cancel</button><button id="sql-login-submit" type="submit" class="primary">Restore and create login</button></menu>
     </form>
   </dialog>
   <section id="view-sites">
@@ -221,6 +221,7 @@
     <h2 id="prompt-title"></h2>
     <p id="prompt-message"></p>
     <input id="prompt-input" autocomplete="off" spellcheck="false">
+    <label id="prompt-checkbox-row" class="sql-trust-certificate" hidden><input id="prompt-checkbox" type="checkbox"><span id="prompt-checkbox-label"></span></label>
     <label id="prompt-extra-row" class="prompt-extra-row" hidden><span id="prompt-extra-label"></span><textarea id="prompt-extra" rows="4" autocomplete="off" spellcheck="false"></textarea></label>
     <menu><li id="prompt-copy-status" class="hint" role="status"></li><li><button type="button" id="prompt-cancel">Cancel</button></li><li><button type="submit" id="prompt-ok" class="primary">OK</button></li></menu>
   </form>

@@ -99,7 +99,7 @@ async function copyText(text, container) {
 let copyStatusTimer = null;
 
 // Replaces prompt()/confirm(). Resolves to the entered text (or true without an input), or null when cancelled.
-function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null, extra = null }) {
+function ask({ title, message = "", value = "", placeholder = "", ok = "OK", danger = false, input = true, match = null, extra = null, checkbox = null }) {
 	const dlg = $("#dlg-prompt");
 	const field = $("#prompt-input");
 	const extraRow = $("#prompt-extra-row");
@@ -143,6 +143,9 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	field.value = value;
 	field.placeholder = match !== null ? "" : placeholder;
 	extraRow.hidden = !extra;
+	$("#prompt-checkbox-row").hidden = !checkbox;
+	$("#prompt-checkbox").checked = false;
+	$("#prompt-checkbox-label").textContent = checkbox || "";
 	if (extra) {
 		$("#prompt-extra-label").textContent = extra.label;
 		extraField.value = extra.value || "";
@@ -157,7 +160,7 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	dlg.returnValue = "";
 	return new Promise((resolve) => {
 		dlg.onclose = () => resolve(dlg.returnValue === "ok"
-			? (extra ? { value: field.value, extra: extraField.value } : input ? field.value : true)
+			? (checkbox ? { value: field.value, checked: $("#prompt-checkbox").checked } : extra ? { value: field.value, extra: extraField.value } : input ? field.value : true)
 			: null);
 		dlg.showModal();
 		if (input) { field.focus(); field.select(); } else if (extra) extraField.focus(); else okButton.focus();
@@ -1653,11 +1656,17 @@ function groupSqlBackups(backups) {
 function sqlBackupRow(backup) {
 	return el("tr", {}, el("td", { textContent: backup.database_name }),
 		el("td", { textContent: backup.finished || "Unavailable" }), el("td", { textContent: backup.size_mb === null ? "Unavailable" : backup.size_mb + " MB" }),
-		el("td", { textContent: backup.path }), el("td", {}, el("button", {
+		el("td", { textContent: backup.path }), el("td", {}, el("div", { className: "actions" }, el("button", {
 			textContent: "Restore", disabled: backup.media_count !== 1,
 			title: backup.error || (backup.media_count !== 1 ? "Striped or damaged backups are not supported" : "Restore this full backup"),
 			onclick: () => run(() => sqlRestore(backup)),
-		})));
+		}), ...(sqlSnapshot.local_backup_access ? [el("button", {
+			textContent: "Delete", onclick: () => run(async () => {
+				if (!(await ask({ title: "Delete backup file?", message: `Delete the entire file ${backup.path}? All backup sets in this file will be removed. Type ${backup.database_name} to confirm.`, match: backup.database_name, danger: true, ok: "Delete" }))) return;
+				await openTask({ kind: "sql_action", action: "delete_backup", connection: sqlSelected(),
+					database: backup.database_name, backup_id: backup.id, confirmation: backup.database_name });
+			}),
+		})] : []))));
 }
 
 function sqlSelected() {
@@ -1752,10 +1761,15 @@ async function sqlDatabaseAction(action, database) {
 		const target = await ask({ title: "Copy database", message: `Back up ${database.name} and restore to a new database. Logins are not copied; existing database users remain in the backup.`, placeholder: "New database name", ok: "Copy" });
 		if (!target) return;
 		payload.target = target.trim();
+		const login = await askRestoreLogin(payload.target, "Copy");
+		if (!login) return;
+		Object.assign(payload, login);
 	} else if (action === "drop") {
-		const confirmation = await ask({ title: "Delete database?", message: `This permanently deletes ${database.name} and disconnects all sessions. Backups and server logins are kept. Type ${database.name} to confirm.`, match: database.name, danger: true, ok: "Delete" });
+		const confirmation = await ask({ title: "Delete database?", message: `This permanently deletes ${database.name} and disconnects all sessions. Server logins are kept. Type ${database.name} to confirm.`, match: database.name, danger: true, ok: "Delete",
+			checkbox: sqlSnapshot.local_backup_access ? "Also delete this database's backup files in the backup directory" : null });
 		if (!confirmation) return;
-		payload.confirmation = confirmation;
+		payload.confirmation = sqlSnapshot.local_backup_access ? confirmation.value : confirmation;
+		payload.delete_backups = sqlSnapshot.local_backup_access ? confirmation.checked : false;
 	} else if (!(await ask({ title: "Backup database?", message: `Create a full copy-only backup of ${database.name} in the connection's server-side backup directory.`, input: false, ok: "Backup" }))) return;
 	await openTask(payload);
 }
@@ -1779,10 +1793,11 @@ async function sqlRestore(backup) {
 		target: name, backup_id: backup.id, overwrite: existing, confirmation, ...login });
 }
 
-function askRestoreLogin(database) {
+function askRestoreLogin(database, action = "Restore") {
 	const dialog = $("#dlg-sql-restore-login");
 	const form = $("#form-sql-restore-login");
 	form.reset();
+	$("#sql-login-submit").textContent = action + " and create login";
 	form.elements.login.value = database;
 	$("#sql-restore-login-error").textContent = "";
 	return new Promise((resolve) => {

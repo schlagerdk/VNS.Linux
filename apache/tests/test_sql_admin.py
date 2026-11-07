@@ -291,11 +291,58 @@ class SqlAdminTests(unittest.TestCase):
 
     def test_copy_only_to_new_database(self):
         with patch.object(sql, "databases", return_value=self.rows), patch.object(sql, "backup", return_value="/backup/copy.bak"), \
-                patch.object(sql, "restore") as restore:
-            sql.run_action(self.settings, {"action": "copy", "database": "Example", "target": "New"})
+                patch.object(sql, "restore") as restore, patch.object(sql, "query_json", return_value=[]), \
+                patch.object(sql, "create_restore_login") as create_login:
+            sql.run_action(self.settings, {"action": "copy", "database": "Example", "target": "New",
+                                          "login": "New", "login_password": "test-secret"})
             restore.assert_called_once_with(self.settings, "New", "/backup/copy.bak", 1, False)
+            create_login.assert_called_once_with(self.settings, "New", "New", "test-secret")
             with self.assertRaises(ValueError):
                 sql.run_action(self.settings, {"action": "copy", "database": "Example", "target": "master"})
+
+    def test_copy_rejects_existing_login_before_backing_up(self):
+        with patch.object(sql, "databases", return_value=self.rows), \
+                patch.object(sql, "query_json", return_value=[{"name": "New"}]), patch.object(sql, "backup") as backup:
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                sql.run_action(self.settings, dict(action="copy", database="Example", target="New",
+                                                   login="New", login_password="test-secret"))
+            backup.assert_not_called()
+
+    def test_local_backup_delete_guards_and_whole_file_removal(self):
+        root = Path(self.directory.name)
+        path = root / "example.bak"
+        path.write_bytes(b"backup")
+        settings = self.settings | {"backup_directory": str(root)}
+        record = dict(id=1, database_name="Example", path=str(path))
+        with patch.object(sql, "backups", return_value=[record]), \
+                patch.object(sql, "backup_table", return_value=[{"DatabaseName": "Example"}]):
+            paths = sql.backup_files_for_deletion(settings, "Example", 1)
+        sql.delete_backup_files(paths)
+        self.assertFalse(path.exists())
+        path.write_bytes(b"backup")
+        for change, header in (({"host": "remote.example"}, "Example"), ({}, "Other")):
+            with patch.object(sql, "backups", return_value=[record]), \
+                    patch.object(sql, "backup_table", return_value=[{"DatabaseName": header}]):
+                with self.assertRaises(ValueError):
+                    sql.backup_files_for_deletion(settings | change, "Example", 1)
+            self.assertTrue(path.exists())
+        link = root / "link.bak"
+        link.symlink_to(path)
+        with patch.object(sql, "backups", return_value=[record | {"path": str(link)}]):
+            with self.assertRaises(ValueError):
+                sql.backup_files_for_deletion(settings, "Example", 1)
+        self.assertTrue(path.exists())
+
+    def test_drop_prevalidates_files_and_deletes_only_after_sql_success(self):
+        data = dict(action="drop", database="Example", confirmation="Example", delete_backups=True)
+        with patch.object(sql, "databases", return_value=self.rows), \
+                patch.object(sql, "backup_files_for_deletion", return_value={"file": (1, 2)}) as validate, \
+                patch.object(sql, "execute", side_effect=RuntimeError("Drop failed")), \
+                patch.object(sql, "delete_backup_files") as delete:
+            with self.assertRaises(RuntimeError):
+                sql.run_action(self.settings, data)
+            validate.assert_called_once_with(self.settings, "Example")
+            delete.assert_not_called()
 
 
 class SqlApiTests(unittest.TestCase):
