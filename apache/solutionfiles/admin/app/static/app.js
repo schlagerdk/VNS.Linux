@@ -1768,7 +1768,7 @@ async function sqlDatabaseAction(action, database) {
 		Object.assign(payload, login);
 	} else if (action === "drop") {
 		const confirmation = await ask({ title: "Delete database?", message: `This permanently deletes ${database.name} and disconnects all sessions. Associated SQL logins used only by this database are also deleted; shared and administrator logins are kept. Type ${database.name} to confirm.`, match: database.name, danger: true, ok: "Delete",
-			checkbox: sqlSnapshot.local_backup_access ? "Also delete this database's backup files in the backup directory" : null });
+			checkbox: sqlSnapshot.local_backup_access ? "Also delete backup files for this database" : null });
 		if (!confirmation) return;
 		payload.confirmation = sqlSnapshot.local_backup_access ? confirmation.value : confirmation;
 		payload.delete_backups = sqlSnapshot.local_backup_access ? confirmation.checked : false;
