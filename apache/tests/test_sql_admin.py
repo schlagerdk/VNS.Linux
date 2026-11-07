@@ -168,6 +168,7 @@ class SqlAdminTests(unittest.TestCase):
     def test_history_files_are_not_duplicated_and_unknown_files_report_errors(self):
         record = dict(id=1, path="/var/opt/mssql/backup/known.bak")
         with patch.object(sql, "query_json", side_effect=[[record], [{"name": "known.bak"}, {"name": "bad.bak"}]]), \
+                patch.object(sql, "local_backup_access", return_value=False), \
                 patch.object(sql, "backup_table", side_effect=RuntimeError("Cannot open backup")), \
                 patch.object(sys, "stderr"):
             records = sql.backups(self.settings)
@@ -230,10 +231,12 @@ class SqlAdminTests(unittest.TestCase):
 
     def test_create_and_drop_escape_names_and_require_confirmation(self):
         name = "odd]name';--"
-        with patch.object(sql, "databases", return_value=self.rows), patch.object(sql, "execute") as execute:
+        with patch.object(sql, "databases", return_value=self.rows), patch.object(sql, "execute") as execute, \
+                patch.object(sql, "exclusive_database_logins", return_value=[]):
             sql.run_action(self.settings, {"action": "create", "database": name})
         self.assertIn("[odd]]name';--]", execute.call_args.args[1])
-        with patch.object(sql, "databases", return_value=self.rows), patch.object(sql, "execute") as execute:
+        with patch.object(sql, "databases", return_value=self.rows), patch.object(sql, "execute") as execute, \
+                patch.object(sql, "exclusive_database_logins", return_value=[]):
             for data in ({"action": "drop", "database": "master", "confirmation": "master"},
                          {"action": "drop", "database": "Example", "confirmation": "wrong"}):
                 with self.assertRaises(ValueError):
@@ -358,11 +361,37 @@ class SqlAdminTests(unittest.TestCase):
         with patch.object(sql, "databases", return_value=self.rows), \
                 patch.object(sql, "backup_files_for_deletion", return_value={"file": (1, 2)}) as validate, \
                 patch.object(sql, "execute", side_effect=RuntimeError("Drop failed")), \
+                patch.object(sql, "exclusive_database_logins", return_value=["Example"]), \
                 patch.object(sql, "delete_backup_files") as delete:
             with self.assertRaises(RuntimeError):
                 sql.run_action(self.settings, data)
             validate.assert_called_once_with(self.settings, "Example")
             delete.assert_not_called()
+
+    def test_exclusive_logins_keep_shared_and_offline_database_logins(self):
+        with patch.object(sql, "query_json", side_effect=[
+                [{"name": "Exclusive"}, {"name": "Shared"}],
+                [{"name": "Other", "state": "ONLINE"}], [], [], [], [{"name": "SharedUser"}]]) as query:
+            self.assertEqual(sql.exclusive_database_logins(self.settings, "Example"), ["Exclusive"])
+            self.assertIn("sys.server_role_members", query.call_args_list[0].args[1])
+            self.assertIn("sp.name<>N'sa'", query.call_args_list[0].args[1])
+        with patch.object(sql, "query_json", side_effect=[
+                [{"name": "Exclusive"}], [{"name": "Other", "state": "OFFLINE"}]]):
+            self.assertEqual(sql.exclusive_database_logins(self.settings, "Example"), [])
+
+    def test_database_drop_removes_exclusive_login_after_database(self):
+        with patch.object(sql, "databases", return_value=self.rows), \
+                patch.object(sql, "exclusive_database_logins", return_value=["different_login"]), \
+                patch.object(sql, "execute") as execute:
+            sql.run_action(self.settings, dict(action="drop", database="Example", confirmation="Example"))
+        self.assertIn("DROP DATABASE [Example]", execute.call_args_list[0].args[1])
+        self.assertEqual(execute.call_args_list[1].args[1], "DROP LOGIN [different_login];")
+
+    def test_deleted_local_file_disappears_from_history_listing(self):
+        path = Path(self.directory.name) / "deleted.bak"
+        record = dict(id=1, database_name="Example", path=str(path))
+        with patch.object(sql, "query_json", side_effect=[[record], []]):
+            self.assertEqual(sql.backups(self.settings | {"backup_directory": self.directory.name}), [])
 
 
 class SqlApiTests(unittest.TestCase):

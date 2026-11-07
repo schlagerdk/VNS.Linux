@@ -171,6 +171,11 @@ SELECT TOP (200) b.backup_set_id AS id, b.database_name AS database_name,
 FROM msdb.dbo.backupset b JOIN msdb.dbo.backupmediafamily m ON m.media_set_id=b.media_set_id
 WHERE b.type='D' AND m.family_sequence_number=1 AND m.device_type=2
 ORDER BY b.backup_finish_date DESC""")
+    if local_backup_access(settings):
+        directory = Path(settings["backup_directory"]).resolve()
+        history = [item for item in history if not (
+            Path(item["path"]).parent.resolve() == directory and not Path(item["path"]).exists()
+        )]
     files = query_json(settings,
         "SELECT subdirectory AS name FROM @files WHERE is_file=1 AND LOWER(RIGHT(subdirectory,4))='.bak'",
         preamble=f"""
@@ -351,6 +356,37 @@ ALTER ROLE [db_owner] ADD MEMBER {identifier(username)};""")
     print("SQL login and db_owner mapping created: " + username, flush=True)
 
 
+def exclusive_database_logins(settings, database):
+    candidates = query_json(settings, f"""
+SELECT DISTINCT sp.name
+FROM {identifier(database)}.sys.database_principals dp
+JOIN sys.server_principals sp ON sp.sid=dp.sid
+WHERE dp.type='S' AND dp.principal_id>4 AND sp.type='S' AND sp.principal_id>1
+AND sp.name<>{literal(settings["username"])}
+AND NOT EXISTS (SELECT 1 FROM sys.server_role_members r WHERE r.member_principal_id=sp.principal_id)
+AND NOT EXISTS (SELECT 1 FROM sys.server_permissions p WHERE p.grantee_principal_id=sp.principal_id
+ AND p.permission_name<>'CONNECT SQL')""")
+    if not candidates:
+        return []
+    # Inaccessible databases prevent proving that a login is exclusive.
+    others = query_json(settings, "SELECT name, state_desc AS state FROM sys.databases WHERE name<>" + literal(database))
+    if any(row["state"] != "ONLINE" for row in others):
+        print("Keeping SQL logins: another database is offline; shared usage cannot be verified.", flush=True)
+        return []
+    result = []
+    for login in candidates:
+        usage = query_json(settings, f"SELECT name FROM sys.databases WHERE name<>{literal(database)} AND owner_sid=SUSER_SID({literal(login['name'])})")
+        for row in others:
+            usage.extend(query_json(settings, f"""
+SELECT name FROM {identifier(row["name"])}.sys.database_principals
+WHERE sid=SUSER_SID({literal(login["name"])})"""))
+        if usage:
+            print("Keeping shared SQL login: " + login["name"], flush=True)
+        else:
+            result.append(login["name"])
+    return result
+
+
 def run_action(settings, data):
     if not isinstance(data, dict):
         raise ValueError("Expected a SQL action object")
@@ -391,6 +427,7 @@ def run_action(settings, data):
         if not isinstance(data.get("delete_backups", False), bool):
             raise ValueError("Invalid backup deletion option")
         files_to_delete = backup_files_for_deletion(settings, name) if data.get("delete_backups") else {}
+        logins_to_delete = exclusive_database_logins(settings, name)
         execute(settings, f"""
 ALTER DATABASE {identifier(name)} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
 BEGIN TRY
@@ -400,6 +437,9 @@ BEGIN CATCH
  ALTER DATABASE {identifier(name)} SET MULTI_USER;
  THROW;
 END CATCH;""")
+        for login in logins_to_delete:
+            execute(settings, "DROP LOGIN " + identifier(login) + ";")
+            print("Deleted SQL login: " + login, flush=True)
         delete_backup_files(files_to_delete)
     elif action in ("copy", "restore"):
         target = data.get("target", "")
