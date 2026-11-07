@@ -1767,12 +1767,39 @@ async function sqlRestore(backup) {
 	const name = target.trim();
 	const existing = sqlSnapshot.databases.some((item) => item.name.toLowerCase() === name.toLowerCase());
 	let confirmation = "";
+	let login = {};
 	if (existing) {
 		confirmation = await ask({ title: "Overwrite existing database?", message: `All data in ${name} will be replaced and active sessions disconnected. Take a backup first. Type ${name} to confirm.`, match: name, danger: true, ok: "Overwrite and restore" });
 		if (!confirmation) return;
-	} else if (!(await ask({ title: "Restore to new database?", message: `Create ${name} from the selected backup.`, input: false, ok: "Restore" }))) return;
+	} else {
+		login = await askRestoreLogin(name);
+		if (!login) return;
+	}
 	await openTask({ kind: "sql_action", connection, action: "restore", database: backup.database_name,
-		target: name, backup_id: backup.id, overwrite: existing, confirmation });
+		target: name, backup_id: backup.id, overwrite: existing, confirmation, ...login });
+}
+
+function askRestoreLogin(database) {
+	const dialog = $("#dlg-sql-restore-login");
+	const form = $("#form-sql-restore-login");
+	form.reset();
+	form.elements.login.value = database;
+	$("#sql-restore-login-error").textContent = "";
+	return new Promise((resolve) => {
+		let result = null;
+		form.onsubmit = (event) => {
+			event.preventDefault();
+			if (form.elements.password.value !== form.elements.confirmation.value) {
+				$("#sql-restore-login-error").textContent = "Passwords do not match.";
+				return;
+			}
+			result = { login: form.elements.login.value.trim(), login_password: form.elements.password.value };
+			dialog.close();
+		};
+		$("#sql-restore-login-cancel").onclick = () => dialog.close();
+		dialog.onclose = () => { form.reset(); resolve(result); };
+		dialog.showModal();
+	});
 }
 
 function decorateSql() {

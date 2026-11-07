@@ -144,6 +144,7 @@ a.link:hover { text-decoration: underline; }
 .sql-table > table th:last-child, .sql-table > table td:last-child:not([colspan]) { text-align: right; }
 #form-sql-connection input[type=checkbox] { width: auto; }
 #dlg-sql-connection { width: min(520px, 92vw); min-width: 0; max-height: 90vh; overflow-y: auto; }
+#dlg-sql-restore-login { width: min(520px, 92vw); min-width: 0; max-height: 90vh; overflow-y: auto; }
 #form-sql-connection .sql-trust-certificate { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text); }
 #form-sql-connection .sql-trust-certificate input { flex: none; margin: 0; }
 #sql-trust-help { margin-top: 0; }

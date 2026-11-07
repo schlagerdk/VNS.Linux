@@ -137,10 +137,12 @@ class SqlAdminTests(unittest.TestCase):
         self.assertEqual(selected["media_count"], 1)
         self.assertRegex(selected["id"], r"^file-[0-9a-f]{64}$")
         with patch.object(sql, "databases", return_value=self.rows), \
-                patch.object(sql, "backups", return_value=records), patch.object(sql, "restore") as restore:
+                patch.object(sql, "backups", return_value=records), patch.object(sql, "restore") as restore, \
+                patch.object(sql, "query_json", return_value=[]), patch.object(sql, "create_restore_login") as create_login:
             sql.run_action(self.settings, dict(action="restore", database="Uploaded", target="New",
-                                               backup_id=selected["id"]))
+                                               backup_id=selected["id"], login="New", login_password="test-secret"))
             restore.assert_called_once_with(self.settings, "New", selected["path"], 2, False)
+            create_login.assert_called_once_with(self.settings, "New", "New", "test-secret")
         with patch.object(sql, "databases", return_value=self.rows), \
                 patch.object(sql, "backups", return_value=[]), patch.object(sql, "restore") as restore:
             with self.assertRaisesRegex(ValueError, "Backup not found"):
@@ -264,6 +266,29 @@ class SqlAdminTests(unittest.TestCase):
                 sql.restore(self.settings, "New", "/backup/file.bak", 1, True)
         self.assertEqual(execute.call_count, 1)
 
+    def test_restore_existing_login_is_rejected_before_restore(self):
+        data = dict(action="restore", database="Uploaded", target="New", backup_id=1,
+                    login="AlreadyExists", login_password="test-secret")
+        with patch.object(sql, "databases", return_value=self.rows), \
+                patch.object(sql, "backups", return_value=[dict(id=1, path="/backup/file.bak", position=1, media_count=1)]), \
+                patch.object(sql, "query_json", return_value=[{"name": "AlreadyExists"}]), \
+                patch.object(sql, "restore") as restore:
+            with self.assertRaisesRegex(ValueError, "Choose another username"):
+                sql.run_action(self.settings, data)
+            restore.assert_not_called()
+
+    def test_restore_login_mapping_and_password_validation(self):
+        for password in ("", "short", "has\nnewline", "x" * 129):
+            with self.assertRaises(ValueError):
+                sql.validate_restore_login(dict(login="New", login_password=password))
+        with patch.object(sql, "execute") as execute:
+            sql.create_restore_login(self.settings, "New", "user]name", "test'password")
+        query = execute.call_args.args[1]
+        self.assertIn("CREATE LOGIN [user]]name]", query)
+        self.assertIn("N'test''password'", query)
+        self.assertIn("ALTER USER [user]]name]", query)
+        self.assertIn("ALTER ROLE [db_owner] ADD MEMBER", query)
+
     def test_copy_only_to_new_database(self):
         with patch.object(sql, "databases", return_value=self.rows), patch.object(sql, "backup", return_value="/backup/copy.bak"), \
                 patch.object(sql, "restore") as restore:
@@ -297,6 +322,11 @@ class SqlApiTests(unittest.TestCase):
         self.assertNotIn("test-only-secret", response.get_data(as_text=True))
         connection = response.json["connections"][0]["id"]
         self.assertEqual(response.json["id"], connection)
+        login_payload = dict(kind="sql_action", connection=connection, action="restore",
+                             database="Uploaded", target="New", login="New", login_password="private-test-secret", backup_id=1)
+        restore_argv = self.ns["build_command"](login_payload)[1]
+        self.assertNotIn("private-test-secret", json.dumps(restore_argv))
+        self.assertEqual(json.loads(restore_argv[-1])["login"], "New")
         argv = self.ns["build_command"]({"kind": "sql_action", "connection": connection, "action": "backup_all"})[1]
         self.assertNotIn("test-only-secret", json.dumps(argv))
         self.assertEqual(json.loads(argv[-1]), {"action": "backup_all"})

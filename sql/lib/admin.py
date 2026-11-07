@@ -267,6 +267,28 @@ END CATCH;"""
     print("Restore complete: " + name, flush=True)
 
 
+def validate_restore_login(data):
+    username = data.get("login")
+    identifier(username)
+    password = data.get("login_password")
+    if not isinstance(password, str) or not 8 <= len(password) <= 128 or any(char in password for char in ("\0", "\r", "\n")):
+        raise ValueError("The new SQL login password must be 8-128 characters without line breaks")
+    return username, password
+
+
+def create_restore_login(settings, database, username, password):
+    execute(settings, f"""
+CREATE LOGIN {identifier(username)} WITH PASSWORD={literal(password)}, CHECK_POLICY=OFF,
+ CHECK_EXPIRATION=OFF, DEFAULT_DATABASE={identifier(database)};
+USE {identifier(database)};
+IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name={literal(username)})
+ ALTER USER {identifier(username)} WITH LOGIN={identifier(username)};
+ELSE
+ CREATE USER {identifier(username)} FOR LOGIN {identifier(username)};
+ALTER ROLE [db_owner] ADD MEMBER {identifier(username)};""")
+    print("SQL login and db_owner mapping created: " + username, flush=True)
+
+
 def run_action(settings, data):
     if not isinstance(data, dict):
         raise ValueError("Expected a SQL action object")
@@ -317,6 +339,7 @@ END CATCH;""")
         overwrite = existing is not None
         if overwrite and (action == "copy" or data.get("confirmation") != target or data.get("overwrite") is not True):
             raise ValueError("Destination exists. Explicit overwrite confirmation is required for restore.")
+        login = None
         if action == "copy":
             path, position = backup(settings, name), 1
         else:
@@ -329,7 +352,13 @@ END CATCH;""")
             if not selected or selected["media_count"] != 1:
                 raise ValueError("Backup not found or striped backups are unsupported")
             path, position = selected["path"], selected["position"]
+        if action == "restore" and not overwrite:
+            login = validate_restore_login(data)
+            if query_json(settings, "SELECT name FROM sys.server_principals WHERE name=" + literal(login[0])):
+                raise ValueError("SQL login already exists. Choose another username before restoring.")
         restore(settings, target, path, position, overwrite)
+        if login:
+            create_restore_login(settings, target, *login)
     print("OK: " + action, flush=True)
 
 
@@ -340,7 +369,11 @@ def main():
     parser.add_argument("payload")
     args = parser.parse_args()
     try:
-        run_action(connection(args.store, args.connection), json.loads(args.payload))
+        payload = json.loads(args.payload)
+        password = os.environ.pop("VNS_SQL_LOGIN_PASSWORD", None)
+        if password is not None:
+            payload["login_password"] = password
+        run_action(connection(args.store, args.connection), payload)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr, flush=True)
         return 1

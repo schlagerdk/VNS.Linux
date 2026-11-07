@@ -1148,9 +1148,13 @@ def build_command(data):
                 _sql_module.identifier(data.get("database", ""))
             if data["action"] in ("copy", "restore"):
                 _sql_module.identifier(data.get("target", ""))
+            if data.get("login") is not None:
+                if data["action"] != "restore":
+                    abort(400, "SQL login creation is only supported for restore")
+                _sql_module.validate_restore_login(data)
         except ValueError as exc:
             abort(400, str(exc))
-        payload = {key: data[key] for key in ("action", "database", "target", "backup_id", "overwrite", "confirmation") if key in data}
+        payload = {key: data[key] for key in ("action", "database", "target", "backup_id", "overwrite", "confirmation", "login") if key in data}
         return "SQL: " + data["action"], [sys.executable, SQL_HELPER, SQL_CONNECTIONS, identifier, json.dumps(payload)], "/"
     if kind == "update_system":
         if not ADMIN_SITE:
@@ -1443,11 +1447,13 @@ def api_term():
     payload = request.get_json(silent=True) or {}
     title, argv, cwd = build_command(payload)
     extra_env = production_setup_env(payload, payload.get("site", "")) if payload.get("kind") == "create_prod" else None
-    if extra_env is not None:
+    if payload.get("kind") == "sql_action" and payload.get("login") is not None:
+        extra_env = {"VNS_SQL_LOGIN_PASSWORD": payload["login_password"]}
+    if payload.get("kind") == "create_prod":
         argv = ["/bin/bash", render_create_prod_script(payload["site"])]
     with SESSIONS_LOCK:
         if sum(1 for s in SESSIONS.values() if s.running) >= MAX_SESSIONS:
-            if extra_env is not None:
+            if payload.get("kind") == "create_prod":
                 os.unlink(argv[1])
             return error("Too many running terminals. Close some first.")
         try:
@@ -1455,7 +1461,7 @@ def api_term():
             sites = payload.get("sites", []) if payload.get("kind") == "bulk" else [payload["site"]] if payload.get("site") else []
             session_obj = TermSession(title, argv, cwd, extra_env, auto_close=terminal_auto_close(payload), update_root=update_root, sites=sites, scope=terminal_scope(payload))
         except Exception:
-            if extra_env is not None:
+            if payload.get("kind") == "create_prod":
                 os.unlink(argv[1])
             raise
         SESSIONS[session_obj.id] = session_obj
