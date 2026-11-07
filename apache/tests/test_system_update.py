@@ -1,14 +1,18 @@
 import ast
+import json
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import threading
+import time
 import unittest
+import uuid
 from unittest.mock import Mock
 
-from flask import Flask, jsonify, request
+from flask import Flask, abort, jsonify, request
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -82,6 +86,40 @@ class SystemUpdateTests(unittest.TestCase):
                     response = self.client.get("/api/system-update")
                 self.assertEqual(response.json["status"], "error")
                 self.assertIn("error", response.json)
+
+    def test_update_job_survives_new_app_and_reports_failures(self):
+        helper = ROOT / "apache/lib/system_update.py"
+        self.ns.update(abort=abort, json=json, uuid=uuid, os=os, sys=__import__("sys"),
+                       APACHE_DIR=str(ROOT / "apache"), time=time,
+                       build_command=Mock(return_value=("Update", [sys.executable, "-c", "pass"], "/")))
+        self.ns["subprocess"] = subprocess
+        nodes = [node for node in ast.parse((APP / "app.py").read_text()).body
+                 if isinstance(node, ast.FunctionDef) and node.name == "api_run_system_update"]
+        self.app = Flask("update jobs")
+        self.ns["app"] = self.app
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), "update jobs", "exec"), self.ns)
+        client = self.app.test_client()
+        self.assertEqual(client.get("/api/system-update/run").json["status"], "idle")
+        from unittest.mock import patch
+        with patch.object(subprocess, "Popen") as launch:
+            response = client.post("/api/system-update/run")
+        job = response.json["id"]
+        self.assertEqual(response.json["status"], "running")
+        self.assertTrue(launch.call_args.kwargs["start_new_session"])
+        status = self.root / "system-update.json"
+        self.assertEqual(status.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((self.root / "system-update.log").stat().st_mode & 0o777, 0o600)
+        self.assertEqual(client.post("/api/system-update/run").status_code, 409)
+        for code, expected in ((0, "success"), (1, "error")):
+            subprocess.run([sys.executable, str(helper), str(status), job,
+                            sys.executable, "-c", f"raise SystemExit({code})"], check=True)
+            state = client.get("/api/system-update/run").json
+            self.assertEqual(state["id"], job)
+            self.assertEqual(state["status"], expected)
+        self.assertIn("code 1", state["error"])
+        updater = (ROOT / "apache/update_admin_site.sh").read_text()
+        for name in ("system-update.json", "system-update.log"):
+            self.assertIn("--exclude /" + name, updater)
 
     def test_deployment_records_commit_only_on_success_and_for_clean_sources(self):
         target = self.root / "deployed"

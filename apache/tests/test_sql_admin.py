@@ -60,11 +60,11 @@ class SqlAdminTests(unittest.TestCase):
             self.assertIn("-b", args)
             self.assertIn("-x", args)
             self.assertNotIn("-C", args)
-            self.assertNotIn("-y", args)
-            self.assertEqual(args[args.index("-h") + 1], "-1")
+            self.assertNotIn("-h", args)
+            self.assertEqual(args[args.index("-y") + 1], "0")
             self.assertIn("SET NOCOUNT ON;", Path(filename).read_text())
-            self.assertIn("PRINT LEFT(@vns_json, 4000)", Path(filename).read_text())
-            return Mock(returncode=0, stdout="[]", stderr="")
+            self.assertIn("FOR JSON PATH) AS vns_json;", Path(filename).read_text())
+            return Mock(returncode=0, stdout="[]\n", stderr="")
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), patch.object(sql.subprocess, "run", side_effect=run):
             self.assertEqual(sql.query_json(self.settings, "SELECT 1 AS value"), [])
         self.assertFalse(Path(filenames[0]).exists())
@@ -73,18 +73,18 @@ class SqlAdminTests(unittest.TestCase):
         expected = [{"name": "a" * 3985 + " middle " + "b" * 5000}]
         encoded = json.dumps(expected)
         boundary = encoded.index(" middle") + 1
-        output = encoded[:boundary] + "\n" + encoded[boundary:] + "\n"
+        output = "vns_json\n--------\n" + encoded[:boundary] + "\n" + encoded[boundary:] + "\n"
         with patch.object(sql, "execute", return_value=output):
             self.assertEqual(sql.query_json(self.settings, "SELECT name"), expected)
 
-    def test_json_print_output_is_not_redirected_to_stderr(self):
+    def test_json_uses_result_set_instead_of_print_messages(self):
         expected = [{"name": "Example", "id": 5}]
-        output = json.dumps(expected) + "\n"
+        output = "vns_json\n--------\n" + json.dumps(expected) + "\n"
 
         def run(args, **kwargs):
-            redirect_print = args[args.index("-r") + 1] == "1"
-            return Mock(returncode=0, stdout="" if redirect_print else output,
-                        stderr=output if redirect_print else "")
+            query = Path(args[args.index("-i") + 1]).read_text()
+            self.assertNotIn("PRINT", query)
+            return Mock(returncode=0, stdout=output, stderr="")
 
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), \
                 patch.object(sql.subprocess, "run", side_effect=run):
@@ -94,6 +94,12 @@ class SqlAdminTests(unittest.TestCase):
         with patch.object(sql, "execute", return_value=" \r\n"):
             with self.assertRaisesRegex(ValueError, "sqlcmd returned no JSON output"):
                 sql.query_json(self.settings, "SELECT 1")
+
+    def test_actual_tools18_headerless_database_response(self):
+        output = '[{"name":"master"},{"name":"tempdb"},{"name":"model"},{"name":"msdb"}]\n'
+        with patch.object(sql, "execute", return_value=output):
+            self.assertEqual(sql.query_json(self.settings, "SELECT name FROM sys.databases"),
+                             [{"name": name} for name in ("master", "tempdb", "model", "msdb")])
 
     def test_sql_errors_never_become_success(self):
         with patch.object(sql.shutil, "which", return_value="/test/sqlcmd"), patch.object(

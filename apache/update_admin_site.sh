@@ -205,6 +205,7 @@ echo "Update the app files"
 sudo rsync -a --delete \
 	--exclude /config.json --exclude /static/vendor/ --exclude /__pycache__/ \
 	--exclude /sql-connections.json \
+	--exclude /system-update.json --exclude /system-update.log --exclude /system-update.tmp \
 	"${_solutionFolder}/admin/app/" "${_siteRoot}/app/"
 if [[ -f ${_apacheDir}/../.vns-version ]]; then
 	sudo cp "${_apacheDir}/../.vns-version" "${_siteRoot}/app/.vns-version"

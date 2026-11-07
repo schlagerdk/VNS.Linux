@@ -623,6 +623,42 @@ SYSTEM_UPDATE_LOCK = threading.Lock()
 SYSTEM_UPDATE_CACHE = {}
 
 
+@app.route("/api/system-update/run", methods=["GET", "POST"])
+def api_run_system_update():
+    path = Path(BASE) / "system-update.json"
+    log = Path(BASE) / "system-update.log"
+    with SYSTEM_UPDATE_LOCK:
+        state = json.loads(path.read_text()) if path.exists() else {"status": "idle"}
+        if request.method == "GET":
+            if state["status"] == "error":
+                state["output"] = log.read_text(errors="replace")[-12000:] if log.exists() else ""
+            return jsonify(state)
+        if state["status"] == "running":
+            abort(409, "A system update is already running")
+        _, command, _ = build_command({"kind": "update_system"})
+        helper = Path(APACHE_DIR) / "lib/system_update.py"
+        if not helper.is_file():
+            abort(400, "System update helper is missing")
+        job = uuid.uuid4().hex
+        descriptor = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(descriptor, "w") as stream:
+                state = {"id": job, "status": "running", "started": time.time()}
+                temporary = path.with_suffix(".tmp")
+                with open(temporary, "w", opener=lambda name, flags: os.open(name, flags, 0o600)) as status_stream:
+                    json.dump(state, status_stream)
+                os.replace(temporary, path)
+                subprocess.Popen([sys.executable, str(helper), str(path), job, *command],
+                                 cwd="/", stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
+        except OSError as exc:
+            state.update(status="error", error=str(exc))
+            path.write_text(json.dumps(state))
+            app.logger.error("Could not start system update: %s", exc)
+            abort(500, "Could not start system update")
+        return jsonify(state)
+
+
 @app.route("/api/system-update")
 def api_system_update():
     with SYSTEM_UPDATE_LOCK:

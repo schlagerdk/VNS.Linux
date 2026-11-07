@@ -1791,6 +1791,54 @@ $("#settings-sql").dataset.tone = "blue";
 $("#settings-sql").prepend(svgIcon("server"));
 
 const settingsMenu = $("#settings-menu");
+let systemUpdating = false;
+async function runSystemUpdate(existing = null) {
+	if (systemUpdating) return;
+	systemUpdating = true;
+	const overlay = $("#system-update-overlay");
+	$("#system-update-title").textContent = "Updating..";
+	$("#system-update-message").textContent = "Please wait. The page will reload automatically when the update completes.";
+	$("#system-update-output").hidden = true;
+	$("#system-update-close").hidden = true;
+	$(".update-spinner").hidden = false;
+	overlay.showModal();
+	try {
+		const job = existing || await api("/api/system-update/run", { json: {} });
+		const deadline = Date.now() + 35 * 60 * 1000;
+		while (Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+			let response;
+			try {
+				response = await fetch("/api/system-update/run", { cache: "no-store", signal: AbortSignal.timeout(5000) });
+			} catch (error) {
+				if (!(error instanceof TypeError) && error.name !== "TimeoutError") throw error;
+				continue;
+			}
+			if (response.status === 401 || response.redirected) throw new Error("Your session expired. Reload the page and log in to check the update.");
+			if ([502, 503, 504].includes(response.status)) continue;
+			if (!response.ok) throw new Error("Could not check update status: HTTP " + response.status);
+			const state = await response.json();
+			if (state.id !== job.id) throw new Error("Update status changed unexpectedly. Reload the page to check it.");
+			if (state.status === "success") { location.reload(); return; }
+			if (state.status === "error") {
+				$("#system-update-output").textContent = state.output || "";
+				$("#system-update-output").hidden = !state.output;
+				throw new Error(state.error || "Update failed.");
+			}
+		}
+		throw new Error("The update has not confirmed completion. Reload the page to check its status; do not start another update.");
+	} catch (error) {
+		$("#system-update-title").textContent = "Update not completed";
+		$("#system-update-message").textContent = error.message;
+		$(".update-spinner").hidden = true;
+		$("#system-update-close").hidden = false;
+		console.error(error);
+	} finally {
+		systemUpdating = false;
+	}
+}
+$("#system-update-overlay").addEventListener("cancel", (event) => event.preventDefault());
+$("#system-update-close").onclick = () => $("#system-update-overlay").close();
 async function checkSystemUpdate(refresh = false) {
 	const result = await api("/api/system-update" + (refresh ? "?refresh=1" : ""));
 	const badge = $("#system-update-badge");
@@ -1820,9 +1868,9 @@ $("#settings-apache-test").onclick = () => run(() => openTask({ kind: "apache", 
 $("#settings-update").onclick = () => run(async () => {
 	if (await ask({
 		title: "Update VNS and the admin site?",
-		message: "Download and install the latest VNS version, then update this admin site. The admin service restarts near the end, disconnecting this terminal. Reload the page once it is available again.",
+		message: "Download and install the latest VNS version, then update this admin site. Please wait while the admin service restarts. The page reloads automatically after a successful update.",
 		input: false, ok: "Update",
-	})) await openTask({ kind: "update_system" });
+	})) await runSystemUpdate();
 });
 $("#settings-update").dataset.tone = "purple";
 $("#settings-update").prepend(svgIcon("sync"));
@@ -1831,4 +1879,8 @@ decorate($("#settings-menu"));
 decorate($("#view-sites .toolbar"));
 decorate($("#view-files"));
 run(checkSystemUpdate);
+run(async () => {
+	const state = await api("/api/system-update/run");
+	if (state.status === "running") await runSystemUpdate(state);
+});
 setInterval(() => { if (!document.hidden) run(checkSystemUpdate); }, 300000);

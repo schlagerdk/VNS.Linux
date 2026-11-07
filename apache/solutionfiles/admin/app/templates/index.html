@@ -12,6 +12,13 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<dialog id="system-update-overlay" aria-labelledby="system-update-title">
+  <div class="update-spinner" aria-hidden="true"></div>
+  <h2 id="system-update-title" role="status">Updating..</h2>
+  <p id="system-update-message">Please wait. The page will reload automatically when the update completes.</p>
+  <pre id="system-update-output" hidden></pre>
+  <button id="system-update-close" type="button" hidden>Close</button>
+</dialog>
 <header class="page-header">
   <a class="brand" href="#sites" title="All sites">
     <span class="logo">▤</span>

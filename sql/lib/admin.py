@@ -103,7 +103,7 @@ def execute(settings, query, table=False, timeout=3600):
             stream.write("SET NOCOUNT ON;\n" + query + "\n")
         args = [tool, "-S", f'tcp:{settings["host"]},{settings["port"]}', "-U", settings["username"],
                 "-d", "master", "-b", "-x", "-r", "0", "-l", "15", "-t", "0", "-w", "65535", "-f", "65001", "-i", filename]
-        args += ["-W", "-s", "|"] if table else ["-h", "-1"]
+        args += ["-W", "-s", "|"] if table else ["-y", "0"]
         if settings["trust_certificate"]:
             args.append("-C")
         result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
@@ -118,19 +118,17 @@ def execute(settings, query, table=False, timeout=3600):
 
 
 def query_json(settings, query):
-    output = execute(settings, """
-DECLARE @vns_json nvarchar(max) = (
-""" + query + """ FOR JSON PATH
-);
-WHILE LEN(@vns_json) > 0
-BEGIN
- PRINT LEFT(@vns_json, 4000);
- SET @vns_json = SUBSTRING(@vns_json, 4001, 2147483647);
-END;
-""", timeout=30)
-    payload = "".join(output.splitlines())
-    if not payload.strip():
+    output = execute(settings, "SELECT (" + query + " FOR JSON PATH) AS vns_json;", timeout=30)
+    lines = output.splitlines()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not lines:
         raise ValueError("sqlcmd returned no JSON output. Check the SQL command-line tools and server logs.")
+    if lines[0].strip() == "vns_json":
+        if len(lines) < 3 or not re.fullmatch(r"-+", lines[1].strip()):
+            raise ValueError("Invalid sqlcmd JSON result header")
+        lines = lines[2:]
+    payload = "".join(lines)
     data = json.loads(payload)
     if not isinstance(data, list):
         raise ValueError("Invalid SQL Server response")
