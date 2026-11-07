@@ -112,7 +112,7 @@ function ask({ title, message = "", value = "", placeholder = "", ok = "OK", dan
 	copyStatus.textContent = "";
 	copyStatus.title = "";
 	messageBox.textContent = message;
-	const matchIndex = match ? message.indexOf(match) : -1;
+	const matchIndex = match ? message.lastIndexOf(match) : -1;
 	if (matchIndex >= 0) {
 		const copy = el("button", {
 			type: "button", className: "confirmation-copy", textContent: match,
